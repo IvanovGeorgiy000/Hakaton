@@ -1,5 +1,4 @@
 import { useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
 import { Upload, Loader2, ImagePlus } from 'lucide-react'
 import { EQUIPMENT, SITES, type EquipmentType, type Detection } from '@/data'
 import { useApp } from '@/store/context'
@@ -48,7 +47,7 @@ export function CheckSnapshot() {
       <div className="grid lg:grid-cols-[1fr_360px] gap-5">
         <div>
           <div
-            className={cn('relative aspect-video rounded-xl border-2 border-dashed border-border bg-card overflow-hidden flex items-center justify-center', !img && 'cursor-pointer hover:border-primary')}
+            className={cn('relative aspect-video rounded-xl border border-dashed border-border bg-card overflow-hidden flex items-center justify-center', !img && 'cursor-pointer hover:border-primary')}
             onClick={() => !img && inputRef.current?.click()}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); onFile(e.dataTransfer.files[0]) }}
@@ -57,15 +56,15 @@ export function CheckSnapshot() {
               <>
                 <img src={img} alt="Загруженный снимок" className="absolute inset-0 w-full h-full object-cover" />
                 {phase === 'done' && DEMO.map((d) => (
-                  <motion.div
-                    key={d.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+                  <div
+                    key={d.id}
                     className="absolute rounded-[3px]"
                     style={{ left: `${d.box.x}%`, top: `${d.box.y}%`, width: `${d.box.w}%`, height: `${d.box.h}%`, border: `3px solid ${EQUIPMENT[d.type].color}` }}
                   >
-                    <span className="absolute -top-[24px] -left-[3px] text-[13px] font-bold text-white px-1.5 py-0.5 rounded-t whitespace-nowrap" style={{ background: EQUIPMENT[d.type].color }}>
+                    <span className="absolute -top-[24px] -left-[3px] text-[13px] font-semibold text-white px-1.5 py-0.5 rounded-t whitespace-nowrap" style={{ background: EQUIPMENT[d.type].color }}>
                       {EQUIPMENT[d.type].name} {Math.round(d.confidence * 100)}%
                     </span>
-                  </motion.div>
+                  </div>
                 ))}
                 {phase === 'busy' && (
                   <div className="absolute inset-0 bg-slate-900/60 text-white flex flex-col items-center justify-center gap-2 font-semibold text-lg">
@@ -92,17 +91,15 @@ export function CheckSnapshot() {
         <div className="space-y-4">
           <Card><CardBody>
             <label className="block font-semibold mb-2" htmlFor="site">С каким объектом сверять</label>
-            <select id="site" value={siteId} onChange={(e) => { setSiteId(e.target.value) }} className="w-full min-h-[48px] rounded-lg border-2 border-border bg-card px-3 text-[16px] font-semibold">
+            <select id="site" value={siteId} onChange={(e) => { setSiteId(e.target.value) }} className="w-full min-h-[48px] rounded-lg border border-border bg-card px-3 text-[16px] font-semibold">
               {SITES.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
             <div className="text-muted-foreground text-[14px] mt-2">Этап сейчас: <b className="text-foreground">{stage.name}</b></div>
           </CardBody></Card>
-
-          <AnimatePresence>
             {phase === 'done' && rule && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <div>
                 <Card><CardBody>
-                  <h2 className="font-bold text-lg mb-3">Результат сверки</h2>
+                  <h2 className="font-semibold text-lg mb-3">Результат сверки</h2>
                   <ul className="space-y-2">
                     {rule.required.map((r) => {
                       const n = observed[r.type] ?? 0
@@ -114,9 +111,8 @@ export function CheckSnapshot() {
                     ))}
                   </ul>
                 </CardBody></Card>
-              </motion.div>
+              </div>
             )}
-          </AnimatePresence>
         </div>
       </div>
     </div>
@@ -132,7 +128,7 @@ function Row({ type, text, tone, label }: { type: EquipmentType; text: string; t
         <div className="font-semibold">{EQUIPMENT[type].name}</div>
         <div className="text-muted-foreground text-[13px]">{text}</div>
       </div>
-      <span className={cn('rounded-full px-3 py-1 font-bold text-[14px] shrink-0', cls)}>{label}</span>
+      <span className={cn('rounded-sm px-3 py-1 font-semibold text-[14px] shrink-0', cls)}>{label}</span>
     </li>
   )
 }

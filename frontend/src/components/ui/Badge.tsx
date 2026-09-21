@@ -11,11 +11,9 @@ const tones: Record<Tone, string> = {
   neutral: 'bg-muted text-muted-foreground',
 }
 
+/** Метка статуса */
 export function Badge({ tone = 'neutral', className, ...props }: HTMLAttributes<HTMLSpanElement> & { tone?: Tone }) {
   return (
-    <span
-      className={cn('inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[14px] font-semibold whitespace-nowrap', tones[tone], className)}
-      {...props}
-    />
+    <span className={cn('inline-flex items-center gap-1.5 rounded-sm px-2 py-[3px] text-[13px] font-medium whitespace-nowrap', tones[tone], className)} {...props} />
   )
 }

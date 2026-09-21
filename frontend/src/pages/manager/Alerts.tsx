@@ -51,7 +51,7 @@ export function Chip({ active, onClick, children, small }: { active: boolean; on
     <button
       type="button" onClick={onClick} aria-pressed={active}
       className={cn(
-        'rounded-full font-semibold border-2 cursor-pointer transition-colors',
+        'rounded-sm font-semibold border cursor-pointer transition-colors',
         small ? 'min-h-[40px] px-3 text-[14px]' : 'min-h-[44px] px-4',
         active ? 'bg-primary text-on-primary border-primary' : 'bg-card border-border hover:border-primary/60',
       )}

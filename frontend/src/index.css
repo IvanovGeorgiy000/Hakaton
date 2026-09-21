@@ -1,52 +1,50 @@
 @import "tailwindcss";
-@import "@fontsource-variable/inter";
+@import "@fontsource-variable/golos-text";
 
 /*
- * Семантические токены. Светлая рабочая тема: нейтральный фон, белые карточки с тонкой рамкой,
- * тёмно-синее боковое меню, один акцентный синий. Цвет несёт смысл только в статусах.
+ * Современный сдержанный продуктовый UI: Golos Text, мягкие радиусы, тонкие рамки, едва заметные тени.
+ * Один акцентный цвет; остальной цвет несёт смысл только в статусах.
  */
 @theme {
-  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-sans: "Golos Text Variable", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  --color-background: #F4F6F8;
-  --color-foreground: #0F172A;
+  --color-background: #F6F7F9;
+  --color-foreground: #101828;
   --color-card: #FFFFFF;
-  --color-card-foreground: #0F172A;
-  --color-muted: #EEF1F5;
-  --color-muted-foreground: #526071;
-  --color-border: #DFE4EB;
-  --color-primary: #1D4ED8;
-  --color-primary-hover: #1E40AF;
+  --color-card-foreground: #101828;
+  --color-muted: #F2F4F7;
+  --color-muted-foreground: #5B6675;
+  --color-border: #E3E7ED;
+  --color-border-strong: #CDD3DC;
+  --color-primary: #1F5FD1;
+  --color-primary-hover: #194FB2;
   --color-on-primary: #FFFFFF;
-  --color-ring: #1D4ED8;
+  --color-ring: #1F5FD1;
+  --color-brand: #F5B800;
 
-  --color-sidebar: #0B1526;
-  --color-sidebar-hover: #16233A;
-  --color-sidebar-active: #1D4ED8;
-  --color-sidebar-foreground: #C7D0DD;
-  --color-sidebar-muted: #7E8CA0;
-  --color-sidebar-border: #1C2A42;
+  --color-ok: #17803A;
+  --color-ok-bg: #E8F6EC;
+  --color-ok-fg: #12632D;
+  --color-warn: #B25E02;
+  --color-warn-bg: #FEF3DD;
+  --color-warn-fg: #8A4800;
+  --color-danger: #C4281C;
+  --color-danger-bg: #FDECEA;
+  --color-danger-fg: #971E15;
+  --color-info: #1F5FD1;
+  --color-info-bg: #EAF1FD;
+  --color-info-fg: #184A9F;
 
-  --color-ok: #15803D;
-  --color-ok-bg: #E7F6EC;
-  --color-ok-fg: #14532D;
-  --color-warn: #B45309;
-  --color-warn-bg: #FDF3DC;
-  --color-warn-fg: #78350F;
-  --color-danger: #B91C1C;
-  --color-danger-bg: #FDECEC;
-  --color-danger-fg: #7F1D1D;
-  --color-info: #1D4ED8;
-  --color-info-bg: #E8EFFD;
-  --color-info-fg: #1E3A8A;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
 
-  --radius-lg: 8px;
-  --radius-xl: 10px;
-  --radius-2xl: 14px;
-
-  --shadow-card: 0 1px 2px rgba(16, 24, 40, .05);
-  --shadow-pop: 0 12px 32px -8px rgba(16, 24, 40, .22), 0 2px 6px rgba(16, 24, 40, .08);
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, .04);
+  --shadow-hover: 0 4px 12px -2px rgba(16, 24, 40, .08);
+  --shadow-pop: 0 16px 40px -12px rgba(16, 24, 40, .25), 0 2px 6px rgba(16, 24, 40, .06);
 }
 
 html { font-size: 16px; }
@@ -54,17 +52,14 @@ body {
   @apply bg-background text-foreground font-sans antialiased;
   margin: 0;
   min-height: 100dvh;
-  font-feature-settings: "cv11", "ss03"; /* более открытые формы цифр Inter */
 }
 * { box-sizing: border-box; }
-h1, h2, h3 { letter-spacing: -0.015em; }
+h1, h2 { letter-spacing: -0.01em; }
 
-/* Цифры в таблицах и показателях не «прыгают» */
 .tabular { font-variant-numeric: tabular-nums; }
 
-/* Видимые кольца фокуса для клавиатуры */
 :focus-visible {
-  outline: 3px solid var(--color-ring);
+  outline: 2px solid var(--color-ring);
   outline-offset: 2px;
   border-radius: 6px;
 }

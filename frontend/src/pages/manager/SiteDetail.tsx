@@ -26,7 +26,7 @@ export function ManagerSite() {
         {TABS.map((t) => (
           <button
             key={t.id} role="tab" aria-selected={tab === t.id} type="button" onClick={() => setTab(t.id)}
-            className={cn('min-h-[48px] px-5 rounded-lg font-semibold border-2 cursor-pointer transition-colors whitespace-nowrap', tab === t.id ? 'bg-primary text-on-primary border-primary' : 'bg-card border-border hover:border-primary/60')}
+            className={cn('min-h-[48px] px-5 rounded-lg font-semibold border cursor-pointer transition-colors whitespace-nowrap', tab === t.id ? 'bg-primary text-on-primary border-primary' : 'bg-card border-border hover:border-primary/60')}
           >
             {t.label}
           </button>

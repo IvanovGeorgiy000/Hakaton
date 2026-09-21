@@ -72,7 +72,7 @@ export function MinimalDemo() {
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">Снимок → техника → этап → отклонения</h1>
+            <h1 className="text-[22px] sm:text-2xl font-semibold">Снимок → техника → этап → отклонения</h1>
             <p className="text-muted-foreground">Минимальная демонстрация обязательных функций по ТЗ на одном экране.</p>
           </div>
           <Link to="/" className="inline-flex items-center gap-1.5 min-h-[44px] text-primary font-semibold hover:underline"><ArrowLeft className="w-5 h-5" /> Полный интерфейс</Link>
@@ -81,7 +81,7 @@ export function MinimalDemo() {
         {/* Шаг 1: входные данные */}
         <section className="bg-card rounded-xl border border-border p-4 sm:p-5 grid lg:grid-cols-[1fr_320px] gap-5">
           <div>
-            <h2 className="font-bold text-lg mb-2">1. Снимок с камеры</h2>
+            <h2 className="font-semibold text-lg mb-2">1. Снимок с камеры</h2>
             {upload ? (
               <div className="relative aspect-video rounded-lg overflow-hidden bg-slate-800">
                 <img src={upload} alt="Загруженный снимок" className="absolute inset-0 w-full h-full object-cover" />
@@ -93,12 +93,12 @@ export function MinimalDemo() {
             <div className="flex flex-wrap gap-2 mt-3">
               {SAMPLES.map((s) => (
                 <button key={s.id} type="button" onClick={() => pickSample(s.id)}
-                  className={cn('min-h-[40px] px-3 rounded-lg text-[14px] font-semibold border-2 cursor-pointer transition-colors', !upload && sampleId === s.id ? 'border-primary bg-info-bg text-info-fg' : 'border-border bg-card hover:border-primary/60')}>
+                  className={cn('min-h-[40px] px-3 rounded-lg text-[14px] font-semibold border cursor-pointer transition-colors', !upload && sampleId === s.id ? 'border-primary bg-info-bg text-info-fg' : 'border-border bg-card hover:border-primary/60')}>
                   {s.label}
                 </button>
               ))}
               <button type="button" onClick={() => inputRef.current?.click()}
-                className={cn('min-h-[40px] px-3 rounded-lg text-[14px] font-semibold border-2 cursor-pointer inline-flex items-center gap-1.5 transition-colors', upload ? 'border-primary bg-info-bg text-info-fg' : 'border-dashed border-border hover:border-primary/60')}>
+                className={cn('min-h-[40px] px-3 rounded-lg text-[14px] font-semibold border cursor-pointer inline-flex items-center gap-1.5 transition-colors', upload ? 'border-primary bg-info-bg text-info-fg' : 'border-dashed border-border hover:border-primary/60')}>
                 <Upload className="w-4 h-4" /> Своё фото
               </button>
               <input ref={inputRef} type="file" accept="image/*" className="sr-only" onChange={(e) => onFile(e.target.files?.[0])} />
@@ -106,9 +106,9 @@ export function MinimalDemo() {
           </div>
 
           <div>
-            <h2 className="font-bold text-lg mb-2">2. Этап работ по графику</h2>
+            <h2 className="font-semibold text-lg mb-2">2. Этап работ по графику</h2>
             <select value={ruleKey} onChange={(e) => { setRuleKey(e.target.value as RuleKey); setPhase('idle') }}
-              className="w-full min-h-[48px] rounded-lg border-2 border-border bg-card px-3 text-[16px] font-semibold">
+              className="w-full min-h-[48px] rounded-lg border border-border bg-card px-3 text-[16px] font-semibold">
               {Object.values(RULES).map((r) => <option key={r.key} value={r.key}>{r.stageName}</option>)}
             </select>
             <div className="mt-3 text-[14px] space-y-1">
@@ -126,11 +126,11 @@ export function MinimalDemo() {
           <>
             {/* Шаг 3: что распознано */}
             <section className="bg-card rounded-xl border border-border p-4 sm:p-5">
-              <h2 className="font-bold text-lg mb-2">3. Обнаруженная техника</h2>
+              <h2 className="font-semibold text-lg mb-2">3. Обнаруженная техника</h2>
               {detections.length === 0 ? <p className="text-muted-foreground">Техники не обнаружено.</p> : (
                 <ul className="flex flex-wrap gap-2">
                   {detections.map((d) => (
-                    <li key={d.id} className="inline-flex items-center gap-2 rounded-full pl-1.5 pr-3 py-1 text-[15px] font-semibold text-white" style={{ background: EQUIPMENT[d.type].color }}>
+                    <li key={d.id} className="inline-flex items-center gap-2 rounded-sm pl-1.5 pr-3 py-1 text-[15px] font-semibold text-white" style={{ background: EQUIPMENT[d.type].color }}>
                       <VehicleIcon type={d.type} className="w-8 h-5" fill="#fff" /> {EQUIPMENT[d.type].name} · {Math.round(d.confidence * 100)}%
                     </li>
                   ))}
@@ -141,7 +141,7 @@ export function MinimalDemo() {
 
             {/* Шаг 4: сопоставление и отклонения */}
             <section className="bg-card rounded-xl border border-border p-4 sm:p-5">
-              <h2 className="font-bold text-lg mb-3">4. Сверка с этапом «{rule.stageName}»</h2>
+              <h2 className="font-semibold text-lg mb-3">4. Сверка с этапом «{rule.stageName}»</h2>
               <ul className="divide-y divide-border mb-4">
                 {rule.required.map((r) => {
                   const have = result.observed[r.type] ?? 0
@@ -154,12 +154,12 @@ export function MinimalDemo() {
               </ul>
 
               {result.deviations.length === 0 ? (
-                <div className="rounded-xl bg-ok-bg text-ok-fg p-4 font-bold text-lg flex items-center gap-2"><CheckCircle2 className="w-6 h-6" /> Отклонений нет: техника соответствует этапу</div>
+                <div className="rounded-xl bg-ok-bg text-ok-fg p-4 font-semibold text-lg flex items-center gap-2"><CheckCircle2 className="w-6 h-6" /> Отклонений нет: техника соответствует этапу</div>
               ) : (
                 <div className="space-y-3">
                   {result.deviations.map((d) => (
                     <div key={d.kind + d.type} className={cn('rounded-xl p-4 border-l-8', d.kind === 'unexpected' ? 'bg-warn-bg/60 border-warn' : 'bg-danger-bg/60 border-danger')}>
-                      <div className="font-bold text-lg">{title(d)}</div>
+                      <div className="font-semibold text-lg">{title(d)}</div>
                       <div className="text-[15px] mt-1">
                         <b>Почему:</b> этап «{rule.stageName}» {d.kind === 'unexpected'
                           ? <>не предусматривает технику «{EQUIPMENT[d.type].name.toLowerCase()}» ({d.why.toLowerCase()}), а на снимке она есть: {d.have} шт.</>
@@ -188,7 +188,7 @@ function title(d: Deviation) {
 function Box({ d }: { d: Detection }) {
   return (
     <div className="absolute rounded-[3px]" style={{ left: `${d.box.x}%`, top: `${d.box.y}%`, width: `${d.box.w}%`, height: `${d.box.h}%`, border: `3px solid ${EQUIPMENT[d.type].color}` }}>
-      <span className="absolute -top-[24px] -left-[3px] text-[13px] font-bold text-white px-1.5 py-0.5 rounded-t whitespace-nowrap" style={{ background: EQUIPMENT[d.type].color }}>
+      <span className="absolute -top-[24px] -left-[3px] text-[13px] font-semibold text-white px-1.5 py-0.5 rounded-t whitespace-nowrap" style={{ background: EQUIPMENT[d.type].color }}>
         {EQUIPMENT[d.type].name} {Math.round(d.confidence * 100)}%
       </span>
     </div>
@@ -206,7 +206,7 @@ function Row({ type, text, state }: { type: EquipmentType; text: string; state: 
     <li className="py-2.5 flex items-center gap-3">
       <VehicleIcon type={type} className="w-12 h-8 shrink-0" fill={EQUIPMENT[type].color} />
       <div className="flex-1 min-w-0"><div className="font-semibold">{EQUIPMENT[type].name}{state === 'extra' && ' — не по плану'}</div><div className="text-muted-foreground text-[14px]">{text}</div></div>
-      <span className={cn('inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-bold text-[14px] shrink-0', m.cls)}><m.Icon className="w-4 h-4" /> {m.label}</span>
+      <span className={cn('inline-flex items-center gap-1.5 rounded-sm px-3 py-1 font-semibold text-[14px] shrink-0', m.cls)}><m.Icon className="w-4 h-4" /> {m.label}</span>
     </li>
   )
 }

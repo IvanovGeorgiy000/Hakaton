@@ -1,60 +1,63 @@
-import { Camera, ScanSearch, CalendarCheck, BellRing } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { Card, CardBody } from '@/components/ui/Card'
 import { EQUIPMENT_LIST } from '@/data'
 import { VehicleIcon } from '@/components/VehicleIcon'
 
 const STEPS = [
-  { Icon: Camera, title: '1. Камеры делают снимки', text: 'Каждый час камеры на стройке присылают снимок в систему. Ничего нажимать не нужно.' },
-  { Icon: ScanSearch, title: '2. Система находит технику', text: 'На снимке она обводит рамкой экскаваторы, самосвалы, краны и другую технику.' },
-  { Icon: CalendarCheck, title: '3. Сверяет с планом работ', text: 'Смотрит, какой этап идёт по календарному плану, и какая техника для него нужна.' },
-  { Icon: BellRing, title: '4. Сообщает, если что-то не так', text: 'Нет нужной техники, приехала лишняя, машина стоит без дела — вы получите понятное сообщение и снимок.' },
+  ['Камеры делают снимки', 'Каждый час камеры на стройке присылают снимок в систему. Ничего нажимать не нужно.'],
+  ['Система находит технику', 'На снимке она обводит рамкой экскаваторы, самосвалы, краны и другую технику.'],
+  ['Сверяет с планом работ', 'Смотрит, какой этап идёт по календарному плану и какая техника для него нужна.'],
+  ['Сообщает, если что-то не так', 'Нет нужной техники, приехала лишняя, машина стоит без дела — вы получите сообщение со снимком.'],
 ]
 
+/** Справка: обычный текст, без украшений */
 export function Help() {
   return (
-    <div>
-      <PageHeader title="Как это работает" subtitle="Коротко и без сложных слов" />
-      <div className="grid sm:grid-cols-2 gap-4 mb-8">
-        {STEPS.map((s) => (
-          <Card key={s.title}>
-            <CardBody className="flex gap-4">
-              <span className="shrink-0 w-14 h-14 rounded-xl bg-info-bg text-primary flex items-center justify-center"><s.Icon className="w-8 h-8" /></span>
-              <div>
-                <h2 className="font-bold text-lg">{s.title}</h2>
-                <p className="text-muted-foreground mt-1">{s.text}</p>
-              </div>
-            </CardBody>
-          </Card>
-        ))}
-      </div>
+    <div className="max-w-3xl">
+      <PageHeader title="Справка" subtitle="Как работает система и что делать с сообщениями" />
 
-      <h2 className="text-xl font-bold mb-3">Что означают цвета</h2>
-      <div className="grid sm:grid-cols-3 gap-3 mb-8">
-        <div className="rounded-xl bg-ok-bg text-ok-fg p-4"><b className="text-lg">Зелёный</b><br />Всё по плану, делать ничего не нужно.</div>
-        <div className="rounded-xl bg-warn-bg text-warn-fg p-4"><b className="text-lg">Жёлтый</b><br />Есть замечания. Посмотрите, когда будет время.</div>
-        <div className="rounded-xl bg-danger-bg text-danger-fg p-4"><b className="text-lg">Красный</b><br />Нужно вмешаться сейчас: работы стоят или под угрозой качество.</div>
-      </div>
+      <Section title="Как это работает">
+        <ol className="list-decimal pl-6 space-y-2">
+          {STEPS.map(([t, d]) => <li key={t}><b>{t}.</b> {d}</li>)}
+        </ol>
+      </Section>
 
-      <h2 className="text-xl font-bold mb-3">Какую технику система узнаёт</h2>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
-        {EQUIPMENT_LIST.map((e) => (
-          <Card key={e.type}><CardBody className="flex items-center gap-3 p-3">
-            <VehicleIcon type={e.type} className="w-14 h-9 shrink-0" fill={e.color} />
-            <span className="font-semibold">{e.name}</span>
-          </CardBody></Card>
-        ))}
-      </div>
+      <Section title="Что означают цвета">
+        <table className="w-full text-[15px]">
+          <tbody className="divide-y divide-border">
+            <tr><td className="py-2 pr-3 w-32"><span className="inline-block w-2.5 h-2.5 rounded-full bg-ok mr-2" />Зелёный</td><td className="py-2">Всё по плану, делать ничего не нужно.</td></tr>
+            <tr><td className="py-2 pr-3"><span className="inline-block w-2.5 h-2.5 rounded-full bg-warn mr-2" />Жёлтый</td><td className="py-2">Есть замечания. Посмотрите, когда будет время.</td></tr>
+            <tr><td className="py-2 pr-3"><span className="inline-block w-2.5 h-2.5 rounded-full bg-danger mr-2" />Красный</td><td className="py-2">Нужно вмешаться сейчас: работы стоят или под угрозой качество.</td></tr>
+          </tbody>
+        </table>
+      </Section>
 
-      <h2 className="text-xl font-bold mb-3">Что делать, если пришло сообщение</h2>
-      <Card><CardBody>
-        <ol className="list-decimal pl-6 space-y-2 text-[16px]">
+      <Section title="Что делать, если пришло сообщение">
+        <ol className="list-decimal pl-6 space-y-2">
           <li>Откройте сообщение и посмотрите снимок — на нём обведено, что увидела система.</li>
-          <li>Прочитайте «Что делать» — там короткая подсказка.</li>
+          <li>Прочитайте раздел «Что делать» — там короткая подсказка.</li>
           <li>Нажмите одну из кнопок: <b>«Техника едет»</b>, <b>«Подтверждаю проблему»</b> или <b>«Это ошибка»</b>. Комментарий писать необязательно.</li>
           <li>Когда проблема решена — нажмите <b>«Устранено»</b>.</li>
         </ol>
-      </CardBody></Card>
+      </Section>
+
+      <Section title="Какую технику система узнаёт">
+        <ul className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
+          {EQUIPMENT_LIST.map((e) => (
+            <li key={e.type} className="flex items-center gap-2">
+              <VehicleIcon type={e.type} className="w-10 h-6 shrink-0" fill={e.color} /> {e.name}
+            </li>
+          ))}
+        </ul>
+      </Section>
     </div>
+  )
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="bg-card border border-border rounded-xl shadow-[var(--shadow-card)] mb-4 p-5 sm:p-6">
+      <h2 className="text-[18px] font-semibold mb-3">{title}</h2>
+      <div className="leading-relaxed">{children}</div>
+    </section>
   )
 }

@@ -17,7 +17,7 @@ export function AdminCameras() {
       <div className="space-y-6">
         {visibleSites.map((s) => (
           <section key={s.id}>
-            <h2 className="text-xl font-bold mb-3">{bySite(s.id).name}</h2>
+            <h2 className="text-[18px] font-semibold mb-2">{bySite(s.id).name}</h2>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {cameras.filter((c) => c.siteId === s.id).map((c) => {
                 const last = SNAPSHOTS.filter((x) => x.cameraId === c.id).sort((a, b) => b.takenAt.localeCompare(a.takenAt))[0]
@@ -26,7 +26,7 @@ export function AdminCameras() {
                     <CameraFrame camera={c} snapshot={last} offline={!c.online} showLabels={false} className="rounded-none" />
                     <div className="p-3">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="font-bold">{c.name}</div>
+                        <div className="font-semibold">{c.name}</div>
                         <Badge tone={c.online ? 'ok' : 'neutral'}>{c.online ? 'Работает' : 'Выключена'}</Badge>
                       </div>
                       <div className="text-muted-foreground text-[14px]">Зона: {byZone(c.zoneId).name}</div>

@@ -55,7 +55,7 @@ export function InspectorViolations() {
 
       <div className="bg-card rounded-xl border border-border overflow-x-auto">
         <table className="w-full text-[15px] min-w-[860px]">
-          <thead className="bg-muted/60 text-left text-[13px] uppercase tracking-wide text-muted-foreground">
+          <thead className="bg-muted/60 text-left text-[13px] text-muted-foreground">
             <tr>
               <th className="px-4 py-3">№</th>
               <th className="px-4 py-3">Дата</th>

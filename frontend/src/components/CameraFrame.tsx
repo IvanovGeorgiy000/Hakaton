@@ -65,7 +65,7 @@ export function CameraFrame({ camera, snapshot, highlight, showLabels = true, sh
 
       {offline && (
         <div className="absolute inset-0 bg-slate-950/85 flex flex-col items-center justify-center text-white">
-          <span className={thumb ? 'text-sm font-bold' : 'text-2xl font-bold'}>Нет сигнала</span>
+          <span className={thumb ? 'text-sm font-semibold' : 'text-2xl font-semibold'}>Нет сигнала</span>
           {!thumb && <span className="text-sm opacity-80">последний снимок {snapshot ? fmtTime(snapshot.takenAt) : '—'}</span>}
         </div>
       )}

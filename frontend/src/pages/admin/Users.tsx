@@ -11,14 +11,14 @@ export function AdminUsers() {
       <div className="grid sm:grid-cols-2 gap-4 mb-8">
         {ROLES.map((r) => (
           <div key={r.id} className="bg-card rounded-xl border border-border p-4">
-            <div className="font-bold text-lg">{r.title}</div>
+            <div className="font-semibold text-lg">{r.title}</div>
             <div className="text-muted-foreground text-[14px]">{r.description}</div>
           </div>
         ))}
       </div>
       <div className="bg-card rounded-xl border border-border overflow-x-auto">
         <table className="w-full text-[15px] min-w-[640px]">
-          <thead className="bg-muted/60 text-left text-[13px] uppercase tracking-wide text-muted-foreground">
+          <thead className="bg-muted/60 text-left text-[13px] text-muted-foreground">
             <tr><th className="px-4 py-3">Сотрудник</th><th className="px-4 py-3">Роль</th><th className="px-4 py-3">Объекты</th><th className="px-4 py-3">Телефон</th></tr>
           </thead>
           <tbody className="divide-y divide-border">

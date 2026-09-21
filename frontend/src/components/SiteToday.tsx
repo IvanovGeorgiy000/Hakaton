@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
 import { MapPin, HardHat, Building } from 'lucide-react'
 import type { Alert } from '@/data'
 import { useApp } from '@/store/context'
@@ -26,10 +25,10 @@ export function SiteToday({ siteId, camerasLink }: { siteId: string; camerasLink
 
   return (
     <div className="space-y-6">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      <div>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-2xl sm:text-3xl font-bold leading-tight">{site.name}</h1>
+            <h1 className="text-[22px] sm:text-2xl font-semibold leading-tight">{site.name}</h1>
             <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-muted-foreground text-[15px]">
               <span className="inline-flex items-center gap-1.5"><MapPin className="w-4 h-4" />{site.address}</span>
               <span className="inline-flex items-center gap-1.5"><Building className="w-4 h-4" />{site.contractor}</span>
@@ -43,34 +42,34 @@ export function SiteToday({ siteId, camerasLink }: { siteId: string; camerasLink
           <StatTile label="Выполнено работ" value={`${site.factProgress}%`} hint={lag > 0 ? `отставание ${lag}% от плана (${site.planProgress}%)` : `с опережением плана (${site.planProgress}%)`} tone={lag > 5 ? 'danger' : lag > 0 ? 'warn' : 'ok'} />
           <StatTile label="Открытых замечаний" value={open.length} hint={!open.length ? 'всё спокойно' : open.some((a) => a.severity === 'high') ? `из них ${plural(open.filter((a) => a.severity === 'high').length, 'срочное', 'срочных', 'срочных')}` : 'срочных нет'} tone={open.some((a) => a.severity === 'high') ? 'danger' : open.length ? 'warn' : 'ok'} />
         </div>
-      </motion.div>
+      </div>
 
       <section>
         <div className="flex items-baseline justify-between gap-3 mb-3">
-          <h2 className="text-xl font-bold">Что не так прямо сейчас</h2>
+          <h2 className="text-[18px] font-semibold">Что не так прямо сейчас</h2>
           <Link to={camerasLink} className="text-primary font-semibold hover:underline min-h-[44px] inline-flex items-center">Смотреть камеры</Link>
         </div>
         {open.length === 0 ? (
           <div className="bg-card rounded-xl border border-border"><EmptyState title="Всё по плану" text="Система не нашла отклонений. Отдыхайте спокойно." /></div>
         ) : (
           <div className="space-y-3">
-            {open.map((a, i) => (
-              <motion.div key={a.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
+            {open.map((a) => (
+              <div key={a.id}>
                 <AlertCard alert={a} onOpen={setSel} />
-              </motion.div>
+              </div>
             ))}
           </div>
         )}
       </section>
 
       <section>
-        <h2 className="text-xl font-bold mb-3">План и факт по технике</h2>
+        <h2 className="text-[18px] font-semibold mb-2">План и факт по технике</h2>
         <EquipmentCheck siteId={siteId} />
       </section>
 
       {closed.length > 0 && (
         <section>
-          <h2 className="text-xl font-bold mb-3">Уже решено</h2>
+          <h2 className="text-[18px] font-semibold mb-2">Уже решено</h2>
           <div className="space-y-3">
             {closed.map((a) => <AlertCard key={a.id} alert={a} onOpen={setSel} compact />)}
           </div>

@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
 import { RefreshCw, Loader2 } from 'lucide-react'
 import { SNAPSHOTS, EQUIPMENT, type Camera, type Snapshot } from '@/data'
 import { useApp } from '@/store/context'
@@ -35,19 +34,17 @@ export function CamerasGrid({ siteId }: { siteId: string }) {
           Проверить сейчас
         </Button>
       </div>
-      <AnimatePresence>
         {step !== null && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+          <div
+           
             className="overflow-hidden mb-4"
           >
             <div className="bg-info-bg text-info-fg rounded-xl p-4 flex items-center gap-3 font-semibold">
-              {step < STEPS.length - 1 ? <Loader2 className="w-6 h-6 animate-spin shrink-0" /> : <span className="w-6 h-6 rounded-full bg-ok text-white flex items-center justify-center text-sm">✓</span>}
+              {step < STEPS.length - 1 ? <Loader2 className="w-6 h-6 animate-spin shrink-0" /> : <span className="w-6 h-6 rounded-sm bg-ok text-white flex items-center justify-center text-sm">✓</span>}
               {STEPS[step]}
             </div>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
       <div className="grid sm:grid-cols-2 gap-4">
         {list.map((c) => {
           const last = SNAPSHOTS.filter((s) => s.cameraId === c.id).sort((a, b) => b.takenAt.localeCompare(a.takenAt))[0]
@@ -59,14 +56,14 @@ export function CamerasGrid({ siteId }: { siteId: string }) {
               <CameraFrame camera={c} snapshot={last} offline={!c.online} className="rounded-none" />
               <div className="p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="font-bold">{c.name}</div>
+                  <div className="font-semibold">{c.name}</div>
                   <Badge tone={c.online ? 'ok' : 'neutral'}>{c.online ? 'Работает' : 'Нет сигнала'}</Badge>
                 </div>
                 <div className="text-muted-foreground text-[14px]">{byZone(c.zoneId).name} · снимок {ago(c.lastSnapshotAt)}</div>
                 {last && c.online && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {summarize(last).map(([t, n]) => (
-                      <span key={t} className="text-[13px] font-semibold rounded-full px-2 py-0.5 text-white" style={{ background: EQUIPMENT[t as keyof typeof EQUIPMENT].color }}>
+                      <span key={t} className="text-[13px] font-semibold rounded-sm px-2 py-0.5 text-white" style={{ background: EQUIPMENT[t as keyof typeof EQUIPMENT].color }}>
                         {EQUIPMENT[t as keyof typeof EQUIPMENT].name} ×{n}
                       </span>
                     ))}
@@ -105,7 +102,7 @@ function CameraHistory({ camera, onClose }: { camera: Camera | null; onClose: ()
               {snaps.map((s, i) => (
                 <button
                   key={s.id} type="button" onClick={() => setIdx(i)}
-                  className={cn('min-h-[44px] px-4 rounded-lg font-semibold border-2 cursor-pointer transition-colors', i === idx ? 'border-primary bg-info-bg text-info-fg' : 'border-border hover:border-primary/60')}
+                  className={cn('min-h-[44px] px-4 rounded-lg font-semibold border cursor-pointer transition-colors', i === idx ? 'border-primary bg-info-bg text-info-fg' : 'border-border hover:border-primary/60')}
                 >
                   {fmtTime(s.takenAt)}
                 </button>

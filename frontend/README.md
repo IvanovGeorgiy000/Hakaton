@@ -57,6 +57,6 @@ src/
 
 ## Стек
 
-Vite · React 19 · TypeScript · Tailwind CSS 4 · framer-motion · lucide-react · react-router · Inter (self-hosted).
+Vite · React 19 · TypeScript · Tailwind CSS 4 · framer-motion (только функциональные анимации) · lucide-react · react-router · Golos Text (self-hosted).
 Дизайн-решения: `../design-system/stroymonitor/pages/app.md`.
 Даты в демо зафиксированы на 15.09.2026 и показываются по московскому времени.

@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { motion } from 'framer-motion'
 import { Truck, CheckCircle2, XCircle, FileWarning, Wrench, ClipboardCheck } from 'lucide-react'
 import { CAMERAS, EQUIPMENT, SNAPSHOTS, type Alert, type AlertStatus } from '@/data'
 import { useApp } from '@/store/context'
@@ -65,7 +64,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
       {/* Доказательства */}
       {cam && snap && (
         <section>
-          <h3 className="font-bold text-lg mb-2">Снимки с камеры</h3>
+          <h3 className="font-semibold mb-2">Снимки с камеры</h3>
           <CameraFrame camera={cam} snapshot={snap} highlight={alert.equipment && (alert.kind === 'unexpected' || alert.kind === 'idle') ? [alert.equipment] : undefined} offline={alert.kind === 'camera_offline'} />
           {snaps.length > 1 && (
             <div className="flex flex-wrap gap-2 mt-3">
@@ -73,7 +72,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
                 <button
                   key={s.id} type="button" onClick={() => setEvidenceIdx(i)}
                   className={cn(
-                    'min-h-[44px] px-4 rounded-lg font-semibold border-2 cursor-pointer transition-colors',
+                    'min-h-[44px] px-4 rounded-lg font-semibold border cursor-pointer transition-colors',
                     i === evidenceIdx ? 'border-primary bg-info-bg text-info-fg' : 'border-border bg-card hover:border-primary/60',
                   )}
                 >
@@ -92,8 +91,8 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
       </section>
 
       {/* Объяснение — ключевое требование ТЗ: явная и проверяемая связь */}
-      <section className="bg-muted/60 rounded-xl p-4 sm:p-5">
-        <h3 className="font-bold text-lg mb-3">Почему система так решила</h3>
+      <section className="border border-border rounded-md p-4">
+        <h3 className="font-semibold mb-3">Почему система так решила</h3>
         <ol className="space-y-3">
           <Step n={1} title="Смотрим в план">
             Сегодня {fmtDate('2026-09-15')} на объекте идёт этап <b>«{stage.name}»</b> ({fmtDate(stage.start)} — {fmtDate(stage.end)}).
@@ -135,11 +134,11 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
       {/* Действия по роли */}
       {isOpen(alert.status) && role && (
         <section className="border-t border-border pt-5">
-          <h3 className="font-bold text-lg mb-2">Ваш ответ</h3>
+          <h3 className="font-semibold mb-2">Ваш ответ</h3>
           <textarea
             value={comment} onChange={(e) => setComment(e.target.value)}
             placeholder="Комментарий (необязательно), например: «самосвалы будут к 14:00»"
-            className="w-full min-h-[80px] rounded-lg border-2 border-border bg-card p-3 text-[16px] focus:border-primary outline-none"
+            className="w-full min-h-[80px] rounded-lg border border-border bg-card p-3 text-[16px] focus:border-primary outline-none"
           />
           <div className="flex flex-wrap gap-3 mt-3">
             {role.id === 'foreman' && (
@@ -177,13 +176,13 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
 
       {/* История */}
       <section>
-        <h3 className="font-bold text-lg mb-2">История</h3>
+        <h3 className="font-semibold mb-2">История</h3>
         <ul className="space-y-2">
           {[{ at: alert.startedAt, who: 'Система', text: 'Отклонение впервые замечено.' }, ...alert.history].map((h, i) => (
-            <motion.li key={i} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }} className="flex gap-3 text-[15px]">
+            <li key={i} className="flex gap-3 text-[15px]">
               <span className="text-muted-foreground font-mono shrink-0 w-14">{fmtTime(h.at)}</span>
               <span><b>{h.who}:</b> {h.text}</span>
-            </motion.li>
+            </li>
           ))}
         </ul>
       </section>
@@ -194,7 +193,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div className="bg-muted/60 rounded-lg px-3 py-2">
-      <dt className="text-muted-foreground text-[13px] uppercase tracking-wide">{label}</dt>
+      <dt className="text-muted-foreground text-[13px]">{label}</dt>
       <dd className="font-semibold">{value}</dd>
     </div>
   )
@@ -202,8 +201,8 @@ function Info({ label, value }: { label: string; value: string }) {
 
 function Block({ title, text, tone }: { title: string; text: string; tone?: 'warn' | 'info' }) {
   return (
-    <div className={cn('rounded-xl p-4 border', tone === 'warn' ? 'bg-warn-bg/60 border-warn/30' : tone === 'info' ? 'bg-info-bg/60 border-info/30' : 'bg-card border-border')}>
-      <h3 className="font-bold text-lg mb-1">{title}</h3>
+    <div className={cn('rounded-md p-4 border', tone === 'warn' ? 'bg-warn-bg border-warn/40' : tone === 'info' ? 'bg-info-bg border-info/40' : 'bg-card border-border')}>
+      <h3 className="font-semibold mb-1">{title}</h3>
       <p className="text-[16px] leading-relaxed">{text}</p>
     </div>
   )
@@ -212,7 +211,7 @@ function Block({ title, text, tone }: { title: string; text: string; tone?: 'war
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
     <li className="flex gap-3">
-      <span className="shrink-0 w-8 h-8 rounded-full bg-primary text-on-primary font-bold flex items-center justify-center">{n}</span>
+      <span className="shrink-0 w-6 font-semibold text-muted-foreground tabular">{n}.</span>
       <div>
         <div className="font-semibold">{title}</div>
         <div className="text-[15px] leading-relaxed">{children}</div>

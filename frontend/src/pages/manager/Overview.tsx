@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
 import { ChevronRight, MapPin } from 'lucide-react'
 import { useApp } from '@/store/context'
 import { isOpen, byStage } from '@/store/selectors'
@@ -27,13 +26,13 @@ export function ManagerOverview() {
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
-        {[...visibleSites].sort((a, b) => rank(siteStatus(b.id)) - rank(siteStatus(a.id))).map((s, i) => {
+        {[...visibleSites].sort((a, b) => rank(siteStatus(b.id)) - rank(siteStatus(a.id))).map((s) => {
           const status = siteStatus(s.id)
           const open = alertsForSite(s.id).filter((a) => isOpen(a.status))
           const lag = s.planProgress - s.factProgress
           const stage = byStage(s.currentStageId)
           return (
-            <motion.div key={s.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
+            <div key={s.id}>
               <Link
                 to={`/manager/site/${s.id}`}
                 className={cn(
@@ -43,7 +42,7 @@ export function ManagerOverview() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-xl font-bold leading-tight">{s.name}</div>
+                    <div className="text-[18px] font-semibold leading-tight">{s.name}</div>
                     <div className="text-muted-foreground text-[14px] inline-flex items-center gap-1 mt-1"><MapPin className="w-4 h-4" />{s.address}</div>
                   </div>
                   <ChevronRight className="w-7 h-7 text-muted-foreground shrink-0" />
@@ -61,7 +60,7 @@ export function ManagerOverview() {
                   </div>
                 )}
               </Link>
-            </motion.div>
+            </div>
           )
         })}
       </div>

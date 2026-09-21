@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Minus, Trash2, ChevronDown, Save } from 'lucide-react'
 import { EQUIPMENT, EQUIPMENT_LIST, type EquipmentType, type Rule, type RuleKey } from '@/data'
 import { useApp } from '@/store/context'
@@ -35,11 +34,11 @@ export function AdminRules() {
               aria-expanded={openKey === r.key}
             >
               <div className="flex-1 min-w-0">
-                <div className="font-bold text-lg">{r.stageName}</div>
+                <div className="font-semibold text-lg">{r.stageName}</div>
                 <div className="text-muted-foreground text-[14px]">{r.description}</div>
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {r.required.map((q) => (
-                    <span key={q.type} className="inline-flex items-center gap-1 bg-muted rounded-full pl-1 pr-2.5 py-0.5 text-[13px] font-semibold">
+                    <span key={q.type} className="inline-flex items-center gap-1 bg-muted rounded-sm pl-1 pr-2.5 py-0.5 text-[13px] font-semibold">
                       <VehicleIcon type={q.type} className="w-6 h-4" fill={EQUIPMENT[q.type].color} /> {EQUIPMENT[q.type].name} ≥{q.min}
                     </span>
                   ))}
@@ -47,13 +46,11 @@ export function AdminRules() {
               </div>
               <ChevronDown className={cn('w-6 h-6 text-muted-foreground transition-transform', openKey === r.key && 'rotate-180')} />
             </button>
-            <AnimatePresence initial={false}>
               {openKey === r.key && (
-                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                <div className="overflow-hidden">
                   <RuleEditor rule={r} onSave={(nr) => save(r.key, nr)} saved={saved === r.key} />
-                </motion.div>
+                </div>
               )}
-            </AnimatePresence>
           </div>
         ))}
       </div>
@@ -75,7 +72,7 @@ function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => 
   return (
     <div className="border-t border-border p-4 sm:p-5 grid lg:grid-cols-2 gap-5">
       <section>
-        <h3 className="font-bold mb-1">Нужная техника</h3>
+        <h3 className="font-semibold mb-1">Нужная техника</h3>
         <p className="text-muted-foreground text-[14px] mb-3">Если её нет или меньше, чем указано — система сообщит.</p>
         <ul className="space-y-2">
           {draft.required.map((r) => (
@@ -84,7 +81,7 @@ function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => 
               <div className="flex-1 min-w-0"><div className="font-semibold">{EQUIPMENT[r.type].name}</div><div className="text-muted-foreground text-[13px] truncate">{r.why}</div></div>
               <div className="flex items-center gap-1">
                 <Btn onClick={() => setMin(r.type, -1)} label={`Уменьшить ${EQUIPMENT[r.type].name}`}><Minus className="w-5 h-5" /></Btn>
-                <span className="w-10 text-center text-xl font-bold">{r.min}</span>
+                <span className="w-10 text-center text-[18px] font-semibold">{r.min}</span>
                 <Btn onClick={() => setMin(r.type, 1)} label={`Увеличить ${EQUIPMENT[r.type].name}`}><Plus className="w-5 h-5" /></Btn>
               </div>
               <Btn onClick={() => removeReq(r.type)} label="Убрать" danger><Trash2 className="w-5 h-5" /></Btn>
@@ -95,7 +92,7 @@ function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => 
       </section>
 
       <section>
-        <h3 className="font-bold mb-1">Лишняя техника</h3>
+        <h3 className="font-semibold mb-1">Лишняя техника</h3>
         <p className="text-muted-foreground text-[14px] mb-3">Если такая техника появится на этапе — система предупредит.</p>
         <ul className="space-y-2">
           {draft.unexpected.map((u) => (
@@ -113,12 +110,12 @@ function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => 
         <label className="flex items-center gap-3">
           <span className="font-semibold">Сообщать после</span>
           <Btn onClick={() => setDraft({ ...draft, confirmAfterSnapshots: Math.max(1, draft.confirmAfterSnapshots - 1) })} label="Меньше снимков"><Minus className="w-5 h-5" /></Btn>
-          <span className="w-8 text-center text-xl font-bold">{draft.confirmAfterSnapshots}</span>
+          <span className="w-8 text-center text-[18px] font-semibold">{draft.confirmAfterSnapshots}</span>
           <Btn onClick={() => setDraft({ ...draft, confirmAfterSnapshots: draft.confirmAfterSnapshots + 1 })} label="Больше снимков"><Plus className="w-5 h-5" /></Btn>
           <span className="text-muted-foreground">снимков подряд (1 снимок = 1 час)</span>
         </label>
         <div className="ml-auto flex items-center gap-3">
-          {saved && <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-ok font-semibold">Сохранено</motion.span>}
+          {saved && <span className="text-ok font-semibold">Сохранено</span>}
           <Button size="lg" onClick={() => onSave(draft)}><Save className="w-5 h-5" /> Сохранить</Button>
         </div>
       </div>
@@ -128,7 +125,7 @@ function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => 
 
 function Btn({ onClick, label, danger, children }: { onClick: () => void; label: string; danger?: boolean; children: React.ReactNode }) {
   return (
-    <button type="button" onClick={onClick} aria-label={label} className={cn('w-11 h-11 rounded-lg border-2 flex items-center justify-center cursor-pointer transition-colors', danger ? 'border-transparent text-danger hover:bg-danger-bg' : 'border-border bg-card hover:border-primary hover:text-primary')}>
+    <button type="button" onClick={onClick} aria-label={label} className={cn('w-11 h-11 rounded-lg border flex items-center justify-center cursor-pointer transition-colors', danger ? 'border-transparent text-danger hover:bg-danger-bg' : 'border-border bg-card hover:border-primary hover:text-primary')}>
       {children}
     </button>
   )
@@ -140,7 +137,7 @@ function AddPicker({ free, onPick, label }: { free: { type: EquipmentType; name:
     <div className="mt-3">
       <label className="block text-[14px] font-semibold mb-1">{label}</label>
       <select
-        className="w-full min-h-[48px] rounded-lg border-2 border-border bg-card px-3 text-[16px]"
+        className="w-full min-h-[48px] rounded-lg border border-border bg-card px-3 text-[16px]"
         value="" onChange={(e) => e.target.value && onPick(e.target.value as EquipmentType)}
       >
         <option value="">Выберите технику…</option>

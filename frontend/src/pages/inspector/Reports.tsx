@@ -6,7 +6,6 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { StatTile } from '@/components/ui/StatTile'
 import { KIND } from '@/lib/labels'
 import { VehicleIcon } from '@/components/VehicleIcon'
-import { motion } from 'framer-motion'
 
 /** Простая сводка за неделю: по объектам, по типам нарушений, по технике. Без сложных графиков. */
 export function InspectorReports() {
@@ -37,14 +36,13 @@ export function InspectorReports() {
 
       <div className="grid lg:grid-cols-2 gap-4">
         <Card><CardBody>
-          <h2 className="font-bold text-lg mb-3">Нарушения по дням</h2>
+          <h2 className="font-semibold text-lg mb-3">Нарушения по дням</h2>
           <div className="flex items-end gap-2 h-40" role="img" aria-label="Столбики: количество нарушений по дням недели">
-            {days.map(([d, n], i) => (
+            {days.map(([d, n]) => (
               <div key={d} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
-                <span className="text-[14px] font-bold">{n}</span>
-                <motion.div
-                  className="w-full rounded-t-md bg-primary" initial={{ height: 0 }} animate={{ height: `${(n / dmax) * 100}%` }} transition={{ delay: i * 0.05, duration: 0.5 }}
-                  style={{ minHeight: n ? 6 : 2, opacity: n ? 1 : 0.3 }}
+                <span className="text-[14px] font-semibold">{n}</span>
+                <div
+                  className="w-full rounded-t-md bg-primary" style={{ height: `${(n / dmax) * 100}%`, minHeight: n ? 6 : 2, opacity: n ? 1 : 0.3 }}
                 />
                 <span className="text-[13px] text-muted-foreground">{d}</span>
               </div>
@@ -53,26 +51,26 @@ export function InspectorReports() {
         </CardBody></Card>
 
         <Card><CardBody>
-          <h2 className="font-bold text-lg mb-3">По объектам</h2>
+          <h2 className="font-semibold text-lg mb-3">По объектам</h2>
           <ul className="space-y-3">
             {bySiteRows.map((r) => (
               <li key={r.name}>
                 <div className="flex justify-between text-[15px] mb-1"><span className="font-semibold truncate pr-3">{r.name}</span><span className="shrink-0">{r.n} <span className="text-muted-foreground">(срочных {r.high})</span></span></div>
-                <div className="h-3 rounded-full bg-muted overflow-hidden"><motion.div className="h-full bg-primary rounded-full" initial={{ width: 0 }} animate={{ width: `${(r.n / max) * 100}%` }} transition={{ duration: 0.5 }} /></div>
+                <div className="h-3 rounded-sm bg-muted overflow-hidden"><div className="h-full bg-primary rounded-sm" style={{ width: `${(r.n / max) * 100}%` }} /></div>
               </li>
             ))}
           </ul>
         </CardBody></Card>
 
         <Card><CardBody>
-          <h2 className="font-bold text-lg mb-3">По типам нарушений</h2>
+          <h2 className="font-semibold text-lg mb-3">По типам нарушений</h2>
           <ul className="divide-y divide-border">
             {byKind.map((r) => <li key={r.label} className="flex justify-between py-2"><span>{r.label}</span><b>{r.n}</b></li>)}
           </ul>
         </CardBody></Card>
 
         <Card><CardBody>
-          <h2 className="font-bold text-lg mb-3">Какой техники чаще не хватает или она лишняя</h2>
+          <h2 className="font-semibold text-lg mb-3">Какой техники чаще не хватает или она лишняя</h2>
           <ul className="divide-y divide-border">
             {byEq.sort((a, b) => b.n - a.n).map((r) => (
               <li key={r.t} className="flex items-center gap-3 py-2">

@@ -34,7 +34,7 @@ export function EquipmentCheck({ siteId }: { siteId: string }) {
   return (
     <div className="bg-card rounded-xl border border-border overflow-hidden">
       <div className="px-4 py-3 border-b border-border bg-muted/50">
-        <div className="font-bold text-lg">Техника на этапе «{stage.name}»</div>
+        <div className="font-semibold text-lg">Техника на этапе «{stage.name}»</div>
         <div className="text-muted-foreground text-[14px]">Слева — сколько нужно по плану, справа — сколько видим на камерах сейчас</div>
       </div>
       <ul className="divide-y divide-border">
@@ -71,7 +71,7 @@ function StateChip({ state }: { state: 'ok' | 'missing' | 'low' | 'extra' }) {
     extra: { label: 'Лишняя', cls: 'bg-warn-bg text-warn-fg', Icon: AlertTriangle },
   }[state]
   return (
-    <span className={cn('inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-bold text-[15px] shrink-0', m.cls)}>
+    <span className={cn('inline-flex items-center gap-1.5 rounded-sm px-3 py-1.5 font-semibold text-[15px] shrink-0', m.cls)}>
       <m.Icon className="w-5 h-5" /> {m.label}
     </span>
   )
