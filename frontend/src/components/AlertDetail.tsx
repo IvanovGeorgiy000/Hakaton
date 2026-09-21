@@ -1,0 +1,230 @@
+import { useState } from 'react'
+import { motion } from 'framer-motion'
+import { Truck, CheckCircle2, XCircle, FileWarning, Wrench, ClipboardCheck } from 'lucide-react'
+import { CAMERAS, EQUIPMENT, SNAPSHOTS, type Alert, type AlertStatus } from '@/data'
+import { useApp } from '@/store/context'
+import { alertCode, bySite, byStage, byZone, isOpen } from '@/store/selectors'
+import { fmtDate, fmtDateShort, fmtTime, plural } from '@/lib/utils'
+import { KIND, SEVERITY, STATUS } from '@/lib/labels'
+import { Modal } from './ui/Modal'
+import { Badge } from './ui/Badge'
+import { Button } from './ui/Button'
+import { CameraFrame } from './CameraFrame'
+import { cn } from '@/lib/utils'
+
+interface Props {
+  alert: Alert | null
+  onClose: () => void
+}
+
+/** Подробности отклонения: что случилось, доказательства, почему система так решила, что делать */
+export function AlertDetail({ alert, onClose }: Props) {
+  return (
+    <Modal open={!!alert} onClose={onClose} title={alert?.title ?? ''} wide>
+      {alert && <Body alert={alert} onClose={onClose} />}
+    </Modal>
+  )
+}
+
+function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
+  const { role, rules, updateAlert, notify } = useApp()
+  const [comment, setComment] = useState('')
+  const [evidenceIdx, setEvidenceIdx] = useState(alert.evidence.length - 1)
+  const site = bySite(alert.siteId)
+  const zone = byZone(alert.zoneId)
+  const stage = byStage(alert.stageId)
+  const rule = stage.ruleKey ? rules[stage.ruleKey] : undefined
+  const snaps = alert.evidence.map((id) => SNAPSHOTS.find((s) => s.id === id)!).filter(Boolean)
+  const snap = snaps[evidenceIdx]
+  const cam = snap ? CAMERAS.find((c) => c.id === snap.cameraId)! : undefined
+  const eq = alert.equipment ? EQUIPMENT[alert.equipment] : undefined
+  const sev = SEVERITY[alert.severity]
+  const st = STATUS[alert.status]
+
+  const act = (status: AlertStatus, defaultText: string) => {
+    updateAlert(alert.id, status, comment.trim() || defaultText)
+    notify(`Ответ по № ${alertCode(alert)} сохранён`)
+    onClose()
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone={sev.tone}>{sev.label}</Badge>
+        <Badge tone={st.tone}>{st.label}</Badge>
+        <Badge tone="neutral">{KIND[alert.kind]}</Badge>
+        <span className="ml-auto text-[14px] text-muted-foreground font-mono">№ {alertCode(alert)} · {fmtDateShort(alert.startedAt)}</span>
+      </div>
+
+      <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[15px]">
+        <Info label="Объект" value={site.name} />
+        <Info label="Зона" value={zone.name} />
+        <Info label="Этап по плану" value={stage.name} />
+      </dl>
+
+      {/* Доказательства */}
+      {cam && snap && (
+        <section>
+          <h3 className="font-bold text-lg mb-2">Снимки с камеры</h3>
+          <CameraFrame camera={cam} snapshot={snap} highlight={alert.equipment && (alert.kind === 'unexpected' || alert.kind === 'idle') ? [alert.equipment] : undefined} offline={alert.kind === 'camera_offline'} />
+          {snaps.length > 1 && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              {snaps.map((s, i) => (
+                <button
+                  key={s.id} type="button" onClick={() => setEvidenceIdx(i)}
+                  className={cn(
+                    'min-h-[44px] px-4 rounded-lg font-semibold border-2 cursor-pointer transition-colors',
+                    i === evidenceIdx ? 'border-primary bg-info-bg text-info-fg' : 'border-border bg-card hover:border-primary/60',
+                  )}
+                >
+                  {fmtTime(s.takenAt)}
+                  {eq && <span className="ml-2 text-muted-foreground font-normal">{countOf(s.detections.map((d) => d.type), eq.type)} шт.</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      <section className="grid sm:grid-cols-2 gap-4">
+        <Block title="Что случилось" text={alert.summary} />
+        <Block title="Чем это грозит" text={alert.consequence} tone="warn" />
+      </section>
+
+      {/* Объяснение — ключевое требование ТЗ: явная и проверяемая связь */}
+      <section className="bg-muted/60 rounded-xl p-4 sm:p-5">
+        <h3 className="font-bold text-lg mb-3">Почему система так решила</h3>
+        <ol className="space-y-3">
+          <Step n={1} title="Смотрим в план">
+            Сегодня {fmtDate('2026-09-15')} на объекте идёт этап <b>«{stage.name}»</b> ({fmtDate(stage.start)} — {fmtDate(stage.end)}).
+          </Step>
+          {rule && alert.kind !== 'camera_offline' && alert.kind !== 'idle' && (
+            <Step n={2} title="Берём правило для этапа">
+              {alert.kind === 'unexpected' && eq ? (
+                <>На этом этапе <b>{eq.name.toLowerCase()}</b> не нужен: {rule.unexpected.find((u) => u.type === eq.type)?.why.toLowerCase() ?? 'не входит в перечень техники этапа'}.</>
+              ) : (
+                <>Для этапа нужно: {rule.required.map((r, i) => (
+                  <span key={r.type}>{i > 0 && ', '}<b>{EQUIPMENT[r.type].name.toLowerCase()} — не меньше {r.min}</b></span>
+                ))}.</>
+              )}
+            </Step>
+          )}
+          {alert.kind === 'idle' && (
+            <Step n={2} title="Берём правило">Если техника не меняет положение на 3 снимках подряд (2 часа), считаем это простоем.</Step>
+          )}
+          {alert.kind === 'camera_offline' && (
+            <Step n={2} title="Берём правило">Если снимков нет больше 2 часов, зона считается «слепой».</Step>
+          )}
+          <Step n={3} title="Смотрим на снимки">
+            {alert.kind === 'camera_offline'
+              ? <>Последний снимок получен в {snap ? fmtTime(snap.takenAt) : '—'}. С тех пор данных нет.</>
+              : alert.kind === 'idle' && eq
+                ? <>{eq.name} стоит в одном и том же месте на {plural(snaps.length, 'снимке', 'снимках', 'снимках')} подряд ({snaps.map((s) => fmtTime(s.takenAt)).join(', ')}).</>
+                : eq && (
+                  <>На {plural(snaps.length, 'снимке', 'снимках', 'снимках')} ({snaps.map((s) => fmtTime(s.takenAt)).join(', ')}) видим: <b>{eq.genitivePlural} — {alert.observed ?? 0}</b>{alert.expected !== undefined && alert.kind !== 'unexpected' && <>, а нужно не меньше {alert.expected}</>}.</>
+                )}
+          </Step>
+          <Step n={4} title="Вывод">
+            <span className="font-semibold">{alert.title}.</span> Уверенность распознавания: {snap ? `${Math.round(avgConf(snap) * 100)}%` : '—'}.
+          </Step>
+        </ol>
+      </section>
+
+      <Block title="Что делать" text={alert.advice} tone="info" />
+
+      {/* Действия по роли */}
+      {isOpen(alert.status) && role && (
+        <section className="border-t border-border pt-5">
+          <h3 className="font-bold text-lg mb-2">Ваш ответ</h3>
+          <textarea
+            value={comment} onChange={(e) => setComment(e.target.value)}
+            placeholder="Комментарий (необязательно), например: «самосвалы будут к 14:00»"
+            className="w-full min-h-[80px] rounded-lg border-2 border-border bg-card p-3 text-[16px] focus:border-primary outline-none"
+          />
+          <div className="flex flex-wrap gap-3 mt-3">
+            {role.id === 'foreman' && (
+              <>
+                {alert.status === 'new' && alert.kind !== 'camera_offline' && (
+                  <Button size="lg" onClick={() => act('acknowledged', 'Техника уже едет, проблема будет решена.')}><Truck className="w-5 h-5" /> Техника едет</Button>
+                )}
+                {alert.status === 'new' && (
+                  <Button size="lg" variant="outline" onClick={() => act('confirmed', 'Подтверждаю: проблема есть, разбираемся.')}><Wrench className="w-5 h-5" /> Подтверждаю проблему</Button>
+                )}
+                {alert.status !== 'new' && (
+                  <Button size="lg" variant="success" onClick={() => act('resolved', 'Проблема устранена.')}><CheckCircle2 className="w-5 h-5" /> Устранено</Button>
+                )}
+                <Button size="lg" variant="ghost" onClick={() => act('false_positive', 'Система ошиблась, на месте всё в порядке.')}><XCircle className="w-5 h-5" /> Это ошибка</Button>
+              </>
+            )}
+            {role.id === 'manager' && (
+              <>
+                {alert.status === 'new' && <Button size="lg" onClick={() => act('confirmed', 'Проблема подтверждена руководителем проекта.')}><ClipboardCheck className="w-5 h-5" /> Подтвердить</Button>}
+                <Button size="lg" variant="success" onClick={() => act('resolved', 'Проблема устранена.')}><CheckCircle2 className="w-5 h-5" /> Устранено</Button>
+                <Button size="lg" variant="ghost" onClick={() => act('false_positive', 'Ложное срабатывание.')}><XCircle className="w-5 h-5" /> Ошибка системы</Button>
+              </>
+            )}
+            {role.id === 'inspector' && (
+              <>
+                {alert.status !== 'prescribed' && <Button size="lg" variant="danger" onClick={() => act('prescribed', 'Выдано предписание подрядчику.')}><FileWarning className="w-5 h-5" /> Выдать предписание</Button>}
+                <Button size="lg" variant="success" onClick={() => act('resolved', 'Нарушение устранено, закрыто инспектором.')}><CheckCircle2 className="w-5 h-5" /> Закрыть</Button>
+                <Button size="lg" variant="ghost" onClick={() => act('false_positive', 'Ложное срабатывание.')}><XCircle className="w-5 h-5" /> Ошибка системы</Button>
+              </>
+            )}
+            {role.id === 'admin' && <p className="text-muted-foreground">Администратор не отвечает на отклонения — только настраивает правила.</p>}
+          </div>
+        </section>
+      )}
+
+      {/* История */}
+      <section>
+        <h3 className="font-bold text-lg mb-2">История</h3>
+        <ul className="space-y-2">
+          {[{ at: alert.startedAt, who: 'Система', text: 'Отклонение впервые замечено.' }, ...alert.history].map((h, i) => (
+            <motion.li key={i} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }} className="flex gap-3 text-[15px]">
+              <span className="text-muted-foreground font-mono shrink-0 w-14">{fmtTime(h.at)}</span>
+              <span><b>{h.who}:</b> {h.text}</span>
+            </motion.li>
+          ))}
+        </ul>
+      </section>
+    </div>
+  )
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-muted/60 rounded-lg px-3 py-2">
+      <dt className="text-muted-foreground text-[13px] uppercase tracking-wide">{label}</dt>
+      <dd className="font-semibold">{value}</dd>
+    </div>
+  )
+}
+
+function Block({ title, text, tone }: { title: string; text: string; tone?: 'warn' | 'info' }) {
+  return (
+    <div className={cn('rounded-xl p-4 border', tone === 'warn' ? 'bg-warn-bg/60 border-warn/30' : tone === 'info' ? 'bg-info-bg/60 border-info/30' : 'bg-card border-border')}>
+      <h3 className="font-bold text-lg mb-1">{title}</h3>
+      <p className="text-[16px] leading-relaxed">{text}</p>
+    </div>
+  )
+}
+
+function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+  return (
+    <li className="flex gap-3">
+      <span className="shrink-0 w-8 h-8 rounded-full bg-primary text-on-primary font-bold flex items-center justify-center">{n}</span>
+      <div>
+        <div className="font-semibold">{title}</div>
+        <div className="text-[15px] leading-relaxed">{children}</div>
+      </div>
+    </li>
+  )
+}
+
+function countOf(types: string[], t: string) {
+  return types.filter((x) => x === t).length
+}
+function avgConf(s: { detections: { confidence: number }[] }) {
+  if (!s.detections.length) return 0
+  return s.detections.reduce((a, d) => a + d.confidence, 0) / s.detections.length
+}

@@ -1,0 +1,77 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+/*
+ * Семантические токены. Светлая рабочая тема: нейтральный фон, белые карточки с тонкой рамкой,
+ * тёмно-синее боковое меню, один акцентный синий. Цвет несёт смысл только в статусах.
+ */
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --color-background: #F4F6F8;
+  --color-foreground: #0F172A;
+  --color-card: #FFFFFF;
+  --color-card-foreground: #0F172A;
+  --color-muted: #EEF1F5;
+  --color-muted-foreground: #526071;
+  --color-border: #DFE4EB;
+  --color-primary: #1D4ED8;
+  --color-primary-hover: #1E40AF;
+  --color-on-primary: #FFFFFF;
+  --color-ring: #1D4ED8;
+
+  --color-sidebar: #0B1526;
+  --color-sidebar-hover: #16233A;
+  --color-sidebar-active: #1D4ED8;
+  --color-sidebar-foreground: #C7D0DD;
+  --color-sidebar-muted: #7E8CA0;
+  --color-sidebar-border: #1C2A42;
+
+  --color-ok: #15803D;
+  --color-ok-bg: #E7F6EC;
+  --color-ok-fg: #14532D;
+  --color-warn: #B45309;
+  --color-warn-bg: #FDF3DC;
+  --color-warn-fg: #78350F;
+  --color-danger: #B91C1C;
+  --color-danger-bg: #FDECEC;
+  --color-danger-fg: #7F1D1D;
+  --color-info: #1D4ED8;
+  --color-info-bg: #E8EFFD;
+  --color-info-fg: #1E3A8A;
+
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-2xl: 14px;
+
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, .05);
+  --shadow-pop: 0 12px 32px -8px rgba(16, 24, 40, .22), 0 2px 6px rgba(16, 24, 40, .08);
+}
+
+html { font-size: 16px; }
+body {
+  @apply bg-background text-foreground font-sans antialiased;
+  margin: 0;
+  min-height: 100dvh;
+  font-feature-settings: "cv11", "ss03"; /* более открытые формы цифр Inter */
+}
+* { box-sizing: border-box; }
+h1, h2, h3 { letter-spacing: -0.015em; }
+
+/* Цифры в таблицах и показателях не «прыгают» */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* Видимые кольца фокуса для клавиатуры */
+:focus-visible {
+  outline: 3px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
