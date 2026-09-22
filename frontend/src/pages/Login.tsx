@@ -7,6 +7,7 @@ import { ROLES, type RoleId } from '@/data'
 import { useApp } from '@/store/context'
 import { Button } from '@/components/ui/Button'
 import { Logo } from '@/components/layout/AppShell'
+import { ThemePicker } from '@/components/ThemePicker'
 
 /** Вход: форма и список ролей для входа одним нажатием */
 export function Login() {
@@ -98,7 +99,12 @@ export function Login() {
         )}
       </div>
 
-      <footer className="mt-auto pt-10 flex items-center gap-2.5 text-[13px] text-muted-foreground">
+      <div className="mt-8 flex flex-col items-center gap-2">
+        <span className="text-[13px] text-muted-foreground">Оформление</span>
+        <ThemePicker />
+      </div>
+
+      <footer className="mt-auto pt-8 flex items-center gap-2.5 text-[13px] text-muted-foreground">
         <img src="/team-logo.jpg" alt="" className="w-7 h-7 rounded-md object-cover" />
         Версия 0.9 · команда «Работяги» · ЛЦТ 2026
       </footer>

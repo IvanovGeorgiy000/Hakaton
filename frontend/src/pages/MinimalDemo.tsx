@@ -6,6 +6,7 @@ import { api, ApiError } from '@/api'
 import { EQUIPMENT, type AnalyzeResult } from '@/data'
 import { AnalyzedFrame, AnalyzeSummary } from '@/components/AnalyzeView'
 import { VehicleIcon } from '@/components/VehicleIcon'
+import { ThemeMenuButton } from '@/components/ThemePicker'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 
@@ -49,7 +50,10 @@ export function MinimalDemo() {
             <h1 className="text-2xl sm:text-[28px] font-semibold leading-tight">Снимок → техника → этап → отклонения</h1>
             <p className="text-muted-foreground mt-1">Все обязательные функции по ТЗ на одном экране</p>
           </div>
-          <Link to="/" className="inline-flex items-center gap-1.5 min-h-[44px] text-primary font-medium hover:underline"><ArrowLeft className="w-5 h-5" /> Полный интерфейс</Link>
+          <div className="flex items-center gap-2">
+            <ThemeMenuButton />
+            <Link to="/" className="inline-flex items-center gap-1.5 min-h-[44px] text-primary font-medium hover:underline"><ArrowLeft className="w-5 h-5" /> Полный интерфейс</Link>
+          </div>
         </header>
 
         {demo.isPending && <p className="text-muted-foreground">Загружаем примеры…</p>}

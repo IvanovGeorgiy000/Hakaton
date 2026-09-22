@@ -3,6 +3,7 @@ import { MotionConfig } from 'framer-motion'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Home, Camera, CalendarDays, Building2, Bell, ScanSearch, ClipboardList, BarChart3, ListChecks, Users } from 'lucide-react'
 import { AppProvider } from '@/store/AppContext'
+import { ThemeProvider } from '@/store/theme'
 import { useApp } from '@/store/context'
 import { AppShell, type NavItem } from '@/components/layout/AppShell'
 import { Login } from '@/pages/Login'
@@ -99,6 +100,7 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <MotionConfig reducedMotion="user">
+      <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <AppProvider>
@@ -106,6 +108,7 @@ export default function App() {
           </AppProvider>
         </BrowserRouter>
       </QueryClientProvider>
+      </ThemeProvider>
     </MotionConfig>
   )
 }

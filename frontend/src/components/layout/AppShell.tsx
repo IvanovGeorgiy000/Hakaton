@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { AlertTriangle, Bell, CircleHelp, LogOut, CheckCircle2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useApp } from '@/store/context'
+import { ThemeMenuButton } from '@/components/ThemePicker'
+import { useDismiss } from '@/lib/useDismiss'
 import { bySeverity, initials, isOpen } from '@/store/selectors'
 import { SEVERITY } from '@/lib/labels'
 import { ago, fmtWhen, shortName, todayLabel } from '@/lib/utils'
@@ -82,6 +84,7 @@ export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: stri
               <span className={cn('w-2 h-2 rounded-full', lastDataAt ? 'bg-ok' : 'bg-border-strong')} />
               {lastDataAt ? `Данные на ${fmtWhen(lastDataAt)}` : 'Снимков пока нет'}
             </span>
+            <ThemeMenuButton />
             <NotificationsBell alertsPath={alertsPath} />
             <button onClick={logout} aria-label="Выйти" className="lg:hidden w-11 h-11 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted cursor-pointer"><LogOut className="w-5 h-5" /></button>
           </div>
@@ -108,9 +111,9 @@ export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: stri
           {toasts.map((t) => (
             <motion.div
               key={t.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.16 }}
-              className="pointer-events-auto bg-foreground text-white rounded-xl px-4 py-3 max-w-md text-[15px] flex items-center gap-2.5 shadow-[var(--shadow-pop)]"
+              className="pointer-events-auto bg-card text-foreground border border-border rounded-xl px-4 py-3 max-w-md text-[15px] flex items-center gap-2.5 shadow-[var(--shadow-pop)]"
             >
-              {t.tone === 'error' ? <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" /> : <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0" />} {t.text}
+              {t.tone === 'error' ? <AlertTriangle className="w-5 h-5 text-warn shrink-0" /> : <CheckCircle2 className="w-5 h-5 text-ok shrink-0" />} {t.text}
             </motion.div>
           ))}
         </AnimatePresence>
@@ -127,13 +130,7 @@ function NotificationsBell({ alertsPath }: { alertsPath: string }) {
   const nav = useNavigate()
   const fresh = alerts.filter((a) => a.status === 'new' && isOpen(a.status)).sort(bySeverity)
 
-  useEffect(() => {
-    if (!open) return
-    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
-    document.addEventListener('mousedown', close); document.addEventListener('keydown', esc)
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc) }
-  }, [open])
+  useDismiss(ref, open, () => setOpen(false))
 
   if (role?.id === 'admin') return null
   return (
@@ -143,7 +140,7 @@ function NotificationsBell({ alertsPath }: { alertsPath: string }) {
         className={cn('relative w-11 h-11 rounded-lg flex items-center justify-center cursor-pointer transition-colors', open ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}
       >
         <Bell className="w-5 h-5" />
-        {fresh.length > 0 && <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-white text-[11px] font-semibold flex items-center justify-center tabular ring-2 ring-card">{fresh.length}</span>}
+        {fresh.length > 0 && <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-danger-solid text-white text-[11px] font-semibold flex items-center justify-center tabular ring-2 ring-card">{fresh.length}</span>}
       </button>
       <AnimatePresence>
         {open && (
