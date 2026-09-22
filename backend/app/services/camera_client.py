@@ -8,6 +8,7 @@
 import asyncio
 import io
 import ipaddress
+import logging
 import re
 import shutil
 import time
@@ -20,6 +21,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from app.config import ASSETS_DIR, get_settings
 
 settings = get_settings()
+log = logging.getLogger("stroykontrol.cameras")
 
 FRAME_SIZE = (1280, 720)  # все кадры приводим к 16:9 — рамки считаются в процентах от такого кадра
 DEFAULT_PORTS = {"http": 80, "https": 443, "rtsp": 554}
@@ -209,36 +211,28 @@ async def _rtsp_frame(addr: CameraAddress) -> bytes:
         raise CameraError(
             "Для получения кадров из видеопотока RTSP на сервере нужен ffmpeg (в Docker-образе он есть)", "no_ffmpeg"
         )
-    process = await asyncio.create_subprocess_exec(
-        ffmpeg,
-        "-nostdin",
-        "-loglevel",
-        "error",
-        "-rtsp_transport",
-        "tcp",
-        "-i",
-        addr.url(with_credentials=True),
-        "-frames:v",
-        "1",
-        "-f",
-        "image2pipe",
-        "-vcodec",
-        "mjpeg",
-        "-q:v",
-        "3",
-        "pipe:1",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    socket_timeout_us = str(int(settings.camera_timeout_s * 1_000_000))  # ffmpeg считает таймаут в микросекундах
+    command = [
+        ffmpeg, "-nostdin", "-loglevel", "error", "-rtsp_transport", "tcp", "-timeout", socket_timeout_us,
+        "-i", addr.url(with_credentials=True),
+        "-frames:v", "1", "-f", "image2pipe", "-vcodec", "mjpeg", "-q:v", "3", "pipe:1",
+    ]  # fmt: skip
+    process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=settings.camera_timeout_s * 3)
     except TimeoutError:
         process.kill()
         raise CameraError("Видеопоток не отдал кадр за отведённое время", "timeout") from None
     if process.returncode != 0 or not stdout:
-        text = stderr.decode(errors="ignore")
+        text = stderr.decode(errors="ignore").strip()
+        last_line = text.splitlines()[-1] if text else f"код завершения {process.returncode}"
+        log.warning("ffmpeg не получил кадр с %s: %s", addr.display, last_line)
         if "401" in text or "Unauthorized" in text:
             raise CameraError("Камера требует логин и пароль — они не указаны или неверны", "auth")
+        if "404" in text:
+            raise CameraError("Камера отвечает по RTSP, но потока по этому пути нет (404). Проверьте путь.", "not_found")
+        if "Connection refused" in text or "Connection timed out" in text:
+            raise CameraError(f"Не удалось подключиться к {addr.display}. Проверьте адрес, порт и сеть.", "connect")
         raise CameraError("Не удалось получить кадр из видеопотока. Проверьте путь к потоку.", "stream_error")
     return stdout
 

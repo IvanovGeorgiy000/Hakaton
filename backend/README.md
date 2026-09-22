@@ -120,9 +120,23 @@ Authorization: Bearer {SK_ANALYSIS_API_KEY}    — если ключ задан
 
 Таблицы создаются при старте (`create_all`). Для промышленной установки нужны миграции (Alembic) — в прототип не входят.
 
+### Проверить RTSP без настоящей камеры
+
+Поднимите RTSP-сервер рядом со стендом и отдайте в него видео из демонстрационного кадра (всё внутри Docker, на компьютере ничего ставить не нужно):
+
+```bash
+docker compose up -d
+docker run -d --rm --name mediamtx --network hakaton_default bluenviron/mediamtx
+docker compose exec -T backend ffmpeg -y -loop 1 -framerate 5 -t 12 -i /app/app/assets/seed/road-roller-b.jpg \
+  -vf format=yuv420p -c:v libx264 -g 10 /tmp/site.mp4
+docker compose exec -d backend ffmpeg -re -stream_loop -1 -i /tmp/site.mp4 -c copy -f rtsp rtsp://mediamtx:8554/pk13
+```
+
+Затем в интерфейсе администратора: «Добавить камеру» → «Видеопоток RTSP», адрес `mediamtx`, порт `8554`, путь `/pk13`.
+Проверка подключения покажет кадр из потока, а после добавления на нём распознается каток.
+
 ## Ограничения прототипа
 
 - Распознавание — демо-анализатор; настоящая модель подключается по контракту выше.
-- Получение кадра по RTSP реализовано через `ffmpeg`, но на живом RTSP-потоке не проверялось (проверены разбор адреса,
-  проверка связи по RTSP и вся HTTP-часть).
+- RTSP проверен на потоке H.264 от сервера mediamtx (рецепт выше); на камерах конкретных производителей не проверялся.
 - Фоновый опрос камер живёт внутри процесса API — запускайте один воркер uvicorn.
