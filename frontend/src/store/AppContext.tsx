@@ -1,75 +1,172 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react'
-import { Ctx, type AppState } from './context'
-import {
-  ALERTS, CAMERAS, CURRENT_USER_BY_ROLE, ROLES, RULES, SITES,
-  type Alert, type AlertStatus, type Camera, type Role, type RoleId, type Rule, type RuleKey, type SiteStatus,
-} from '@/data'
-import { isOpen, roleTitle } from './selectors'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { AlertTriangle, Loader2 } from 'lucide-react'
+import { api, ApiError, getToken, setToken, UNAUTHORIZED_EVENT } from '@/api'
+import { ROLES, type Alert, type AlertStatus, type Camera, type NewCamera, type RoleId, type Rule, type SiteStatus, type Snapshot } from '@/data'
+import { Button } from '@/components/ui/Button'
+import { Ctx, type AppState, type Toast } from './context'
+import { isOpen } from './selectors'
 
-
-const NOW_ISO = '2026-09-15T12:40:00+03:00'
+const POLL_MS = 20_000 // как часто подтягиваем свежие снимки и предупреждения
+const message = (error: unknown) => (error instanceof ApiError ? error.message : 'Что-то пошло не так. Попробуйте ещё раз.')
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [role, setRole] = useState<Role | null>(() => {
-    try { return ROLES.find((r) => r.id === localStorage.getItem('sk-role')) ?? null } catch { return null }
-  })
-  const [alerts, setAlerts] = useState<Alert[]>(ALERTS)
-  const [rules, setRules] = useState<Record<RuleKey, Rule>>(RULES)
-  const [cameras, setCameras] = useState<Camera[]>(CAMERAS)
-  const [toasts, setToasts] = useState<{ id: number; text: string }[]>([])
+  const queryClient = useQueryClient()
+  const [token, setTokenState] = useState(getToken)
+  const [toasts, setToasts] = useState<Toast[]>([])
 
-  const notify = useCallback((text: string) => {
+  const notify = useCallback((text: string, tone: Toast['tone'] = 'ok') => {
     const id = Date.now() + Math.random()
-    setToasts((t) => [...t, { id, text }])
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200)
+    setToasts((t) => [...t, { id, text, tone }])
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), tone === 'error' ? 6000 : 3200)
   }, [])
 
-  const user = role ? CURRENT_USER_BY_ROLE[role.id] : null
+  // ---------- вход ----------
+  const me = useQuery({ queryKey: ['me', token], queryFn: api.me, enabled: !!token, retry: false, staleTime: Infinity })
+  const user = token ? me.data ?? null : null
+  const role = user ? ROLES.find((r) => r.id === user.role) ?? null : null
 
-  const login = useCallback((roleId: RoleId) => {
-    setRole(ROLES.find((r) => r.id === roleId) ?? null)
-    try { localStorage.setItem('sk-role', roleId) } catch { /* приватный режим — не страшно */ }
-  }, [])
-  const logout = useCallback(() => {
-    setRole(null)
-    try { localStorage.removeItem('sk-role') } catch { /* ignore */ }
-  }, [])
+  const forget = useCallback(() => {
+    setToken(null)
+    setTokenState(null)
+    queryClient.clear()
+  }, [queryClient])
 
-  const updateAlert = useCallback((id: string, status: AlertStatus, comment: string) => {
-    setAlerts((prev) => prev.map((a) => {
-      if (a.id !== id) return a
-      const who = user ? `${user.name} (${roleTitle(user.role).toLowerCase()})` : 'Пользователь'
-      return { ...a, status, history: [...a.history, { at: NOW_ISO, who, text: comment }] }
-    }))
-  }, [user])
+  useEffect(() => {
+    window.addEventListener(UNAUTHORIZED_EVENT, forget)
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, forget)
+  }, [forget])
 
-  const updateRule = useCallback((key: RuleKey, rule: Rule) => {
-    setRules((prev) => ({ ...prev, [key]: rule }))
-  }, [])
+  const open = useCallback((session: { token: string }) => {
+    queryClient.clear()
+    setToken(session.token)
+    setTokenState(session.token)
+  }, [queryClient])
+  const login = useCallback(async (name: string, password: string) => open(await api.login(name, password)), [open])
+  const demoLogin = useCallback(async (roleId: RoleId) => open(await api.demoLogin(roleId)), [open])
 
-  const toggleCamera = useCallback((id: string) => {
-    setCameras((prev) => prev.map((c) => (c.id === id ? { ...c, online: !c.online } : c)))
-  }, [])
+  // ---------- данные ----------
+  const enabled = !!user
+  const live = { enabled, refetchInterval: POLL_MS }
+  const sitesQ = useQuery({ queryKey: ['sites'], queryFn: api.sites, ...live })
+  const zonesQ = useQuery({ queryKey: ['zones'], queryFn: api.zones, enabled })
+  const stagesQ = useQuery({ queryKey: ['stages'], queryFn: api.stages, enabled })
+  const rulesQ = useQuery({ queryKey: ['rules'], queryFn: api.rules, enabled })
+  const camerasQ = useQuery({ queryKey: ['cameras'], queryFn: api.cameras, ...live })
+  const snapshotsQ = useQuery({ queryKey: ['snapshots'], queryFn: api.snapshots, ...live })
+  const alertsQ = useQuery({ queryKey: ['alerts'], queryFn: api.alerts, ...live })
+  const queries = [sitesQ, zonesQ, stagesQ, rulesQ, camerasQ, snapshotsQ, alertsQ]
 
-  const visibleSites = useMemo(() => {
-    if (!role) return []
-    if (role.siteId) return SITES.filter((s) => s.id === role.siteId)
-    return SITES
-  }, [role])
+  const refresh = useCallback(() => queryClient.invalidateQueries(), [queryClient])
 
-  const alertsForSite = useCallback((siteId: string) => alerts.filter((a) => a.siteId === siteId), [alerts])
+  const data = useMemo(() => {
+    const sites = sitesQ.data ?? [], zones = zonesQ.data ?? [], stages = stagesQ.data ?? []
+    const cameras = camerasQ.data ?? [], alerts = alertsQ.data ?? []
+    // снимки-доказательства приходят вместе с предупреждениями: старый кадр может уже не попасть в ленту свежих
+    const snapshotMap = new Map<string, Snapshot>()
+    for (const alert of alerts) for (const s of alert.evidenceSnapshots) snapshotMap.set(s.id, s)
+    for (const s of snapshotsQ.data ?? []) snapshotMap.set(s.id, s)
+    const snapshots = [...snapshotMap.values()].sort((a, b) => b.takenAt.localeCompare(a.takenAt))
 
-  const siteStatus = useCallback((siteId: string): SiteStatus => {
-    const open = alerts.filter((a) => a.siteId === siteId && isOpen(a.status))
-    if (open.some((a) => a.severity === 'high')) return 'critical'
-    if (open.length > 0) return 'warning'
-    return 'ok'
-  }, [alerts])
+    const index = <T extends { id: string }>(rows: T[]) => new Map(rows.map((r) => [r.id, r]))
+    const siteMap = index(sites), zoneMap = index(zones), stageMap = index(stages), cameraMap = index(cameras)
+    return {
+      sites, zones, stages, cameras, alerts, snapshots,
+      rules: Object.fromEntries((rulesQ.data ?? []).map((r) => [r.key, r])) as Record<string, Rule>,
+      lastDataAt: snapshots[0]?.takenAt ?? null,
+      bySite: (id: string) => siteMap.get(id),
+      byZone: (id: string) => zoneMap.get(id),
+      byStage: (id: string | null) => (id ? stageMap.get(id) : undefined),
+      byCamera: (id: string | null) => (id ? cameraMap.get(id) : undefined),
+      bySnapshot: (id: string) => snapshotMap.get(id),
+      stagesOf: (siteId: string) => stages.filter((s) => s.siteId === siteId),
+      snapshotsOf: (cameraId: string) => snapshots.filter((s) => s.cameraId === cameraId),
+      alertsForSite: (siteId: string) => alerts.filter((a: Alert) => a.siteId === siteId),
+      siteStatus: (siteId: string): SiteStatus => {
+        const openAlerts = alerts.filter((a) => a.siteId === siteId && isOpen(a.status))
+        if (openAlerts.some((a) => a.severity === 'high')) return 'critical'
+        return openAlerts.length > 0 ? 'warning' : 'ok'
+      },
+    }
+  }, [sitesQ.data, zonesQ.data, stagesQ.data, rulesQ.data, camerasQ.data, snapshotsQ.data, alertsQ.data])
+
+  // ---------- действия ----------
+  /** Выполнить запрос, показать результат, обновить данные. true — получилось. */
+  const run = useCallback(async (action: () => Promise<unknown>, done?: string): Promise<boolean> => {
+    try {
+      await action()
+      if (done) notify(done)
+      return true
+    } catch (error) {
+      notify(message(error), 'error')
+      return false
+    } finally {
+      await refresh()
+    }
+  }, [notify, refresh])
+
+  const updateAlert = useCallback((id: string, status: AlertStatus, comment: string) =>
+    run(() => api.alertAction(id, status, comment)), [run])
+  const saveRule = useCallback((rule: Rule) => run(() => api.saveRule(rule), `Правило «${rule.stageName}» сохранено`), [run])
+  const setCameraEnabled = useCallback((camera: Camera, on: boolean) =>
+    run(() => api.patchCamera(camera.id, { enabled: on }), `${camera.name}: ${on ? 'включена' : 'выключена'}`), [run])
+  const deleteCamera = useCallback((camera: Camera) => run(() => api.deleteCamera(camera.id), `${camera.name} удалена`), [run])
+  const addCamera = useCallback(async (camera: NewCamera) => {
+    try {
+      return await api.addCamera(camera)
+    } finally {
+      await refresh()
+    }
+  }, [refresh])
+  const captureSite = useCallback(async (siteId: string) => {
+    try {
+      return await api.captureSite(siteId)
+    } catch (error) {
+      notify(message(error), 'error')
+      return null
+    } finally {
+      await refresh()
+    }
+  }, [notify, refresh])
 
   const value: AppState = {
-    role, user, alerts, rules, cameras, login, logout, updateAlert, updateRule, toggleCamera, notify, toasts,
-    visibleSites, siteStatus, alertsForSite,
+    user, role, ownSiteId: user?.role === 'foreman' ? user.siteIds[0] ?? null : null, login, demoLogin, logout: forget,
+    ...data, refresh, updateAlert, saveRule, setCameraEnabled, addCamera, deleteCamera, captureSite, notify, toasts,
   }
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
+
+  // ---------- состояния загрузки ----------
+  const failed = queries.find((q) => q.isError && !q.data)
+  const loading = (!!token && me.isPending) || (enabled && queries.some((q) => q.isPending))
+  let screen = children
+  if (token && me.isError && !(me.error instanceof ApiError && me.error.status === 401)) {
+    screen = <Splash error={message(me.error)} onRetry={() => me.refetch()} onExit={forget} />
+  } else if (failed) {
+    screen = <Splash error={message(failed.error)} onRetry={refresh} onExit={forget} />
+  } else if (loading) {
+    screen = <Splash />
+  }
+  return <Ctx.Provider value={value}>{screen}</Ctx.Provider>
 }
 
+/** Экран на весь вид: идёт загрузка или сервер недоступен */
+function Splash({ error, onRetry, onExit }: { error?: string; onRetry?: () => void; onExit?: () => void }) {
+  return (
+    <div className="min-h-dvh flex flex-col items-center justify-center gap-4 px-6 text-center" role={error ? 'alert' : 'status'}>
+      {error ? (
+        <>
+          <AlertTriangle className="w-10 h-10 text-warn" />
+          <p className="text-lg font-semibold max-w-md">{error}</p>
+          <div className="flex gap-3">
+            <Button size="lg" onClick={onRetry}>Повторить</Button>
+            <Button size="lg" variant="outline" onClick={onExit}>Выйти</Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <Loader2 className="w-9 h-9 text-primary animate-spin" />
+          <p className="text-muted-foreground">Загружаем данные…</p>
+        </>
+      )}
+    </div>
+  )
+}

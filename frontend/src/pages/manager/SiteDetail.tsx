@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
-import { SITES } from '@/data'
+import { useApp } from '@/store/context'
 import { SiteToday } from '@/components/SiteToday'
 import { CamerasGrid } from '@/components/CamerasGrid'
 import { StageTimeline } from '@/components/StageTimeline'
@@ -17,7 +17,8 @@ const TABS = [
 export function ManagerSite() {
   const { id } = useParams()
   const [tab, setTab] = useState<(typeof TABS)[number]['id']>('today')
-  const site = SITES.find((s) => s.id === id)
+  const { bySite } = useApp()
+  const site = id ? bySite(id) : undefined
   if (!site) return <Navigate to="/manager" replace />
   return (
     <div>

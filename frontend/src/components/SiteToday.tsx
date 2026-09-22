@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { MapPin, HardHat, Building } from 'lucide-react'
 import type { Alert } from '@/data'
 import { useApp } from '@/store/context'
-import { bySite, byStage, isOpen, bySeverity } from '@/store/selectors'
+import { isOpen, bySeverity } from '@/store/selectors'
 import { fmtDate, plural } from '@/lib/utils'
 import { StatusPill } from './ui/StatusPill'
 import { StatTile } from './ui/StatTile'
@@ -14,9 +14,10 @@ import { EquipmentCheck } from './EquipmentCheck'
 
 /** Главный экран объекта: светофор, этап, что не так, техника по плану и по факту */
 export function SiteToday({ siteId, camerasLink }: { siteId: string; camerasLink: string }) {
-  const { siteStatus, alertsForSite } = useApp()
+  const { siteStatus, alertsForSite, bySite, byStage } = useApp()
   const [sel, setSel] = useState<Alert | null>(null)
   const site = bySite(siteId)
+  if (!site) return <p className="text-muted-foreground">Объект не найден или у вас нет к нему доступа.</p>
   const stage = byStage(site.currentStageId)
   const status = siteStatus(siteId)
   const open = alertsForSite(siteId).filter((a) => isOpen(a.status)).sort(bySeverity)
@@ -38,7 +39,7 @@ export function SiteToday({ siteId, camerasLink }: { siteId: string; camerasLink
           <StatusPill status={status} big />
         </div>
         <div className="grid sm:grid-cols-3 gap-3 mt-5">{/* показатели */}
-          <StatTile label="Этап сейчас" value={<span className="text-xl">{stage.name}</span>} hint={`по графику до ${fmtDate(stage.end)}`} />
+          <StatTile label="Этап сейчас" value={<span className="text-xl">{stage?.name ?? 'Нет этапа по плану'}</span>} hint={stage ? `по графику до ${fmtDate(stage.end)}` : undefined} />
           <StatTile label="Выполнено работ" value={`${site.factProgress}%`} hint={lag > 0 ? `отставание ${lag}% от плана (${site.planProgress}%)` : `с опережением плана (${site.planProgress}%)`} tone={lag > 5 ? 'danger' : lag > 0 ? 'warn' : 'ok'} />
           <StatTile label="Открытых замечаний" value={open.length} hint={!open.length ? 'всё спокойно' : open.some((a) => a.severity === 'high') ? `из них ${plural(open.filter((a) => a.severity === 'high').length, 'срочное', 'срочных', 'срочных')}` : 'срочных нет'} tone={open.some((a) => a.severity === 'high') ? 'danger' : open.length ? 'warn' : 'ok'} />
         </div>

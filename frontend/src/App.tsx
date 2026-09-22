@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { MotionConfig } from 'framer-motion'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Home, Camera, CalendarDays, Building2, Bell, ScanSearch, ClipboardList, BarChart3, ListChecks, Users } from 'lucide-react'
 import { AppProvider } from '@/store/AppContext'
 import { useApp } from '@/store/context'
@@ -91,14 +92,20 @@ function Router() {
   )
 }
 
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: 5_000, retry: 1, refetchOnWindowFocus: true } },
+})
+
 export default function App() {
   return (
     <MotionConfig reducedMotion="user">
-      <AppProvider>
+      <QueryClientProvider client={queryClient}>
         <BrowserRouter>
-          <Router />
+          <AppProvider>
+            <Router />
+          </AppProvider>
         </BrowserRouter>
-      </AppProvider>
+      </QueryClientProvider>
     </MotionConfig>
   )
 }

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Bell, CircleHelp, LogOut, CheckCircle2 } from 'lucide-react'
+import { AlertTriangle, Bell, CircleHelp, LogOut, CheckCircle2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useApp } from '@/store/context'
-import { bySite, bySeverity, initials, isOpen } from '@/store/selectors'
+import { bySeverity, initials, isOpen } from '@/store/selectors'
 import { SEVERITY } from '@/lib/labels'
-import { ago, shortName } from '@/lib/utils'
+import { ago, fmtWhen, shortName, todayLabel } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
 export interface NavItem { to: string; label: string; Icon: LucideIcon; end?: boolean }
@@ -30,17 +30,18 @@ const navCls = ({ isActive }: { isActive: boolean }) => cn(
  * Каркас. Десктоп: светлое боковое меню + верхняя панель. Телефон: верхняя панель + нижняя навигация.
  */
 export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: string }) {
-  const { role, user, logout, toasts } = useApp()
+  const { role, user, logout, toasts, ownSiteId, bySite, lastDataAt } = useApp()
+  const ownSite = ownSiteId ? bySite(ownSiteId) : undefined
 
   return (
     <div className="min-h-dvh lg:pl-[260px]">
       <aside className="hidden lg:flex fixed inset-y-0 left-0 w-[260px] flex-col bg-card border-r border-border z-40">
         <NavLink to="/" className="h-16 px-5 flex items-center shrink-0 text-[17px]"><Logo /></NavLink>
 
-        {role?.siteId && (
+        {ownSite && (
           <div className="mx-4 mb-2 rounded-lg bg-muted px-3 py-2.5">
             <div className="text-[12px] text-muted-foreground">Ваш объект</div>
-            <div className="font-semibold leading-snug text-[15px]">{bySite(role.siteId).name}</div>
+            <div className="font-semibold leading-snug text-[15px]">{ownSite.name}</div>
           </div>
         )}
 
@@ -74,12 +75,12 @@ export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: stri
         <div className="h-16 px-4 lg:px-8 flex items-center gap-3">
           <NavLink to="/" className="lg:hidden text-[17px] shrink-0"><Logo /></NavLink>
           <div className="hidden lg:block text-[15px]">
-            <span className="font-semibold">Вторник, 15 сентября</span>
-            <span className="text-muted-foreground"> · смена 08:00–20:00</span>
+            <span className="font-semibold">{todayLabel()}</span>
           </div>
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
             <span className="hidden sm:inline-flex items-center gap-2 text-[14px] text-muted-foreground mr-2" title="Камеры присылают снимки раз в час">
-              <span className="w-2 h-2 rounded-full bg-ok" /> Данные на 12:30
+              <span className={cn('w-2 h-2 rounded-full', lastDataAt ? 'bg-ok' : 'bg-border-strong')} />
+              {lastDataAt ? `Данные на ${fmtWhen(lastDataAt)}` : 'Снимков пока нет'}
             </span>
             <NotificationsBell alertsPath={alertsPath} />
             <button onClick={logout} aria-label="Выйти" className="lg:hidden w-11 h-11 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted cursor-pointer"><LogOut className="w-5 h-5" /></button>
@@ -109,7 +110,7 @@ export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: stri
               key={t.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.16 }}
               className="pointer-events-auto bg-foreground text-white rounded-xl px-4 py-3 max-w-md text-[15px] flex items-center gap-2.5 shadow-[var(--shadow-pop)]"
             >
-              <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0" /> {t.text}
+              {t.tone === 'error' ? <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" /> : <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0" />} {t.text}
             </motion.div>
           ))}
         </AnimatePresence>
@@ -120,12 +121,11 @@ export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: stri
 
 /** Уведомления: новые отклонения, доступные роли */
 function NotificationsBell({ alertsPath }: { alertsPath: string }) {
-  const { alerts, visibleSites, role } = useApp()
+  const { alerts, role, bySite } = useApp()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const nav = useNavigate()
-  const ids = new Set(visibleSites.map((s) => s.id))
-  const fresh = alerts.filter((a) => ids.has(a.siteId) && a.status === 'new' && isOpen(a.status)).sort(bySeverity)
+  const fresh = alerts.filter((a) => a.status === 'new' && isOpen(a.status)).sort(bySeverity)
 
   useEffect(() => {
     if (!open) return
@@ -162,7 +162,7 @@ function NotificationsBell({ alertsPath }: { alertsPath: string }) {
                       <span className={cn('w-2 h-2 rounded-full mt-[7px] shrink-0', SEVERITY[a.severity].bar)} />
                       <span className="min-w-0">
                         <span className="block font-medium leading-snug text-[15px]">{a.title}</span>
-                        <span className="block text-[13px] text-muted-foreground truncate">{bySite(a.siteId).name} · {ago(a.startedAt)}</span>
+                        <span className="block text-[13px] text-muted-foreground truncate">{bySite(a.siteId)?.name} · {ago(a.startedAt)}</span>
                       </span>
                     </button>
                   </li>

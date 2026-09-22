@@ -1,7 +1,7 @@
+import { useState } from 'react'
 import { EQUIPMENT, type Stage } from '@/data'
 import { useApp } from '@/store/context'
-import { stagesOf } from '@/store/selectors'
-import { fmtDate, NOW } from '@/lib/utils'
+import { fmtDate } from '@/lib/utils'
 import { STAGE_STATUS } from '@/lib/labels'
 import { Badge } from './ui/Badge'
 import { VehicleIcon } from './VehicleIcon'
@@ -9,7 +9,8 @@ import { cn } from '@/lib/utils'
 
 /** Календарный план объекта: уровень 1 → уровень 2, с полосами прогресса и отметкой «сегодня» */
 export function StageTimeline({ siteId, compact }: { siteId: string; compact?: boolean }) {
-  const { rules } = useApp()
+  const { rules, stagesOf } = useApp()
+  const [now] = useState(() => Date.now())
   const stages = stagesOf(siteId)
   const l1 = stages.filter((s) => s.level === 1)
   return (
@@ -35,8 +36,8 @@ export function StageTimeline({ siteId, compact }: { siteId: string; compact?: b
                     </div>
                     <div className="text-[14px] text-muted-foreground">{fmtDate(s.start)} — {fmtDate(s.end)}</div>
                   </div>
-                  <ProgressBar stage={s} />
-                  {!compact && s.ruleKey && (
+                  <ProgressBar stage={s} now={now} />
+                  {!compact && s.ruleKey && rules[s.ruleKey] && (
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-[14px]">
                       <span className="text-muted-foreground">Нужна техника:</span>
                       {rules[s.ruleKey].required.map((r) => (
@@ -57,10 +58,10 @@ export function StageTimeline({ siteId, compact }: { siteId: string; compact?: b
   )
 }
 
-function ProgressBar({ stage }: { stage: Stage }) {
+function ProgressBar({ stage, now }: { stage: Stage; now: number }) {
   const start = new Date(stage.start).getTime()
   const end = new Date(stage.end).getTime()
-  const pct = Math.round(Math.min(100, Math.max(0, ((NOW.getTime() - start) / (end - start)) * 100)))
+  const pct = Math.round(Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100)))
   const fill = stage.status === 'done' ? 100 : stage.status === 'planned' ? 0 : pct
   return (
     <div className="mt-2 flex items-center gap-3">

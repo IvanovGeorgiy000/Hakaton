@@ -1,0 +1,70 @@
+/**
+ * Клиент API. Адреса относительные: в разработке Vite проксирует /api и /media на бэкенд,
+ * в Docker то же самое делает nginx. Чтобы ходить на другой сервер, задайте VITE_API_URL.
+ */
+
+const API_URL: string = import.meta.env.VITE_API_URL ?? '/api'
+const MEDIA_ORIGIN = /^https?:\/\//.test(API_URL) ? new URL(API_URL).origin : ''
+const TOKEN_KEY = 'sk-token'
+
+export class ApiError extends Error {
+  status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
+let token: string | null = null
+try { token = localStorage.getItem(TOKEN_KEY) } catch { /* приватный режим */ }
+
+export const getToken = () => token
+
+export function setToken(value: string | null) {
+  token = value
+  try {
+    if (value) localStorage.setItem(TOKEN_KEY, value)
+    else localStorage.removeItem(TOKEN_KEY)
+  } catch { /* приватный режим */ }
+}
+
+/** Сервер сообщил, что вход больше не действует — хранилище выходит из системы */
+export const UNAUTHORIZED_EVENT = 'sk:unauthorized'
+
+function messageOf(payload: unknown, status: number): string {
+  const detail = (payload as { detail?: unknown } | null)?.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail) && detail.length) return 'Проверьте заполнение полей формы'
+  return status >= 500 ? 'Ошибка на сервере. Попробуйте ещё раз.' : `Запрос не выполнен (${status})`
+}
+
+export async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const form = body instanceof FormData
+  const headers: Record<string, string> = {}
+  if (token) headers.Authorization = `Bearer ${token}`
+  if (body !== undefined && !form) headers['Content-Type'] = 'application/json'
+
+  let response: Response
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      method, headers, body: body === undefined ? undefined : form ? body : JSON.stringify(body),
+    })
+  } catch {
+    throw new ApiError(0, 'Нет связи с сервером. Проверьте, что он запущен, и попробуйте ещё раз.')
+  }
+  if (response.status === 204) return undefined as T
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    if (response.status === 401 && token && path !== '/auth/login' && path !== '/auth/demo-login') {
+      setToken(null)
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+    }
+    throw new ApiError(response.status, messageOf(payload, response.status))
+  }
+  return payload as T
+}
+
+/** Адрес картинки: кадры лежат на бэкенде (/media/…), предпросмотр приходит как data: */
+export function mediaUrl(path: string): string {
+  return /^(data:|blob:|https?:)/.test(path) ? path : `${MEDIA_ORIGIN}${path}`
+}

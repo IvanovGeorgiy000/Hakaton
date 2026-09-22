@@ -12,7 +12,7 @@ type Filter = 'open' | 'high' | 'closed' | 'all'
 
 /** Лента отклонений по всем объектам с простыми фильтрами-кнопками */
 export function ManagerAlerts() {
-  const { alerts, visibleSites } = useApp()
+  const { alerts, sites: visibleSites } = useApp()
   const [filter, setFilter] = useState<Filter>('open')
   const [site, setSite] = useState<string>('all')
   const [sel, setSel] = useState<Alert | null>(null)

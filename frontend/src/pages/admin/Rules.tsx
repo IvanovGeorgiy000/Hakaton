@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Plus, Minus, Trash2, ChevronDown, Save } from 'lucide-react'
-import { EQUIPMENT, EQUIPMENT_LIST, type EquipmentType, type Rule, type RuleKey } from '@/data'
+import { EQUIPMENT, EQUIPMENT_LIST, type EquipmentType, type Rule } from '@/data'
 import { useApp } from '@/store/context'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -12,14 +12,16 @@ import { cn } from '@/lib/utils'
  * Всё на кнопках «+ / −», без ввода кода и формул.
  */
 export function AdminRules() {
-  const { rules, updateRule, notify } = useApp()
-  const [openKey, setOpenKey] = useState<RuleKey | null>('excavation')
+  const { rules, saveRule } = useApp()
+  const [openKey, setOpenKey] = useState<string | null>('excavation')
   const [saved, setSaved] = useState<string | null>(null)
 
-  const save = (key: RuleKey, rule: Rule) => {
-    updateRule(key, rule)
-    notify(`Правило «${rule.stageName}» сохранено`)
-    setSaved(key); setTimeout(() => setSaved(null), 1800)
+  // после сохранения сервер сразу пересверяет объекты, где идёт этап с этим правилом
+  const save = async (key: string, rule: Rule) => {
+    if (await saveRule(rule)) {
+      setSaved(key)
+      setTimeout(() => setSaved(null), 1800)
+    }
   }
 
   return (
@@ -112,7 +114,7 @@ function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => 
           <Btn onClick={() => setDraft({ ...draft, confirmAfterSnapshots: Math.max(1, draft.confirmAfterSnapshots - 1) })} label="Меньше снимков"><Minus className="w-5 h-5" /></Btn>
           <span className="w-8 text-center text-[18px] font-semibold">{draft.confirmAfterSnapshots}</span>
           <Btn onClick={() => setDraft({ ...draft, confirmAfterSnapshots: draft.confirmAfterSnapshots + 1 })} label="Больше снимков"><Plus className="w-5 h-5" /></Btn>
-          <span className="text-muted-foreground">снимков подряд (1 снимок = 1 час)</span>
+          <span className="text-muted-foreground">проверок подряд</span>
         </label>
         <div className="ml-auto flex items-center gap-3">
           {saved && <span className="text-ok font-semibold">Сохранено</span>}

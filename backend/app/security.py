@@ -1,0 +1,109 @@
+"""Доступ: пароли (scrypt из стандартной библиотеки), токены JWT, роли, шифрование паролей камер."""
+
+import base64
+import hashlib
+import hmac
+import secrets
+from datetime import timedelta
+from typing import Annotated
+
+import jwt
+from cryptography.fernet import Fernet, InvalidToken
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import get_settings
+from app.db import get_session, utcnow
+from app.models import User
+
+settings = get_settings()
+_bearer = HTTPBearer(auto_error=False)
+
+# ---------- пароли пользователей ----------
+_N, _R, _P = 2**14, 8, 1
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.scrypt(password.encode(), salt=salt, n=_N, r=_R, p=_P, dklen=32)
+    return f"scrypt${salt.hex()}${digest.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        _, salt_hex, digest_hex = stored.split("$")
+        digest = hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt_hex), n=_N, r=_R, p=_P, dklen=32)
+    except (ValueError, TypeError):
+        return False
+    return hmac.compare_digest(digest.hex(), digest_hex)
+
+
+# ---------- пароли камер: шифруем, чтобы в базе не лежали в открытом виде ----------
+def _fernet() -> Fernet:
+    key = hashlib.sha256(f"camera-credentials:{settings.secret_key}".encode()).digest()
+    return Fernet(base64.urlsafe_b64encode(key))
+
+
+def encrypt_secret(value: str) -> str:
+    return _fernet().encrypt(value.encode()).decode()
+
+
+def decrypt_secret(token: str | None) -> str | None:
+    if not token:
+        return None
+    try:
+        return _fernet().decrypt(token.encode()).decode()
+    except InvalidToken:
+        return None  # ключ сменили — пароль придётся ввести заново
+
+
+# ---------- токены ----------
+# Ключ подписи всегда 32 байта, какой бы длины ни был SK_SECRET_KEY
+_JWT_KEY = hashlib.sha256(f"jwt:{settings.secret_key}".encode()).digest()
+
+
+def create_token(user: User) -> str:
+    payload = {"sub": user.id, "role": user.role, "exp": utcnow() + timedelta(hours=settings.token_ttl_hours)}
+    return jwt.encode(payload, _JWT_KEY, algorithm="HS256")
+
+
+async def current_user(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> User:
+    unauthorized = HTTPException(status.HTTP_401_UNAUTHORIZED, "Нужно войти в систему")
+    if credentials is None:
+        raise unauthorized
+    try:
+        payload = jwt.decode(credentials.credentials, _JWT_KEY, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        raise unauthorized from None
+    user = await session.get(User, payload.get("sub"))
+    if user is None or not user.is_active:
+        raise unauthorized
+    return user
+
+
+CurrentUser = Annotated[User, Depends(current_user)]
+Session = Annotated[AsyncSession, Depends(get_session)]
+
+
+def require_roles(*roles: str):
+    async def checker(user: CurrentUser) -> User:
+        if user.role not in roles:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Недостаточно прав для этого действия")
+        return user
+
+    return Depends(checker)
+
+
+def visible_site_ids(user: User) -> set[str] | None:
+    """Прораб видит только свои объекты; остальные роли — все (None = без ограничения)."""
+    return {s.id for s in user.sites} if user.role == "foreman" else None
+
+
+def ensure_site_access(user: User, site_id: str) -> None:
+    allowed = visible_site_ids(user)
+    if allowed is not None and site_id not in allowed:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Объект не найден")

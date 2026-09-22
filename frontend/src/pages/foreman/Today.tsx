@@ -2,6 +2,7 @@ import { useApp } from '@/store/context'
 import { SiteToday } from '@/components/SiteToday'
 
 export function ForemanToday() {
-  const { role } = useApp()
-  return <SiteToday siteId={role!.siteId!} camerasLink="/foreman/cameras" />
+  const { ownSiteId } = useApp()
+  if (!ownSiteId) return <p className="text-muted-foreground">За вами не закреплён ни один объект. Обратитесь к администратору.</p>
+  return <SiteToday siteId={ownSiteId} camerasLink="/foreman/cameras" />
 }

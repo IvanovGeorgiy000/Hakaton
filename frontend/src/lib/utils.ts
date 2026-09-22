@@ -14,6 +14,11 @@ export function fmtTime(iso: string) {
   return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: TZ })
 }
 
+/** «12:30:07» — как на экранной надписи камеры */
+export function fmtTimeSec(iso: string) {
+  return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: TZ })
+}
+
 /** Форматирует дату «15 сентября» */
 export function fmtDate(iso: string) {
   const d = new Date(iso)
@@ -27,7 +32,7 @@ export function fmtDateShort(iso: string) {
 }
 
 /** Человекочитаемая давность: «2 ч назад», «15 мин назад» */
-export function ago(iso: string, now = NOW) {
+export function ago(iso: string, now = new Date()) {
   const diff = Math.max(0, (now.getTime() - new Date(iso).getTime()) / 60000)
   if (diff < 1) return 'только что'
   if (diff < 60) return `${Math.round(diff)} мин назад`
@@ -37,8 +42,23 @@ export function ago(iso: string, now = NOW) {
   return d === 1 ? 'вчера' : `${d} дн. назад`
 }
 
-/** Фиксированное «сейчас» для демонстрации, чтобы мок-данные выглядели актуальными */
-export const NOW = new Date('2026-09-15T12:40:00+03:00')
+/** «Вторник, 15 сентября» — сегодняшняя дата по Москве */
+export function todayLabel(now = new Date()) {
+  const text = now.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', timeZone: TZ })
+  return text[0].toUpperCase() + text.slice(1)
+}
+
+/** Один и тот же календарный день по Москве? */
+export function isSameDay(a: string | Date, b: string | Date = new Date()) {
+  const day = (d: string | Date) => new Date(d).toLocaleDateString('ru-RU', { timeZone: TZ })
+  return day(a) === day(b)
+}
+
+/** Время, а если день не сегодняшний — ещё и дата: «12:30» или «19 сент., 15:00» */
+export function fmtWhen(iso: string) {
+  if (isSameDay(iso)) return fmtTime(iso)
+  return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', timeZone: TZ }) + ', ' + fmtTime(iso)
+}
 
 export function plural(n: number, one: string, few: string, many: string) {
   const m10 = n % 10, m100 = n % 100

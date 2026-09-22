@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import { EQUIPMENT, type Camera, type Detection, type Snapshot } from '@/data'
-import { fmtTime, fmtDateShort } from '@/lib/utils'
+import { mediaUrl } from '@/api'
+import { fmtTime, fmtTimeSec, fmtDateShort } from '@/lib/utils'
 import { VehicleIcon } from './VehicleIcon'
 import { cn } from '@/lib/utils'
 
@@ -25,11 +26,12 @@ interface Props {
 export function CameraFrame({ camera, snapshot, highlight, showLabels = true, showBoxes = true, offline, thumb, className }: Props) {
   const gid = useId()
   const dets = snapshot?.detections ?? []
-  const camNo = `CAM-${camera.id.replace(/\D/g, '').padStart(2, '0')}`
+  // у демонстрационных камер номер из идентификатора (c1 → CAM-01), у добавленных — короткий код
+  const camNo = /^c\d+$/.test(camera.id) ? `CAM-${camera.id.slice(1).padStart(2, '0')}` : `CAM-${camera.id.slice(-4).toUpperCase()}`
   return (
     <div className={cn('relative w-full aspect-video rounded-lg overflow-hidden bg-slate-900 select-none', className)}>
       {snapshot?.imageUrl ? (
-        <img src={snapshot.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        <img src={mediaUrl(snapshot.imageUrl)} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
       ) : (
         <svg viewBox="0 0 160 90" className="absolute inset-0 w-full h-full" preserveAspectRatio="none" aria-hidden style={{ filter: 'saturate(.72) contrast(1.06) brightness(.94)' }}>
           <defs>
@@ -67,6 +69,13 @@ export function CameraFrame({ camera, snapshot, highlight, showLabels = true, sh
         <div className="absolute inset-0 bg-slate-950/85 flex flex-col items-center justify-center text-white">
           <span className={thumb ? 'text-sm font-semibold' : 'text-2xl font-semibold'}>Нет сигнала</span>
           {!thumb && <span className="text-sm opacity-80">последний снимок {snapshot ? fmtTime(snapshot.takenAt) : '—'}</span>}
+        </div>
+      )}
+
+      {/* Кадр получен, но разобрать его не удалось (например, демо-анализатор не знает этот вид) */}
+      {!offline && !thumb && snapshot && !snapshot.analyzed && (
+        <div className="absolute inset-x-0 bottom-0 bg-slate-950/75 text-white text-[13px] px-3 py-2 pr-40">
+          Кадр получен, техника не распознана: {snapshot.note ?? 'сервис анализа недоступен'}
         </div>
       )}
 
@@ -110,7 +119,7 @@ export function CameraFrame({ camera, snapshot, highlight, showLabels = true, sh
           )}
           {snapshot && (
             <div className="absolute right-2 bottom-2 text-white text-[11px] sm:text-[12px] font-mono [text-shadow:0_1px_2px_rgba(0,0,0,.9)]">
-              {fmtDateShort(snapshot.takenAt)} {fmtTime(snapshot.takenAt)}:00
+              {fmtDateShort(snapshot.takenAt)} {fmtTimeSec(snapshot.takenAt)}
             </div>
           )}
         </>

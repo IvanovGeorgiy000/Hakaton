@@ -1,0 +1,51 @@
+# Весь стенд одной командой:  docker compose up --build
+#   интерфейс — http://localhost:8080, API и Swagger — http://localhost:8100/docs
+# Порты можно сменить: WEB_PORT=8081 API_PORT=8101 docker compose up --build
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: stroykontrol
+      POSTGRES_PASSWORD: stroykontrol  # пароль стенда; для реальной установки задайте свой
+      POSTGRES_DB: stroykontrol
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stroykontrol"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      SK_DATABASE_URL: postgresql+asyncpg://stroykontrol:stroykontrol@db:5432/stroykontrol
+      SK_SECRET_KEY: ${SK_SECRET_KEY:-change-me-before-real-use}
+      SK_DEMO_MODE: ${SK_DEMO_MODE:-true}
+      SK_DEMO_PASSWORD: ${SK_DEMO_PASSWORD:-demo}
+      SK_CORS_ORIGINS: http://localhost:${WEB_PORT:-8080}
+      SK_ANALYSIS_PROVIDER: ${SK_ANALYSIS_PROVIDER:-mock}
+      SK_ANALYSIS_API_URL: ${SK_ANALYSIS_API_URL:-}
+      SK_ANALYSIS_API_KEY: ${SK_ANALYSIS_API_KEY:-}
+      SK_INGEST_API_KEY: ${SK_INGEST_API_KEY:-}
+      SK_CAPTURE_INTERVAL_S: ${SK_CAPTURE_INTERVAL_S:-300}
+    volumes:
+      - media:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8100}:8100"
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8080}:80"
+
+volumes:
+  pgdata:
+  media:

@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { Truck, CheckCircle2, XCircle, FileWarning, Wrench, ClipboardCheck } from 'lucide-react'
-import { CAMERAS, EQUIPMENT, SNAPSHOTS, type Alert, type AlertStatus } from '@/data'
+import { EQUIPMENT, type Alert, type AlertStatus } from '@/data'
 import { useApp } from '@/store/context'
-import { alertCode, bySite, byStage, byZone, isOpen } from '@/store/selectors'
-import { fmtDate, fmtDateShort, fmtTime, plural } from '@/lib/utils'
+import { isOpen } from '@/store/selectors'
+import { fmtDate, fmtDateShort, fmtTime, fmtWhen, plural } from '@/lib/utils'
 import { KIND, SEVERITY, STATUS } from '@/lib/labels'
 import { Modal } from './ui/Modal'
 import { Badge } from './ui/Badge'
@@ -18,32 +18,42 @@ interface Props {
 
 /** Подробности отклонения: что случилось, доказательства, почему система так решила, что делать */
 export function AlertDetail({ alert, onClose }: Props) {
+  const { alerts } = useApp()
+  // карточка открыта долго, а данные обновляются — показываем свежую версию предупреждения
+  const current = alert ? alerts.find((a) => a.id === alert.id) ?? alert : null
   return (
-    <Modal open={!!alert} onClose={onClose} title={alert?.title ?? ''} wide>
-      {alert && <Body alert={alert} onClose={onClose} />}
+    <Modal open={!!current} onClose={onClose} title={current?.title ?? ''} wide>
+      {current && <Body key={current.id} alert={current} onClose={onClose} />}
     </Modal>
   )
 }
 
 function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
-  const { role, rules, updateAlert, notify } = useApp()
+  const { role, rules, updateAlert, notify, bySite, byZone, byStage, byCamera } = useApp()
   const [comment, setComment] = useState('')
-  const [evidenceIdx, setEvidenceIdx] = useState(alert.evidence.length - 1)
+  const [saving, setSaving] = useState(false)
+  const snaps = alert.evidenceSnapshots
+  const [picked, setPicked] = useState<string | null>(null)
+  const snap = snaps.find((s) => s.id === picked) ?? snaps[snaps.length - 1]
   const site = bySite(alert.siteId)
   const zone = byZone(alert.zoneId)
   const stage = byStage(alert.stageId)
-  const rule = stage.ruleKey ? rules[stage.ruleKey] : undefined
-  const snaps = alert.evidence.map((id) => SNAPSHOTS.find((s) => s.id === id)!).filter(Boolean)
-  const snap = snaps[evidenceIdx]
-  const cam = snap ? CAMERAS.find((c) => c.id === snap.cameraId)! : undefined
+  const rule = stage?.ruleKey ? rules[stage.ruleKey] : undefined
+  const cam = snap ? byCamera(snap.cameraId) : undefined
   const eq = alert.equipment ? EQUIPMENT[alert.equipment] : undefined
   const sev = SEVERITY[alert.severity]
   const st = STATUS[alert.status]
+  // по отклонению с предписанием решение принимает только инспектор
+  const locked = alert.status === 'prescribed' && role?.id !== 'inspector'
 
-  const act = (status: AlertStatus, defaultText: string) => {
-    updateAlert(alert.id, status, comment.trim() || defaultText)
-    notify(`Ответ по № ${alertCode(alert)} сохранён`)
-    onClose()
+  const act = async (status: AlertStatus, defaultText: string) => {
+    setSaving(true)
+    const ok = await updateAlert(alert.id, status, comment.trim() || defaultText)
+    setSaving(false)
+    if (ok) {
+      notify(`Ответ по № ${alert.code} сохранён`)
+      onClose()
+    }
   }
 
   return (
@@ -52,31 +62,32 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
         <Badge tone={sev.tone}>{sev.label}</Badge>
         <Badge tone={st.tone}>{st.label}</Badge>
         <Badge tone="neutral">{KIND[alert.kind]}</Badge>
-        <span className="ml-auto text-[14px] text-muted-foreground font-mono">№ {alertCode(alert)} · {fmtDateShort(alert.startedAt)}</span>
+        {alert.prescriptionNo && <Badge tone="info">Предписание № {alert.prescriptionNo}</Badge>}
+        <span className="ml-auto text-[14px] text-muted-foreground font-mono">№ {alert.code} · {fmtDateShort(alert.startedAt)}</span>
       </div>
 
       <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[15px]">
-        <Info label="Объект" value={site.name} />
-        <Info label="Зона" value={zone.name} />
-        <Info label="Этап по плану" value={stage.name} />
+        <Info label="Объект" value={site?.name ?? '—'} />
+        <Info label="Зона" value={zone?.name ?? '—'} />
+        <Info label="Этап по плану" value={stage?.name ?? '—'} />
       </dl>
 
       {/* Доказательства */}
       {cam && snap && (
         <section>
-          <h3 className="font-semibold mb-2">Снимки с камеры</h3>
+          <h3 className="font-semibold mb-2">Снимки с камеры: доказательства</h3>
           <CameraFrame camera={cam} snapshot={snap} highlight={alert.equipment && (alert.kind === 'unexpected' || alert.kind === 'idle') ? [alert.equipment] : undefined} offline={alert.kind === 'camera_offline'} />
           {snaps.length > 1 && (
             <div className="flex flex-wrap gap-2 mt-3">
-              {snaps.map((s, i) => (
+              {snaps.map((s) => (
                 <button
-                  key={s.id} type="button" onClick={() => setEvidenceIdx(i)}
+                  key={s.id} type="button" onClick={() => setPicked(s.id)}
                   className={cn(
                     'min-h-[44px] px-4 rounded-lg font-semibold border cursor-pointer transition-colors',
-                    i === evidenceIdx ? 'border-primary bg-info-bg text-info-fg' : 'border-border bg-card hover:border-primary/60',
+                    s.id === snap.id ? 'border-primary bg-info-bg text-info-fg' : 'border-border bg-card hover:border-primary/60',
                   )}
                 >
-                  {fmtTime(s.takenAt)}
+                  {fmtWhen(s.takenAt)}
                   {eq && <span className="ml-2 text-muted-foreground font-normal">{countOf(s.detections.map((d) => d.type), eq.type)} шт.</span>}
                 </button>
               ))}
@@ -95,7 +106,9 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
         <h3 className="font-semibold mb-3">Почему система так решила</h3>
         <ol className="space-y-3">
           <Step n={1} title="Смотрим в план">
-            Сегодня {fmtDate('2026-09-15')} на объекте идёт этап <b>«{stage.name}»</b> ({fmtDate(stage.start)} — {fmtDate(stage.end)}).
+{stage
+              ? <>По календарному плану {fmtDate(alert.startedAt)} на объекте идёт этап <b>«{stage.name}»</b> ({fmtDate(stage.start)} — {fmtDate(stage.end)}).</>
+              : <>Для объекта не найден этап календарного плана на {fmtDate(alert.startedAt)}.</>}
           </Step>
           {rule && alert.kind !== 'camera_offline' && alert.kind !== 'idle' && (
             <Step n={2} title="Берём правило для этапа">
@@ -120,7 +133,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
               : alert.kind === 'idle' && eq
                 ? <>{eq.name} стоит в одном и том же месте на {plural(snaps.length, 'снимке', 'снимках', 'снимках')} подряд ({snaps.map((s) => fmtTime(s.takenAt)).join(', ')}).</>
                 : eq && (
-                  <>На {plural(snaps.length, 'снимке', 'снимках', 'снимках')} ({snaps.map((s) => fmtTime(s.takenAt)).join(', ')}) видим: <b>{eq.genitivePlural} — {alert.observed ?? 0}</b>{alert.expected !== undefined && alert.kind !== 'unexpected' && <>, а нужно не меньше {alert.expected}</>}.</>
+                  <>На {plural(snaps.length, 'снимке', 'снимках', 'снимках')} ({snaps.map((s) => fmtTime(s.takenAt)).join(', ')}) видим: <b>{eq.genitivePlural} — {alert.observed ?? 0}</b>{alert.expected != null && alert.kind !== 'unexpected' && <>, а нужно не меньше {alert.expected}</>}.</>
                 )}
           </Step>
           <Step n={4} title="Вывод">
@@ -132,7 +145,12 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
       <Block title="Что делать" text={alert.advice} tone="info" />
 
       {/* Действия по роли */}
-      {isOpen(alert.status) && role && (
+      {isOpen(alert.status) && role && locked && (
+        <p className="border-t border-border pt-5 text-muted-foreground">
+          По этому отклонению выдано предписание{alert.prescriptionNo ? ` № ${alert.prescriptionNo}` : ''}. Закрыть его может только инспектор.
+        </p>
+      )}
+      {isOpen(alert.status) && role && !locked && (
         <section className="border-t border-border pt-5">
           <h3 className="font-semibold mb-2">Ваш ответ</h3>
           <textarea
@@ -140,7 +158,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
             placeholder="Комментарий (необязательно), например: «самосвалы будут к 14:00»"
             className="w-full min-h-[80px] rounded-lg border border-border bg-card p-3 text-[16px] focus:border-primary outline-none"
           />
-          <div className="flex flex-wrap gap-3 mt-3">
+          <fieldset disabled={saving} className="flex flex-wrap gap-3 mt-3 disabled:opacity-60">
             {role.id === 'foreman' && (
               <>
                 {alert.status === 'new' && alert.kind !== 'camera_offline' && (
@@ -170,7 +188,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
               </>
             )}
             {role.id === 'admin' && <p className="text-muted-foreground">Администратор не отвечает на отклонения — только настраивает правила.</p>}
-          </div>
+          </fieldset>
         </section>
       )}
 
@@ -180,7 +198,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
         <ul className="space-y-2">
           {[{ at: alert.startedAt, who: 'Система', text: 'Отклонение впервые замечено.' }, ...alert.history].map((h, i) => (
             <li key={i} className="flex gap-3 text-[15px]">
-              <span className="text-muted-foreground font-mono shrink-0 w-14">{fmtTime(h.at)}</span>
+              <span className="text-muted-foreground tabular shrink-0 w-[92px]">{fmtWhen(h.at)}</span>
               <span><b>{h.who}:</b> {h.text}</span>
             </li>
           ))}

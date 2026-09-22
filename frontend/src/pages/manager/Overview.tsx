@@ -1,23 +1,23 @@
 import { Link } from 'react-router-dom'
 import { ChevronRight, MapPin } from 'lucide-react'
 import { useApp } from '@/store/context'
-import { isOpen, byStage } from '@/store/selectors'
+import { isOpen } from '@/store/selectors'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { StatusPill } from '@/components/ui/StatusPill'
 import { StatTile } from '@/components/ui/StatTile'
-import { plural, pluralWord } from '@/lib/utils'
+import { fmtWhen, plural, pluralWord, todayLabel } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
 /** Все объекты одним взглядом: светофор, этап, отставание, открытые замечания */
 export function ManagerOverview() {
-  const { visibleSites, siteStatus, alertsForSite } = useApp()
+  const { sites: visibleSites, siteStatus, alertsForSite, byStage, lastDataAt } = useApp()
   const counts = { ok: 0, warning: 0, critical: 0 }
   visibleSites.forEach((s) => { counts[siteStatus(s.id)]++ })
   const totalOpen = visibleSites.reduce((n, s) => n + alertsForSite(s.id).filter((a) => isOpen(a.status)).length, 0)
 
   return (
     <div>
-      <PageHeader title="Мои объекты" subtitle="Сегодня, 15 сентября · данные обновлены в 12:30" />
+      <PageHeader title="Мои объекты" subtitle={`${todayLabel()}${lastDataAt ? ` · данные на ${fmtWhen(lastDataAt)}` : ''}`} />
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <StatTile label="Нужно вмешаться" value={counts.critical} hint={pluralWord(counts.critical, 'объект', 'объекта', 'объектов')} tone="danger" />
         <StatTile label="Есть замечания" value={counts.warning} hint={pluralWord(counts.warning, 'объект', 'объекта', 'объектов')} tone="warn" />
@@ -49,7 +49,7 @@ export function ManagerOverview() {
                 </div>
                 <div className="mt-3"><StatusPill status={status} /></div>
                 <dl className="grid grid-cols-3 gap-2 mt-4 text-[14px]">
-                  <div><dt className="text-muted-foreground">Этап</dt><dd className="font-semibold leading-tight">{stage.name}</dd></div>
+                  <div><dt className="text-muted-foreground">Этап</dt><dd className="font-semibold leading-tight">{stage?.name ?? '—'}</dd></div>
                   <div><dt className="text-muted-foreground">Выполнено</dt><dd className={cn('font-semibold', lag > 5 && 'text-danger')}>{s.factProgress}% <span className="text-muted-foreground font-normal">/ план {s.planProgress}%</span></dd></div>
                   <div><dt className="text-muted-foreground">Замечания</dt><dd className="font-semibold">{open.length ? plural(open.length, 'открытое', 'открытых', 'открытых') : 'нет'}</dd></div>
                 </dl>

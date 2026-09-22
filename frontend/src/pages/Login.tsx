@@ -1,28 +1,39 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronRight, Eye, EyeOff } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { ChevronRight, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { api, ApiError } from '@/api'
 import { ROLES, type RoleId } from '@/data'
 import { useApp } from '@/store/context'
 import { Button } from '@/components/ui/Button'
 import { Logo } from '@/components/layout/AppShell'
 
-/** Учётные записи стенда: логин → роль (пароль на стенде не проверяется) */
-const LOGINS: Record<string, RoleId> = { prorab: 'foreman', rukovoditel: 'manager', inspektor: 'inspector', admin: 'admin' }
-
 /** Вход: форма и список ролей для входа одним нажатием */
 export function Login() {
-  const { login } = useApp()
+  const { login, demoLogin } = useApp()
+  const meta = useQuery({ queryKey: ['meta'], queryFn: api.meta, retry: 1 })
+  const [busy, setBusy] = useState<RoleId | 'form' | null>(null)
   const [name, setName] = useState('')
   const [pass, setPass] = useState('')
   const [show, setShow] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  /** Войти и показать понятную ошибку, если не вышло */
+  const enter = async (kind: RoleId | 'form', action: () => Promise<void>) => {
+    setBusy(kind)
+    setError(null)
+    try {
+      await action()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Не удалось войти. Попробуйте ещё раз.')
+      setBusy(null)
+    }
+  }
+
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    const role = LOGINS[name.trim().toLowerCase()]
     if (!name.trim() || !pass) return setError('Введите логин и пароль')
-    if (!role) return setError('Неверный логин или пароль')
-    login(role)
+    void enter('form', () => login(name, pass))
   }
 
   const input = 'w-full min-h-[48px] rounded-lg border border-border-strong bg-card px-3.5 text-[16px] outline-none transition-shadow focus:border-primary focus:ring-4 focus:ring-primary/15'
@@ -51,21 +62,31 @@ export function Login() {
             </div>
             {error && <p id="login-error" role="alert" className="text-danger text-[15px] mt-2">{error}</p>}
           </div>
-          <Button type="submit" size="lg" full>Войти</Button>
+          <Button type="submit" size="lg" full disabled={busy !== null}>
+            {busy === 'form' && <Loader2 className="w-5 h-5 animate-spin" />} Войти
+          </Button>
         </form>
       </div>
 
+      {meta.isError && (
+        <p role="alert" className="w-full max-w-[420px] mt-4 rounded-xl bg-warn-bg text-warn-fg px-4 py-3 text-[15px]">
+          Нет связи с сервером. Проверьте, что бэкенд запущен, и обновите страницу.
+        </p>
+      )}
+
       <div className="w-full max-w-[420px] mt-6">
+        {meta.data?.demoMode && (
+          <>
         <div className="text-[14px] text-muted-foreground mb-2 px-1">Быстрый вход без пароля</div>
         <ul className="bg-card border border-border rounded-2xl shadow-[var(--shadow-card)] overflow-hidden divide-y divide-border">
           {ROLES.map((r) => (
             <li key={r.id}>
-              <button type="button" onClick={() => login(r.id)} className="w-full text-left px-5 py-3.5 min-h-[60px] cursor-pointer transition-colors hover:bg-muted flex items-center gap-3">
+              <button type="button" disabled={busy !== null} onClick={() => void enter(r.id, () => demoLogin(r.id))} className="w-full text-left px-5 py-3.5 min-h-[60px] cursor-pointer transition-colors hover:bg-muted disabled:opacity-60 flex items-center gap-3">
                 <span className="flex-1 min-w-0">
                   <span className="block font-semibold">{r.title}</span>
                   <span className="block text-[14px] text-muted-foreground">{r.subtitle}</span>
                 </span>
-                <ChevronRight className="w-5 h-5 text-muted-foreground shrink-0" />
+                {busy === r.id ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground shrink-0" /> : <ChevronRight className="w-5 h-5 text-muted-foreground shrink-0" />}
               </button>
             </li>
           ))}
@@ -73,6 +94,8 @@ export function Login() {
         <p className="text-[14px] text-muted-foreground mt-5 px-1">
           Проверить один снимок без входа: <Link to="/demo" className="text-primary font-medium hover:underline">страница сверки</Link>
         </p>
+          </>
+        )}
       </div>
 
       <footer className="mt-auto pt-10 flex items-center gap-2.5 text-[13px] text-muted-foreground">
