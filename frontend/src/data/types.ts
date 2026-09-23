@@ -227,6 +227,8 @@ export interface Meta {
   captureIntervalS: number
   timezone: string
   demoCameras: DemoCamera[]
+  authMode: 'local' | 'keycloak'
+  keycloak: { url: string; realm: string; clientId: string } | null
 }
 
 export interface WeeklyReport {

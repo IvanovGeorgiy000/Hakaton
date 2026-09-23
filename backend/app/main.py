@@ -96,6 +96,8 @@ class MetaOut(ApiModel):
     server_time: str
     database: str
     demo_cameras: list[DemoCameraOut]  # готовые адреса встроенной демо-камеры для формы «Добавить камеру»
+    auth_mode: str  # local | keycloak
+    keycloak: dict | None  # {url, realm, clientId} — когда включён Keycloak
 
 
 api = APIRouter(prefix="/api")
@@ -119,8 +121,13 @@ async def meta() -> MetaOut:
         if settings.demo_mode
         else []
     )
+    keycloak = None
+    if settings.keycloak_issuer:
+        keycloak = {"url": settings.keycloak_url, "realm": settings.keycloak_realm, "clientId": settings.keycloak_client_id}
     return MetaOut(
         demo_cameras=demo_cameras,
+        auth_mode=settings.auth_mode,
+        keycloak=keycloak,
         version=VERSION,
         demo_mode=settings.demo_mode,
         analysis_provider=get_analyzer().name,

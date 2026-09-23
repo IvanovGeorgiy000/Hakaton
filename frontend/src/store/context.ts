@@ -11,8 +11,10 @@ export interface AppState {
   role: Role | null
   /** Объект прораба (у остальных ролей — null) */
   ownSiteId: string | null
+  authMode: 'local' | 'keycloak'
   login: (login: string, password: string) => Promise<void>
   demoLogin: (role: RoleId) => Promise<void>
+  keycloakLogin: () => void
   logout: () => void
 
   // ---- данные с сервера ----

@@ -105,6 +105,25 @@ Authorization: Bearer {SK_ANALYSIS_API_KEY}    — если ключ задан
 
 Каждая проверка пишется в `check_runs` (что увидели, какие отклонения) — решение системы всегда можно проверить.
 
+## Вход через Keycloak (необязательно)
+
+По умолчанию вход локальный (логин/пароль + быстрый вход по роли). Единый вход организации через Keycloak
+(OpenID Connect) включается заданием `SK_KEYCLOAK_ISSUER` — тогда бэкенд принимает **и** свои токены (HS256),
+**и** токены Keycloak (RS256): подпись проверяется публичными ключами realm (JWKS), роль берётся из realm-ролей
+токена, привязка к объектам — из базы по логину (`preferred_username`).
+
+Запуск Keycloak для разработки (Docker):
+
+```bash
+docker compose -f infra/keycloak/compose.yml up -d      # http://localhost:8080, admin/admin, realm импортируется
+SK_KEYCLOAK_ISSUER=http://localhost:8080/realms/stroykontrol uv run uvicorn app.main:app --port 8100
+```
+
+Realm `stroykontrol` ([infra/keycloak/realm-stroykontrol.json](infra/keycloak/realm-stroykontrol.json)) уже содержит
+роли `foreman/manager/inspector/admin`, клиент `stroykontrol-web` (public + PKCE) и пользователей
+`prorab / rukovoditel / inspektor / admin` с паролем `demo`. Фронтенд берёт режим из `/api/meta` и показывает
+кнопку «Войти через Keycloak» без пересборки.
+
 ## Модель данных
 
 | Таблица | Что хранит |

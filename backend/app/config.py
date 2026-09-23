@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     demo_password: str = "demo"  # пароль учётных записей стенда, задаётся при первом наполнении базы
     seed_on_start: bool = True  # наполнить пустую базу демонстрационными данными
 
+    # --- Keycloak (включается, если задан issuer) ---
+    keycloak_issuer: str | None = None  # напр. http://localhost:8080/realms/stroykontrol
+    keycloak_client_id: str = "stroykontrol-web"  # клиент, чьи токены принимаем (проверяется azp/aud)
+    keycloak_auto_provision: bool = True  # пускать пользователя Keycloak, которого нет в базе (без привязки к объектам)
+
     # --- анализ кадров ---
     analysis_provider: Literal["mock", "http"] = "mock"
     analysis_api_url: str | None = None  # полный адрес метода, например http://ml:8200/analyze
@@ -42,6 +47,19 @@ class Settings(BaseSettings):
     self_url: str = "http://127.0.0.1:8100"  # адрес, по которому сервер виден сам себе — для встроенной демо-камеры
     mock_camera_user: str = "demo"
     mock_camera_password: str = "demo"
+
+    @property
+    def auth_mode(self) -> str:
+        return "keycloak" if self.keycloak_issuer else "local"
+
+    @property
+    def keycloak_url(self) -> str | None:
+        """База Keycloak без /realms/<realm> — нужна фронтенду для keycloak-js."""
+        return self.keycloak_issuer.split("/realms/")[0] if self.keycloak_issuer else None
+
+    @property
+    def keycloak_realm(self) -> str | None:
+        return self.keycloak_issuer.rstrip("/").split("/realms/")[-1] if self.keycloak_issuer else None
 
     @property
     def cors_list(self) -> list[str]:

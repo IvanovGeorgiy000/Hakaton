@@ -1,0 +1,21 @@
+# Keycloak для локальной разработки СтройКонтроля.
+#   docker compose -f infra/keycloak/compose.yml up
+# Консоль администратора: http://localhost:8080  (admin / admin)
+# Realm stroykontrol с ролями и пользователями импортируется автоматически.
+#
+# Затем: у бэкенда (на хосте) задать issuer и перезапустить:
+#   SK_KEYCLOAK_ISSUER=http://localhost:8080/realms/stroykontrol uv run uvicorn app.main:app --port 8100
+# Фронтенд подхватит режим из /api/meta без пересборки.
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./realm-stroykontrol.json:/opt/keycloak/data/import/realm-stroykontrol.json:ro

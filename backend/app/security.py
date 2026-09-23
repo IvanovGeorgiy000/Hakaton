@@ -11,11 +11,13 @@ import jwt
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db import get_session, utcnow
-from app.models import User
+from app.keycloak import KeycloakError, get_verifier, roles_from_claims, select_role
+from app.models import User, new_id
 
 settings = get_settings()
 _bearer = HTTPBearer(auto_error=False)
@@ -68,6 +70,33 @@ def create_token(user: User) -> str:
     return jwt.encode(payload, _JWT_KEY, algorithm="HS256")
 
 
+async def _user_from_keycloak(session: AsyncSession, claims: dict) -> User:
+    """Сопоставить пользователя Keycloak с записью в базе (по логину) или собрать временного по роли из токена."""
+    role = select_role(roles_from_claims(claims))
+    if role is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "У пользователя нет роли для СтройКонтроля")
+    username = (claims.get("preferred_username") or "").strip().lower()
+    user = await session.scalar(select(User).where(User.login == username)) if username else None
+    if user is not None:
+        if not user.is_active:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Учётная запись отключена")
+        return user  # запись из базы — с её ролью и привязкой к объектам
+    if not settings.keycloak_auto_provision:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Пользователь не заведён в системе")
+    # временный пользователь: роль из Keycloak, объектов нет (руководителю/инспектору/админу они и не нужны)
+    user = User(
+        id=new_id("kc"),
+        login=username or claims.get("sub", "keycloak"),
+        name=claims.get("name") or username or "Пользователь Keycloak",
+        role=role,
+        phone="",
+        password_hash="",
+        is_active=True,
+    )
+    user.sites = []
+    return user
+
+
 async def current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -75,8 +104,22 @@ async def current_user(
     unauthorized = HTTPException(status.HTTP_401_UNAUTHORIZED, "Нужно войти в систему")
     if credentials is None:
         raise unauthorized
+    token = credentials.credentials
     try:
-        payload = jwt.decode(credentials.credentials, _JWT_KEY, algorithms=["HS256"])
+        alg = jwt.get_unverified_header(token).get("alg", "")
+    except jwt.PyJWTError:
+        raise unauthorized from None
+
+    verifier = get_verifier()
+    if alg.startswith("RS") and verifier is not None:  # токен Keycloak
+        try:
+            claims = await verifier.verify(token)
+        except KeycloakError:
+            raise unauthorized from None
+        return await _user_from_keycloak(session, claims)
+
+    try:  # свой токен (HS256)
+        payload = jwt.decode(token, _JWT_KEY, algorithms=["HS256"])
     except jwt.PyJWTError:
         raise unauthorized from None
     user = await session.get(User, payload.get("sub"))

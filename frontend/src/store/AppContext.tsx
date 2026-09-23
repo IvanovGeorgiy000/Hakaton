@@ -5,6 +5,7 @@ import { api, ApiError, getToken, setToken, UNAUTHORIZED_EVENT } from '@/api'
 import { ROLES, type Alert, type AlertStatus, type Camera, type NewCamera, type RoleId, type Rule, type SiteStatus, type Snapshot } from '@/data'
 import { Button } from '@/components/ui/Button'
 import { Ctx, type AppState, type Toast } from './context'
+import { initKeycloak, keycloakLogin, keycloakLogout } from './keycloak'
 import { isOpen } from './selectors'
 
 const POLL_MS = 20_000 // как часто подтягиваем свежие снимки и предупреждения
@@ -21,6 +22,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), tone === 'error' ? 6000 : 3200)
   }, [])
 
+  // публичный запрос: узнаём режим авторизации (локальный или Keycloak)
+  const metaQ = useQuery({ queryKey: ['meta'], queryFn: api.meta, staleTime: Infinity, retry: 1 })
+  const authMode = metaQ.data?.authMode ?? 'local'
+
   // ---------- вход ----------
   const me = useQuery({ queryKey: ['me', token], queryFn: api.me, enabled: !!token, retry: false, staleTime: Infinity })
   const user = token ? me.data ?? null : null
@@ -30,12 +35,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setToken(null)
     setTokenState(null)
     queryClient.clear()
-  }, [queryClient])
+    if (authMode === 'keycloak') keycloakLogout()  // завершаем и сессию Keycloak
+  }, [queryClient, authMode])
 
   useEffect(() => {
     window.addEventListener(UNAUTHORIZED_EVENT, forget)
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, forget)
   }, [forget])
+
+  // Keycloak: один раз проверяем сессию и, если пользователь уже вошёл, подхватываем токен
+  const keycloakCfg = metaQ.data?.keycloak
+  useEffect(() => {
+    if (authMode !== 'keycloak' || !keycloakCfg) return
+    initKeycloak(keycloakCfg).then(() => setTokenState(getToken()))
+  }, [authMode, keycloakCfg])
 
   const open = useCallback((session: { token: string }) => {
     queryClient.clear()
@@ -130,7 +143,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [notify, refresh])
 
   const value: AppState = {
-    user, role, ownSiteId: user?.role === 'foreman' ? user.siteIds[0] ?? null : null, login, demoLogin, logout: forget,
+    user, role, ownSiteId: user?.role === 'foreman' ? user.siteIds[0] ?? null : null, authMode, login, demoLogin, keycloakLogin, logout: forget,
     ...data, refresh, updateAlert, saveRule, setCameraEnabled, addCamera, deleteCamera, captureSite, notify, toasts,
   }
 

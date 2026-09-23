@@ -1,0 +1,43 @@
+{
+  "realm": "stroykontrol",
+  "enabled": true,
+  "sslRequired": "none",
+  "loginTheme": "keycloak",
+  "displayName": "СтройКонтроль",
+  "roles": {
+    "realm": [
+      { "name": "foreman", "description": "Прораб" },
+      { "name": "manager", "description": "Руководитель проекта" },
+      { "name": "inspector", "description": "Инспектор" },
+      { "name": "admin", "description": "Администратор" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "stroykontrol-web",
+      "name": "СтройКонтроль (веб)",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "rootUrl": "http://localhost:5180",
+      "baseUrl": "http://localhost:5180",
+      "redirectUris": ["http://localhost:5180/*"],
+      "webOrigins": ["http://localhost:5180", "+"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5180/*"
+      }
+    }
+  ],
+  "users": [
+    { "username": "prorab", "enabled": true, "firstName": "Андрей", "lastName": "Кузнецов", "email": "prorab@stroy.test", "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "demo", "temporary": false }], "realmRoles": ["foreman"] },
+    { "username": "rukovoditel", "enabled": true, "firstName": "Мария", "lastName": "Иванова", "email": "ruk@stroy.test", "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "demo", "temporary": false }], "realmRoles": ["manager"] },
+    { "username": "inspektor", "enabled": true, "firstName": "Дмитрий", "lastName": "Соколов", "email": "insp@stroy.test", "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "demo", "temporary": false }], "realmRoles": ["inspector"] },
+    { "username": "admin", "enabled": true, "firstName": "Павел", "lastName": "Орлов", "email": "admin@stroy.test", "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "demo", "temporary": false }], "realmRoles": ["admin"] }
+  ]
+}
