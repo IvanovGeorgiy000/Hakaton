@@ -27,5 +27,7 @@ cd backend && uv sync && uv run uvicorn app.main:app --port 8100
 cd frontend && npm install && npm run dev     # http://localhost:5180
 ```
 
+Живое видео с камеры: см. [tools/live-view.sh](tools/live-view.sh) и раздел «Живое видео» в [frontend/README.md](frontend/README.md).
+
 Вход: кнопки быстрого входа по ролям на первом экране (демо-режим) или логин `prorab` / `rukovoditel` / `inspektor` / `admin`
 с паролем стенда (`SK_DEMO_PASSWORD`, по умолчанию `demo`).

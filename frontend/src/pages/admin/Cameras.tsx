@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Loader2, Plus, PlugZap, Power, Trash2 } from 'lucide-react'
+import { Loader2, Plus, PlugZap, Power, Trash2, Video } from 'lucide-react'
 import { api, ApiError } from '@/api'
 import type { Camera } from '@/data'
 import { useApp } from '@/store/context'
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { CameraFrame } from '@/components/CameraFrame'
 import { AddCameraDialog } from '@/components/AddCameraDialog'
+import { LiveVideoModal } from '@/components/LiveVideo'
 import { ago } from '@/lib/utils'
 
 /** Камеры по объектам: адрес, состояние, последний снимок. Здесь же добавление камеры по IP. */
@@ -17,6 +18,7 @@ export function AdminCameras() {
   const [adding, setAdding] = useState<string | true | null>(null)
   const [removing, setRemoving] = useState<Camera | null>(null)
   const [testing, setTesting] = useState<string | null>(null)
+  const [watching, setWatching] = useState<Camera | null>(null)
 
   const test = async (camera: Camera) => {
     setTesting(camera.id)
@@ -66,6 +68,7 @@ export function AdminCameras() {
                       {c.enabled && c.lastError && <p className="mt-2 text-[14px] text-danger">{c.lastError}</p>}
                       <div className="mt-auto pt-3 flex flex-wrap gap-2">
                         <Button variant="outline" size="sm" onClick={() => void setCameraEnabled(c, !c.enabled)}><Power className="w-4 h-4" /> {c.enabled ? 'Выключить' : 'Включить'}</Button>
+                        {c.sourceType === 'rtsp' && <Button variant="outline" size="sm" onClick={() => setWatching(c)}><Video className="w-4 h-4" /> Видео</Button>}
                         <Button variant="outline" size="sm" disabled={testing === c.id} onClick={() => void test(c)}>
                           {testing === c.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlugZap className="w-4 h-4" />} Проверить связь
                         </Button>
@@ -86,6 +89,7 @@ export function AdminCameras() {
         Кадры нужны не реже раза в час.
       </div>
 
+      <LiveVideoModal camera={watching} onClose={() => setWatching(null)} />
       <AddCameraDialog open={adding !== null} defaultSiteId={typeof adding === 'string' ? adding : undefined} onClose={() => setAdding(null)} />
       <Modal open={!!removing} onClose={() => setRemoving(null)} title="Удалить камеру?">
         {removing && (

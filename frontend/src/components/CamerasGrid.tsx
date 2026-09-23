@@ -3,7 +3,9 @@ import { RefreshCw, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { EQUIPMENT, type Camera, type CaptureResult, type EquipmentType, type Snapshot } from '@/data'
 import { useApp } from '@/store/context'
 import { ago, fmtWhen, plural } from '@/lib/utils'
+import { Video } from 'lucide-react'
 import { CameraFrame } from './CameraFrame'
+import { LiveVideoModal } from './LiveVideo'
 import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
 import { Badge } from './ui/Badge'
@@ -103,6 +105,7 @@ function DetectionTags({ snapshot }: { snapshot: Snapshot }) {
 /** Последние снимки одной камеры */
 function CameraHistory({ camera, snapshots, onClose }: { camera?: Camera; snapshots: Snapshot[]; onClose: () => void }) {
   const [picked, setPicked] = useState<string | null>(null)
+  const [live, setLive] = useState(false)
   const current = snapshots.find((s) => s.id === picked) ?? snapshots[0]
   return (
     <Modal open={!!camera} onClose={() => { onClose(); setPicked(null) }} title={camera?.name ?? ''} wide>
@@ -110,6 +113,11 @@ function CameraHistory({ camera, snapshots, onClose }: { camera?: Camera; snapsh
       {camera && current && (
         <div className="space-y-5">
           <CameraFrame camera={camera} snapshot={current} offline={!camera.online && current === snapshots[0]} />
+          {camera.sourceType === 'rtsp' && (
+            <Button variant="outline" size="lg" full onClick={() => setLive(true)}>
+              <Video className="w-5 h-5" /> Смотреть видео в реальном времени
+            </Button>
+          )}
           <div>
             <div className="font-semibold mb-2">Последние снимки</div>
             <div className="flex flex-wrap gap-2">
@@ -145,6 +153,7 @@ function CameraHistory({ camera, snapshots, onClose }: { camera?: Camera; snapsh
           </div>
         </div>
       )}
+      <LiveVideoModal camera={live && camera ? camera : null} onClose={() => setLive(false)} />
     </Modal>
   )
 }
