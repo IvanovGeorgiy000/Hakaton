@@ -1,6 +1,6 @@
 # Весь стенд одной командой:  docker compose up --build
 #   интерфейс — http://localhost:8080, API и Swagger — http://localhost:8100/docs, видео (WebRTC) — :8889
-# Порты можно сменить: WEB_PORT=8081 API_PORT=8101 VIDEO_PORT=8890 docker compose up --build
+# Порты можно сменить: WEB_PORT=8081 API_PORT=8101 VIDEO_PORT=8890 VIDEO_UDP_PORT=8190 docker compose up --build
 # Открываете стенд с другого устройства (телефон в той же сети) — укажите адрес этого компьютера:
 #   VIDEO_PUBLIC_HOST=192.168.1.10 docker compose up
 
@@ -28,9 +28,10 @@ services:
       MTX_APIADDRESS: :9997  # API — только внутри сети стенда (порт наружу не открыт)
       MTX_AUTHHTTPADDRESS: http://backend:8100/api/video/auth
       MTX_WEBRTCADDITIONALHOSTS: ${VIDEO_PUBLIC_HOST:-127.0.0.1}  # адрес, по которому браузер достучится до видео
+      MTX_WEBRTCLOCALUDPADDRESS: :${VIDEO_UDP_PORT:-8189}  # WebRTC сообщает браузеру этот порт — снаружи он должен быть тем же
     ports:
       - "${VIDEO_PORT:-8889}:8889"
-      - "8189:8189/udp"
+      - "${VIDEO_UDP_PORT:-8189}:${VIDEO_UDP_PORT:-8189}/udp"
 
   backend:
     build: ./backend
