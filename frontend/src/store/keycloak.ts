@@ -16,6 +16,9 @@ export interface KeycloakConfig {
 let instance: Keycloak | null = null
 let ready: Promise<boolean> | null = null
 let unavailable = false  // проверка сессии не удалась: Keycloak не отвечает или браузер не может войти
+// Тихая проверка сессии идёт через скрытый iframe; если Keycloak его заблокирует (чужой адрес возврата, запрет фреймов),
+// keycloak-js ждёт ответа бесконечно — а приложение ждёт проверку, прежде чем спросить сервер «кто я»
+const INIT_TIMEOUT_MS = 8_000
 
 /** Инициализировать один раз: тихо проверить активную сессию и подключить продление токена */
 export function initKeycloak(cfg: KeycloakConfig): Promise<boolean> {
@@ -25,12 +28,16 @@ export function initKeycloak(cfg: KeycloakConfig): Promise<boolean> {
     .then(async ({ default: KeycloakClient }) => {
       const kc = new KeycloakClient({ url: cfg.url, realm: cfg.realm, clientId: cfg.clientId })
       instance = kc
-      const authenticated = await kc.init({
-        onLoad: 'check-sso',
-        pkceMethod: 'S256',
-        silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
-        checkLoginIframe: false,
-      })
+      const authenticated = await Promise.race([
+        kc.init({
+          onLoad: 'check-sso',
+          pkceMethod: 'S256',
+          silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
+          checkLoginIframe: false,
+        }),
+        // не дождались — считаем, что сессии нет; кнопка входа при этом работает: переход на страницу Keycloak не нужен iframe
+        new Promise<boolean>((resolve) => window.setTimeout(() => resolve(false), INIT_TIMEOUT_MS)),
+      ])
       if (authenticated && kc.token) {
         setToken(kc.token)
         // Перед каждым запросом: осталось меньше 30 с — обновляем. Обновление ровно в момент истечения опаздывало:

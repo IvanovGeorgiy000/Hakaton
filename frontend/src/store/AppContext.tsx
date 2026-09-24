@@ -28,8 +28,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const authMode = metaQ.data?.authMode ?? 'local'
 
   // ---------- вход ----------
+  // В режиме Keycloak «кто я» спрашиваем только после проверки сессии: иначе при обновлении страницы запрос уходил
+  // со старым токеном, получал 401, приложение выходило из системы и на миг показывало форму входа.
+  const keycloakCfg = metaQ.data?.keycloak
+  const [kcReady, setKcReady] = useState(false)
+  const authKnown = metaQ.isError || (metaQ.isSuccess && (authMode !== 'keycloak' || !keycloakCfg || kcReady))
   // placeholderData: когда Keycloak после проверки сессии выдаёт свежий токен, не гасим весь экран заставкой загрузки
-  const me = useQuery({ queryKey: ['me', token], queryFn: api.me, enabled: !!token, retry: false, staleTime: Infinity, placeholderData: (prev) => prev })
+  const me = useQuery({ queryKey: ['me', token], queryFn: api.me, enabled: !!token && authKnown, retry: false, staleTime: Infinity, placeholderData: (prev) => prev })
   const user = token ? me.data ?? null : null
   const role = user ? ROLES.find((r) => r.id === user.role) ?? null : null
 
@@ -54,7 +59,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Keycloak: один раз проверяем сессию и, если пользователь уже вошёл, подхватываем токен.
   // При возврате со страницы входа Keycloak (#…code=…) до конца обмена кода на токен показываем загрузку, а не форму входа.
-  const keycloakCfg = metaQ.data?.keycloak
   const [kcCallback, setKcCallback] = useState(() => /[#&]code=/.test(window.location.hash))
   useEffect(() => {
     if (authMode !== 'keycloak' || !keycloakCfg) return
@@ -65,6 +69,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return next
       })
       setKcCallback(false)
+      setKcReady(true)
     })
   }, [authMode, keycloakCfg, queryClient])
   const kcBusy = kcCallback && (metaQ.isPending || authMode === 'keycloak')
