@@ -13,6 +13,7 @@ import { Button } from './ui/Button'
 import { CameraFrame } from './CameraFrame'
 import { FrameViewer } from './FrameViewer'
 import { LiveCameraViewer } from './video/LiveCameraViewer'
+import { PrescribeDialog } from './PrescribeDialog'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -38,6 +39,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
   const [saving, setSaving] = useState(false)
   const [watching, setWatching] = useState(false)
   const [zoomed, setZoomed] = useState(false)  // кадр-доказательство на всю вкладку
+  const [prescribing, setPrescribing] = useState(false)
   const snaps = alert.evidenceSnapshots
   const [picked, setPicked] = useState<string | null>(null)
   const snap = snaps.find((s) => s.id === picked) ?? snaps[snaps.length - 1]
@@ -71,7 +73,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
         <Badge tone={sev.tone}>{sev.label}</Badge>
         <Badge tone={st.tone}>{st.label}</Badge>
         <Badge tone="neutral">{KIND[alert.kind]}</Badge>
-        {alert.prescriptionNo && <Badge tone="info">Предписание № {alert.prescriptionNo}</Badge>}
+        {alert.prescriptionNo && <Badge tone="info">Предписание № {alert.prescriptionNo}{alert.prescriptionDue && <>, срок до {fmtDate(alert.prescriptionDue)}</>}</Badge>}
         <span className="ml-auto text-[14px] text-muted-foreground font-mono">№ {alert.code} · {fmtDateShort(alert.startedAt)}</span>
       </div>
 
@@ -201,7 +203,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
             )}
             {role.id === 'inspector' && (
               <>
-                {alert.status !== 'prescribed' && <Button size="lg" variant="danger" onClick={() => act('prescribed', 'Выдано предписание подрядчику.')}><FileWarning className="w-5 h-5" /> Выдать предписание</Button>}
+                {alert.status !== 'prescribed' && <Button size="lg" variant="danger" onClick={() => setPrescribing(true)}><FileWarning className="w-5 h-5" /> Выдать предписание…</Button>}
                 <Button size="lg" variant="success" onClick={() => act('resolved', 'Нарушение устранено, закрыто инспектором.')}><CheckCircle2 className="w-5 h-5" /> Закрыть</Button>
                 <Button size="lg" variant="ghost" onClick={() => act('false_positive', 'Ложное срабатывание.')}><XCircle className="w-5 h-5" /> Ошибка системы</Button>
               </>
@@ -212,7 +214,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
                 {alert.status === 'new' && alert.kind !== 'camera_offline' && (
                   <Button size="lg" variant="outline" onClick={() => act('acknowledged', 'Техника уже едет, проблема будет решена.')}><Truck className="w-5 h-5" /> Техника едет</Button>
                 )}
-                {alert.status !== 'prescribed' && <Button size="lg" variant="danger" onClick={() => act('prescribed', 'Выдано предписание подрядчику.')}><FileWarning className="w-5 h-5" /> Выдать предписание</Button>}
+                {alert.status !== 'prescribed' && <Button size="lg" variant="danger" onClick={() => setPrescribing(true)}><FileWarning className="w-5 h-5" /> Выдать предписание…</Button>}
                 <Button size="lg" variant="success" onClick={() => act('resolved', 'Проблема устранена, закрыто администратором.')}><CheckCircle2 className="w-5 h-5" /> {alert.status === 'prescribed' ? 'Закрыть' : 'Устранено'}</Button>
                 <Button size="lg" variant="ghost" onClick={() => act('false_positive', 'Ложное срабатывание.')}><XCircle className="w-5 h-5" /> Ошибка системы</Button>
               </>
@@ -231,6 +233,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
           ))}
         </ul>
       </Disclosure>
+      <PrescribeDialog alert={prescribing ? alert : null} onClose={() => setPrescribing(false)} onDone={() => { setPrescribing(false); onClose() }} />
       <LiveCameraViewer camera={watching && liveCamera ? liveCamera : null} onClose={() => setWatching(false)} />
       <FrameViewer
         snapshots={snaps} index={zoomed && snap ? snaps.indexOf(snap) : null} onIndex={(i) => setPicked(snaps[i].id)}

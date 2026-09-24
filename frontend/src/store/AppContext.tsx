@@ -138,8 +138,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [notify, refresh])
 
-  const updateAlert = useCallback((id: string, status: AlertStatus, comment: string) =>
-    run(() => api.alertAction(id, status, comment)), [run])
+  const updateAlert = useCallback((id: string, status: AlertStatus, comment: string, dueDate?: string) =>
+    run(() => api.alertAction(id, status, comment, dueDate)), [run])
   const saveRule = useCallback((rule: Rule) => run(() => api.saveRule(rule), `Правило «${rule.stageName}» сохранено`), [run])
   const setCameraEnabled = useCallback((camera: Camera, on: boolean) =>
     run(() => api.patchCamera(camera.id, { enabled: on }), `${camera.name}: ${on ? 'включена' : 'выключена'}`), [run])

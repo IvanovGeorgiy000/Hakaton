@@ -238,6 +238,7 @@ class Alert(Base):
     consequence: Mapped[str] = mapped_column(Text, default="")
     advice: Mapped[str] = mapped_column(Text, default="")
     prescription_no: Mapped[str | None] = mapped_column(String(20))
+    prescription_due: Mapped[date | None] = mapped_column(Date)  # срок устранения по предписанию
 
     started_at: Mapped[datetime] = mapped_column(UTCDateTime)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)

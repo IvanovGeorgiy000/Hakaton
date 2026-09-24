@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { AlertDetail } from '@/components/AlertDetail'
 import { Chip } from '@/components/ui/Chip'
-import { fmtDateShort, fmtTime } from '@/lib/utils'
+import { fmtDateShort, fmtTime, todayISO } from '@/lib/utils'
 import { KIND, SEVERITY, STATUS } from '@/lib/labels'
 import { cn } from '@/lib/utils'
 
@@ -75,7 +75,14 @@ export function InspectorViolations() {
                 <td className="px-4 py-3"><div className="font-semibold">{bySite(a.siteId)?.name}</div><div className="text-muted-foreground text-[13px]">{byZone(a.zoneId)?.name}</div></td>
                 <td className="px-4 py-3"><div className="font-semibold">{a.title}</div><div className="text-muted-foreground text-[13px]">{KIND[a.kind]}</div></td>
                 <td className="px-4 py-3"><Badge tone={SEVERITY[a.severity].tone}>{SEVERITY[a.severity].label}</Badge></td>
-                <td className="px-4 py-3"><Badge tone={STATUS[a.status].tone}>{STATUS[a.status].label}</Badge></td>
+                <td className="px-4 py-3">
+                  <Badge tone={STATUS[a.status].tone}>{STATUS[a.status].label}</Badge>
+                  {a.status === 'prescribed' && a.prescriptionDue && (
+                    <div className={cn('text-[13px] mt-1 whitespace-nowrap', a.prescriptionDue < todayISO() ? 'text-danger font-semibold' : 'text-muted-foreground')}>
+                      {a.prescriptionDue < todayISO() ? 'просрочено, ' : ''}до {fmtDateShort(a.prescriptionDue)}
+                    </div>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-right">
                   {/* настоящая кнопка: строку таблицы с клавиатуры не открыть */}
                   <button type="button" onClick={(e) => { e.stopPropagation(); setSel(a) }} aria-label={`Открыть нарушение № ${a.code}`}

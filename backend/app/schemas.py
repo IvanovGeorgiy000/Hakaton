@@ -379,6 +379,7 @@ class AlertOut(ApiModel):
     expected: int | None
     observed: int | None
     prescription_no: str | None
+    prescription_due: date | None
     started_at: datetime
     updated_at: datetime
     evidence: list[str]
@@ -411,6 +412,7 @@ def alert_out(a: Alert) -> AlertOut:
         expected=a.expected,
         observed=a.observed,
         prescription_no=a.prescription_no,
+        prescription_due=a.prescription_due,
         started_at=a.started_at,
         updated_at=a.updated_at,
         evidence=[s.id for s in a.evidence],
@@ -422,6 +424,7 @@ def alert_out(a: Alert) -> AlertOut:
 class AlertActionIn(ApiModel):
     status: AlertStatus
     comment: str = Field(default="", max_length=1000)
+    due_date: date | None = None  # срок устранения — только для предписания
 
 
 # ---------- сверка ----------

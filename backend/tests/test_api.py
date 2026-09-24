@@ -58,8 +58,17 @@ async def test_alert_transitions_by_role(client):
         "status"
     ] == "prescribed"
     assert (await client.post(crane_url, headers=admin, json={"status": "resolved"})).json()["status"] == "resolved"
+
     log = (await client.get("/api/audit?action=alert", headers=admin)).json()
     assert log[0]["actorLogin"] == "admin" and log[0]["entityName"] == crane["code"] and "Закрыл" in log[0]["summary"]
+
+    # предписание со сроком: срок сохраняется и попадает в историю, срок в прошлом не принимается
+    other = next(a for a in (await client.get("/api/alerts?state=open", headers=inspector)).json() if a["status"] != "prescribed")
+    other_url = f"/api/alerts/{other['id']}/actions"
+    past = await client.post(other_url, headers=inspector, json={"status": "prescribed", "dueDate": "2020-01-01"})
+    assert past.status_code == 422
+    due = (await client.post(other_url, headers=inspector, json={"status": "prescribed", "dueDate": "2099-03-05"})).json()
+    assert due["prescriptionDue"] == "2099-03-05" and "до 05.03.2099" in due["history"][-1]["text"]
 
 
 async def test_weekly_report_and_meta(client):

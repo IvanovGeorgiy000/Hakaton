@@ -48,7 +48,8 @@ export interface AppState {
   siteStatus: (siteId: string) => SiteStatus
 
   // ---- действия: возвращают true при успехе, об ошибке сообщают сами ----
-  updateAlert: (id: string, status: AlertStatus, comment: string) => Promise<boolean>
+  /** dueDate — срок устранения, только для предписания */
+  updateAlert: (id: string, status: AlertStatus, comment: string, dueDate?: string) => Promise<boolean>
   saveRule: (rule: Rule) => Promise<boolean>
   setCameraEnabled: (camera: Camera, enabled: boolean) => Promise<boolean>
   addCamera: (camera: NewCamera) => Promise<Camera>

@@ -47,8 +47,8 @@ export const api = {
 
   snapshots: () => request<Snapshot[]>('GET', '/snapshots?perCamera=8'),
   alerts: () => request<Alert[]>('GET', '/alerts'),
-  alertAction: (id: string, status: AlertStatus, comment: string) =>
-    request<Alert>('POST', `/alerts/${id}/actions`, { status, comment }),
+  alertAction: (id: string, status: AlertStatus, comment: string, dueDate?: string) =>
+    request<Alert>('POST', `/alerts/${id}/actions`, { status, comment, dueDate }),
 
   equipmentCheck: (siteId: string) => request<EquipmentCheckResult>('GET', `/sites/${siteId}/equipment-check`),
   weeklyReport: () => request<WeeklyReport>('GET', '/reports/weekly'),

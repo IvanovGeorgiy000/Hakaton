@@ -175,6 +175,8 @@ export interface Alert {
   expected: number | null
   observed: number | null
   prescriptionNo: string | null
+  /** Срок устранения по предписанию, «2026-09-30» */
+  prescriptionDue: string | null
   startedAt: string
   updatedAt: string
   evidence: string[]

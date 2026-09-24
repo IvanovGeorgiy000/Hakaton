@@ -12,6 +12,7 @@ from app.schemas import AlertActionIn, AlertOut, alert_code, alert_out
 from app.security import CurrentUser, Session, ensure_site_access
 from app.services import audit
 from app.services.audit import ROLE_TITLES
+from app.services.engine import local_day
 
 router = APIRouter(prefix="/alerts", tags=["Отклонения"])
 
@@ -110,8 +111,13 @@ async def act(alert_id: str, body: AlertActionIn, user: CurrentUser, session: Se
 
     now, comment = utcnow(), body.comment.strip()
     if body.status == "prescribed":
+        if body.due_date is not None and body.due_date < local_day(now):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Срок устранения не может быть в прошлом")
         alert.prescription_no = await _next_prescription(session)
+        alert.prescription_due = body.due_date
         comment = f"Выдано предписание № {alert.prescription_no}: {comment or DEFAULT_COMMENTS['prescribed']}"
+        if body.due_date is not None:
+            comment = f"{comment.rstrip('.')}. Срок устранения — до {body.due_date:%d.%m.%Y}."
     alert.status, alert.updated_at = body.status, now
     if body.status in ("resolved", "false_positive"):
         alert.resolved_at = now
