@@ -10,7 +10,7 @@ from sqlalchemy import select
 from app.api.deps import SiteIdQuery, scope
 from app.models import Camera
 from app.schemas import BoxOut, DetectionOut, LiveCameraOut
-from app.security import CurrentUser, Session, authenticate, visible_site_ids
+from app.security import CAMERA_ADDERS, CurrentUser, Session, authenticate, visible_site_ids
 from app.services import video
 from app.services.pipeline import CameraLive, get_pipeline
 
@@ -49,7 +49,7 @@ async def gateway_auth(body: GatewayAuthIn, session: Session) -> Response:
     except HTTPException:
         return Response(status_code=_DENY)
     if body.path.startswith(video.PROBE_PREFIX):  # предпросмотр в форме «Добавить камеру»
-        return Response(status_code=_ALLOW if user.role == "admin" else _DENY)
+        return Response(status_code=_ALLOW if user.role in CAMERA_ADDERS else _DENY)
     camera_id = video.camera_id_from_path(body.path)
     camera = await session.get(Camera, camera_id) if camera_id else None
     if camera is None or camera.deleted_at is not None:

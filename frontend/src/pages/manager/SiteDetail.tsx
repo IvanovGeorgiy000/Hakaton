@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Plus } from 'lucide-react'
+import { CAMERA_ADDERS } from '@/data'
 import { useApp } from '@/store/context'
+import { Button } from '@/components/ui/Button'
+import { AddCameraDialog } from '@/components/CameraDialogs'
 import { SiteToday } from '@/components/SiteToday'
 import { StageTimeline } from '@/components/StageTimeline'
 import { VideoWall } from '@/components/video/VideoWall'
@@ -17,7 +20,9 @@ const TABS = [
 export function ManagerSite() {
   const { id } = useParams()
   const [tab, setTab] = useState<(typeof TABS)[number]['id']>('today')
-  const { bySite, cameras, base } = useApp()
+  const [adding, setAdding] = useState(false)
+  const { bySite, cameras, base, role } = useApp()
+  const canAdd = !!role && CAMERA_ADDERS.includes(role.id)
   const site = id ? bySite(id) : undefined
   if (!site) return <Navigate to={base} replace />
   return (
@@ -34,8 +39,18 @@ export function ManagerSite() {
         ))}
       </div>
       {tab === 'today' && <SiteToday siteId={site.id} onShowCameras={() => setTab('cameras')} />}
-      {tab === 'cameras' && <VideoWall cameras={cameras.filter((c) => c.siteId === site.id)} empty="На объекте пока нет камер." />}
+      {tab === 'cameras' && (
+        <>
+          {canAdd && (
+            <div className="flex justify-end mb-4">
+              <Button onClick={() => setAdding(true)}><Plus className="w-5 h-5" /> Камера на этот объект</Button>
+            </div>
+          )}
+          <VideoWall cameras={cameras.filter((c) => c.siteId === site.id)} empty="На объекте пока нет камер." />
+        </>
+      )}
       {tab === 'plan' && <StageTimeline siteId={site.id} />}
+      {canAdd && <AddCameraDialog open={adding} defaultSiteId={site.id} onClose={() => setAdding(false)} />}
     </div>
   )
 }

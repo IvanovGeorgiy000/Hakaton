@@ -133,10 +133,25 @@ async def test_unreachable_camera_is_rejected_unless_allowed(client):
     assert actions[:3] == ["camera.delete", "camera.update", "camera.create"]
 
 
-async def test_only_admin_manages_cameras(client):
-    for role in ("foreman", "manager", "inspector"):
+async def test_manager_adds_cameras_but_only_admin_changes_them(client):
+    manager = await login_as(client, "manager")
+    async with fake_rtsp() as port:
+        assert (await client.post("/api/cameras/probe", headers=manager, json=_conn(port))).json()["ok"]
+        body = {"siteId": "s3", "name": "Камера 3 — ПК 14", "zoneId": "z3-road", "connection": _conn(port)}
+        created = await client.post("/api/cameras", headers=manager, json=body)
+    assert created.status_code == 201, created.text
+    camera_id = created.json()["id"]
+    assert (await client.patch(f"/api/cameras/{camera_id}", headers=manager, json={"enabled": False})).status_code == 403
+    assert (await client.delete(f"/api/cameras/{camera_id}", headers=manager)).status_code == 403
+
+    admin = await login_as(client, "admin")
+    entry = (await client.get("/api/audit?action=camera", headers=admin)).json()[0]
+    assert entry["action"] == "camera.create" and entry["actorRole"] == "manager"  # в журнале видно, кто добавил
+
+    for role in ("foreman", "inspector"):
         auth = await login_as(client, role)
         assert (await client.post("/api/cameras/probe", headers=auth, json={"host": "10.0.0.1"})).status_code == 403
+        assert (await client.post("/api/cameras", headers=auth, json=body)).status_code == 403
         assert (await client.delete("/api/cameras/c1", headers=auth)).status_code == 403
 
 
@@ -187,7 +202,9 @@ async def test_gateway_asks_who_may_watch(client):
     assert await ask(path="cam-c4", token=token["manager"]) == 200
     assert await ask(path="cam-c4") == 401 and await ask(path="cam-c4", token="garbage") == 401
     assert await ask(path="cam-c4", query=f"token={token['manager']}") == 200  # токен в адресе
-    assert await ask(path="probe-abc", token=token["admin"]) == 200 and await ask(path="probe-abc", token=token["manager"]) == 401
+    # предпросмотр в форме «Добавить камеру» — тем, кто может добавлять камеры
+    assert await ask(path="probe-abc", token=token["admin"]) == 200 and await ask(path="probe-abc", token=token["manager"]) == 200
+    assert await ask(path="probe-abc", token=token["foreman"]) == 401
     assert await ask(path="demo-feed-pit-excavator") == 200  # демо-ролики забирает сам шлюз
     assert await ask(action="publish", path="demo-feed-x", token=token["admin"]) == 401  # публиковать — только серверу
     internal = {"user": video.INTERNAL_USER, "password": video.internal_password()}

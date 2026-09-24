@@ -168,6 +168,10 @@ def require_roles(*roles: str):
     return Depends(checker)
 
 
+# Кто подключает новые камеры (с проверкой адреса и живым предпросмотром). Менять и удалять камеры — только администратор.
+CAMERA_ADDERS = ("admin", "manager")
+
+
 def visible_site_ids(user: User) -> set[str] | None:
     """Прораб видит только свои объекты; остальные роли — все (None = без ограничения)."""
     return {s.id for s in user.sites} if user.role == "foreman" else None

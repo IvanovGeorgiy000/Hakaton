@@ -1,5 +1,6 @@
 import { PageHeader } from '@/components/ui/PageHeader'
-import { EQUIPMENT_LIST } from '@/data'
+import { CAMERA_ADDERS, EQUIPMENT_LIST } from '@/data'
+import { useApp } from '@/store/context'
 import { VehicleIcon } from '@/components/VehicleIcon'
 
 const STEPS = [
@@ -11,6 +12,7 @@ const STEPS = [
 
 /** Справка: обычный текст, без украшений */
 export function Help() {
+  const { role } = useApp()
   return (
     <div className="max-w-3xl">
       <PageHeader title="Справка" subtitle="Как работает система и что делать с сообщениями" />
@@ -39,6 +41,17 @@ export function Help() {
           <li>Когда проблема решена — нажмите <b>«Устранено»</b>.</li>
         </ol>
       </Section>
+
+      {role && CAMERA_ADDERS.includes(role.id) && (
+        <Section title="Как подключить новую камеру">
+          <ol className="list-decimal pl-6 space-y-2">
+            <li>Раздел «Камеры» → <b>«Добавить камеру»</b> (или «Камера на этот объект» у нужного объекта).</li>
+            <li>Выберите объект, зону, за которой камера следит, и производителя — путь к видео подставится сам.</li>
+            <li>Введите IP-адрес камеры, логин и пароль и нажмите <b>«Проверить и показать видео»</b>: если всё верно, в форме появится живое видео.</li>
+            <li>Нажмите <b>«Добавить камеру»</b>. Через несколько секунд она появится среди камер, и система начнёт разбирать её видео.</li>
+          </ol>
+        </Section>
+      )}
 
       <Section title="Какую технику система узнаёт">
         <ul className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">

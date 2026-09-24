@@ -14,7 +14,7 @@ from app.config import get_settings
 from app.db import utcnow
 from app.models import Camera, Site, Zone, new_id
 from app.schemas import CameraIn, CameraOut, CameraPatch, ConnectionIn, ProbeOut, camera_out
-from app.security import CurrentUser, Session, decrypt_secret, encrypt_secret, require_roles
+from app.security import CAMERA_ADDERS, CurrentUser, Session, decrypt_secret, encrypt_secret, require_roles
 from app.services import audit, video
 from app.services.camera_client import DEFAULT_PORTS, CameraAddress, CameraError, probe_rtsp, validate_address
 from app.services.engine import camera_address
@@ -23,6 +23,7 @@ from app.services.pipeline import get_pipeline
 settings = get_settings()
 router = APIRouter(prefix="/cameras", tags=["Камеры"])
 admin_only = [require_roles("admin")]
+adders = [require_roles(*CAMERA_ADDERS)]  # подключить камеру может и руководитель проекта
 
 
 def _address(conn: ConnectionIn, *, keep_password: str | None = None) -> CameraAddress:
@@ -77,7 +78,7 @@ async def list_cameras(user: CurrentUser, session: Session, site_id: SiteIdQuery
     return [camera_out(c) for c in await session.scalars(query.order_by(Camera.site_id, Camera.position, Camera.created_at))]
 
 
-@router.post("/probe", response_model=ProbeOut, dependencies=admin_only, summary="Проверить камеру по адресу, не сохраняя её")
+@router.post("/probe", response_model=ProbeOut, dependencies=adders, summary="Проверить камеру по адресу, не сохраняя её")
 async def probe_camera(conn: ConnectionIn) -> ProbeOut:
     addr = _address(conn)
     result = await probe_rtsp(addr)
@@ -95,7 +96,7 @@ async def probe_camera(conn: ConnectionIn) -> ProbeOut:
     return preview
 
 
-@router.delete("/probe/{name}", status_code=status.HTTP_204_NO_CONTENT, dependencies=admin_only, summary="Закрыть предпросмотр")
+@router.delete("/probe/{name}", status_code=status.HTTP_204_NO_CONTENT, dependencies=adders, summary="Закрыть предпросмотр")
 async def close_probe(name: str) -> None:
     await _drop_probe(name)
 
@@ -104,7 +105,7 @@ async def close_probe(name: str) -> None:
     "",
     response_model=CameraOut,
     status_code=status.HTTP_201_CREATED,
-    dependencies=admin_only,
+    dependencies=adders,
     summary="Добавить камеру по IP-адресу",
 )
 async def add_camera(body: CameraIn, user: CurrentUser, session: Session, request: Request) -> CameraOut:
