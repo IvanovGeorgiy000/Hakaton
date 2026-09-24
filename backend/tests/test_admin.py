@@ -70,11 +70,60 @@ async def test_deleting_site_removes_its_cameras_and_alerts(client):
     assert "ЖК «Северный парк»" in entry["summary"] and "камерами (3)" in entry["summary"]
 
 
-async def test_only_admin_administers(client):
+async def test_who_manages_sites_and_staff(client):
     manager = await login_as(client, "manager")
-    assert (await client.post("/api/sites", headers=manager, json={"name": "Объект"})).status_code == 403
-    assert (await client.delete("/api/sites/s1", headers=manager)).status_code == 403
+    created = await client.post("/api/sites", headers=manager, json={"name": "Объект руководителя", "foremanId": "u4"})
+    assert created.status_code == 201, created.text  # объекты заводит и руководитель проекта
+    site_id = created.json()["id"]
+    assert (await client.post(f"/api/sites/{site_id}/zones", headers=manager, json={"name": "Котлован"})).status_code == 201
+    phase = {"name": "Земляные работы", "level": 1, "start": "2026-10-01", "end": "2026-10-31"}
+    assert (await client.post(f"/api/sites/{site_id}/stages", headers=manager, json=phase)).status_code == 201
+    assert (await client.get("/api/users", headers=manager)).status_code == 200  # список нужен, чтобы выбрать прораба
+    # удалить объект и управлять сотрудниками — только администратор
+    assert (await client.delete(f"/api/sites/{site_id}", headers=manager)).status_code == 403
     assert (await client.post("/api/users/u1/password", headers=manager, json={"password": "secret-1"})).status_code == 403
+    assert (await client.post("/api/users", headers=manager, json={})).status_code == 403
+    for role in ("foreman", "inspector"):
+        auth = await login_as(client, role)
+        assert (await client.post("/api/sites", headers=auth, json={"name": "Объект"})).status_code == 403
+        assert (await client.post(f"/api/sites/{site_id}/stages", headers=auth, json=phase)).status_code == 403
+
+
+async def test_fact_progress_of_stages(client):
+    """По графику — сколько должно быть сделано к сегодняшнему дню; по факту — что отметил прораб или руководитель."""
+    foreman = await login_as(client, "foreman")
+    stages = {s["id"]: s for s in (await client.get("/api/stages?siteId=s1", headers=foreman)).json()}
+    digging = stages["s1-excavation"]  # идёт сейчас, ЖК отстаёт от графика
+    assert 0 < digging["factProgress"] < digging["planProgress"] < 100 and digging["factUpdatedAt"]
+    assert stages["s1-prep"]["factProgress"] == stages["s1-prep"]["planProgress"] == 100  # завершённая работа
+    assert stages["s1-frame"]["factProgress"] == stages["s1-frame"]["planProgress"] == 0  # впереди
+
+    marked = await client.patch("/api/stages/s1-excavation/progress", headers=foreman, json={"factProgress": 80})
+    assert marked.status_code == 200 and marked.json()["factProgress"] == 80
+    assert (
+        await client.patch("/api/stages/s2-foundation/progress", headers=foreman, json={"factProgress": 5})
+    ).status_code == 404
+    assert (
+        await client.patch("/api/stages/s1-excavation/progress", headers=foreman, json={"factProgress": 101})
+    ).status_code == 422
+    inspector = await login_as(client, "inspector")
+    assert (await client.patch("/api/stages/s1-soil/progress", headers=inspector, json={"factProgress": 10})).status_code == 403
+
+    admin = await login_as(client, "admin")
+    entry = (await _log(client, admin, "stage.progress"))[0]
+    assert entry["actorRole"] == "foreman" and "80% (было" in entry["summary"]
+
+
+def test_plan_progress_is_even_by_days():
+    from datetime import date
+
+    from app.models import Stage
+
+    stage = Stage(start_date=date(2026, 10, 1), end_date=date(2026, 10, 10))
+    assert stage.plan_progress_on(date(2026, 9, 30)) == 0
+    assert stage.plan_progress_on(date(2026, 10, 1)) == 10  # к концу первого из десяти дней
+    assert stage.plan_progress_on(date(2026, 10, 5)) == 50
+    assert stage.plan_progress_on(date(2026, 10, 10)) == 100 and stage.plan_progress_on(date(2026, 12, 1)) == 100
 
 
 async def test_staff_and_passwords(client):

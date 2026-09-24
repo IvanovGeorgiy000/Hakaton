@@ -70,6 +70,7 @@ export const api = {
   createStage: (siteId: string, stage: StageInput) => request<Stage>('POST', `/sites/${siteId}/stages`, stage),
   updateStage: (id: string, stage: StageInput) => request<Stage>('PATCH', `/stages/${id}`, stage),
   deleteStage: (id: string) => request<void>('DELETE', `/stages/${id}`),
+  setStageProgress: (id: string, factProgress: number) => request<Stage>('PATCH', `/stages/${id}/progress`, { factProgress }),
 
   users: () => request<User[]>('GET', '/users'),
   createUser: (user: UserInput) => request<User>('POST', '/users', user),

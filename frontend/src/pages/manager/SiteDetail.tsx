@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, CalendarDays, Layers, Pencil, Plus, Trash2 } from 'lucide-react'
-import { CAMERA_ADDERS } from '@/data'
+import { CAMERA_ADDERS, SITE_MANAGERS } from '@/data'
 import { useApp } from '@/store/context'
 import { SiteToday } from '@/components/SiteToday'
 import { StageTimeline } from '@/components/StageTimeline'
@@ -19,7 +19,7 @@ const TABS = [
 
 type Dialog = 'edit' | 'zones' | 'plan' | 'delete' | 'camera' | null
 
-/** Объект глазами руководителя и администратора: вкладки «Сегодня», «Камеры», «План работ» — и управление объектом здесь же */
+/** Объект глазами руководителя и администратора: вкладки «Сегодня», «Камеры», «План работ» — и настройка объекта здесь же */
 export function ManagerSite() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -29,6 +29,7 @@ export function ManagerSite() {
   const site = id ? bySite(id) : undefined
   if (!site) return <Navigate to={base} replace />
   const isAdmin = role?.id === 'admin'
+  const canManage = !!role && SITE_MANAGERS.includes(role.id)  // карточка, зоны, план
   const canAddCamera = !!role && CAMERA_ADDERS.includes(role.id)
   const close = () => setDialog(null)
 
@@ -37,11 +38,11 @@ export function ManagerSite() {
       <Link to={base} className="inline-flex items-center gap-1.5 min-h-[44px] text-primary font-semibold hover:underline mb-1"><ArrowLeft className="w-5 h-5" /> Все объекты</Link>
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <h1 className="text-[22px] sm:text-2xl font-semibold leading-tight min-w-0">{site.name}</h1>
-        {isAdmin && (
+        {canManage && (
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => setDialog('edit')}><Pencil className="w-4 h-4" /> Изменить</Button>
             <Button variant="outline" onClick={() => setDialog('zones')}><Layers className="w-4 h-4" /> Зоны</Button>
-            <Button variant="ghost" aria-label={`Удалить объект ${site.name}`} title="Удалить объект" onClick={() => setDialog('delete')}><Trash2 className="w-4 h-4" /></Button>
+            {isAdmin && <Button variant="ghost" aria-label={`Удалить объект ${site.name}`} title="Удалить объект" onClick={() => setDialog('delete')}><Trash2 className="w-4 h-4" /></Button>}
           </div>
         )}
       </div>
@@ -72,7 +73,7 @@ export function ManagerSite() {
       )}
       {tab === 'plan' && (
         <>
-          {isAdmin && (
+          {canManage && (
             <div className="flex justify-end mb-4">
               <Button onClick={() => setDialog('plan')}><CalendarDays className="w-5 h-5" /> Изменить план</Button>
             </div>
@@ -82,14 +83,14 @@ export function ManagerSite() {
       )}
 
       {canAddCamera && <AddCameraDialog open={dialog === 'camera'} defaultSiteId={site.id} onClose={close} />}
-      {isAdmin && (
+      {canManage && (
         <>
           <SiteDialog site={dialog === 'edit' ? site : null} onClose={close} />
           <ZonesDialog site={dialog === 'zones' ? site : null} onClose={close} />
           <PlanDialog site={dialog === 'plan' ? site : null} onClose={close} />
-          <DeleteSiteDialog site={dialog === 'delete' ? site : null} onClose={close} onDeleted={() => navigate(base, { replace: true })} />
         </>
       )}
+      {isAdmin && <DeleteSiteDialog site={dialog === 'delete' ? site : null} onClose={close} onDeleted={() => navigate(base, { replace: true })} />}
     </div>
   )
 }

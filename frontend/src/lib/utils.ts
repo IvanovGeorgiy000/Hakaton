@@ -54,6 +54,16 @@ export function isSameDay(a: string | Date, b: string | Date = new Date()) {
   return day(a) === day(b)
 }
 
+/** Сегодняшний день по Москве в виде «2026-09-24» — так же записаны даты плана */
+export function todayISO(now = new Date()) {
+  return now.toLocaleDateString('sv-SE', { timeZone: TZ })
+}
+
+/** Сколько дней от одной даты плана до другой («2026-09-24» → «2026-10-02» = 8) */
+export function daysBetween(from: string, to: string) {
+  return Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000)
+}
+
 /** Время, а если день не сегодняшний — ещё и дата: «12:30» или «19 сент., 15:00» */
 export function fmtWhen(iso: string) {
   if (isSameDay(iso)) return fmtTime(iso)

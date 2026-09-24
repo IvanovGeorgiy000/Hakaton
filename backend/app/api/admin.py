@@ -1,7 +1,8 @@
-"""Администрирование: объекты, зоны, календарный план, сотрудники и их пароли.
+"""Администрирование: объекты, зоны, календарный план, выполнение работ, сотрудники и их пароли.
 
-Всё — только администратору, и каждое действие пишется в журнал (без паролей). Когда вход идёт через Keycloak,
-сотрудники, роли и пароли одновременно меняются и в Keycloak (keycloak_admin.py).
+Объекты, зоны и план ведут администратор и руководитель проекта; удалить объект и управлять сотрудниками может только
+администратор; сколько сделано по факту, отмечает ещё и прораб своего объекта. Каждое действие пишется в журнал
+(без паролей). Когда вход идёт через Keycloak, сотрудники, роли и пароли одновременно меняются и в Keycloak.
 """
 
 import asyncio
@@ -20,6 +21,7 @@ from app.schemas import (
     SiteOut,
     StageIn,
     StageOut,
+    StageProgressIn,
     UserIn,
     UserOut,
     UserPatch,
@@ -30,14 +32,25 @@ from app.schemas import (
     user_out,
     zone_out,
 )
-from app.security import CurrentUser, Session, hash_password, require_roles
+from app.security import (
+    PROGRESS_REPORTERS,
+    SITE_MANAGERS,
+    CurrentUser,
+    Session,
+    ensure_site_access,
+    hash_password,
+    require_roles,
+)
 from app.services import audit
 from app.services.audit import ROLE_TITLES
 from app.services.engine import current_stage, local_day
 from app.services.pipeline import get_pipeline
 
 settings = get_settings()
-router = APIRouter(dependencies=[require_roles("admin")])
+router = APIRouter()
+admin_only = [require_roles("admin")]
+site_managers = [require_roles(*SITE_MANAGERS)]
+reporters = [require_roles(*PROGRESS_REPORTERS)]
 
 
 def _conflict(message: str) -> HTTPException:
@@ -90,7 +103,14 @@ def _site_fields(site: Site) -> dict:
     }
 
 
-@router.post("/sites", response_model=SiteOut, status_code=status.HTTP_201_CREATED, tags=["Объекты"], summary="Создать объект")
+@router.post(
+    "/sites",
+    response_model=SiteOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=site_managers,
+    tags=["Объекты"],
+    summary="Создать объект",
+)
 async def create_site(body: SiteIn, user: CurrentUser, session: Session, request: Request) -> SiteOut:
     position = (await session.scalar(select(func.max(Site.position))) or 0) + 1
     site = Site(
@@ -113,7 +133,7 @@ async def create_site(body: SiteIn, user: CurrentUser, session: Session, request
     return site_out(site, None)
 
 
-@router.patch("/sites/{site_id}", response_model=SiteOut, tags=["Объекты"], summary="Изменить объект")
+@router.patch("/sites/{site_id}", response_model=SiteOut, dependencies=site_managers, tags=["Объекты"], summary="Изменить объект")
 async def update_site(site_id: str, body: SiteIn, user: CurrentUser, session: Session, request: Request) -> SiteOut:
     site = await _site(session, site_id)
     before = _site_fields(site)
@@ -130,7 +150,13 @@ async def update_site(site_id: str, body: SiteIn, user: CurrentUser, session: Se
     return site_out(site, stage.id if stage else None)
 
 
-@router.delete("/sites/{site_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Объекты"], summary="Удалить объект целиком")
+@router.delete(
+    "/sites/{site_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=admin_only,
+    tags=["Объекты"],
+    summary="Удалить объект целиком",
+)
 async def delete_site(site_id: str, user: CurrentUser, session: Session, request: Request) -> None:
     site = await _site(session, site_id)
     camera_ids = list(await session.scalars(select(Camera.id).where(Camera.site_id == site_id)))
@@ -157,6 +183,7 @@ ZONE_KINDS = {"work": "рабочая", "gate": "въезд", "storage": "скл
     "/sites/{site_id}/zones",
     response_model=ZoneOut,
     status_code=status.HTTP_201_CREATED,
+    dependencies=site_managers,
     tags=["Объекты"],
     summary="Добавить зону",
 )
@@ -173,7 +200,7 @@ async def create_zone(site_id: str, body: ZoneIn, user: CurrentUser, session: Se
     return zone_out(zone)
 
 
-@router.patch("/zones/{zone_id}", response_model=ZoneOut, tags=["Объекты"], summary="Изменить зону")
+@router.patch("/zones/{zone_id}", response_model=ZoneOut, dependencies=site_managers, tags=["Объекты"], summary="Изменить зону")
 async def update_zone(zone_id: str, body: ZoneIn, user: CurrentUser, session: Session, request: Request) -> ZoneOut:
     zone = await session.get(Zone, zone_id)
     if zone is None:
@@ -189,7 +216,13 @@ async def update_zone(zone_id: str, body: ZoneIn, user: CurrentUser, session: Se
     return zone_out(zone)
 
 
-@router.delete("/zones/{zone_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Объекты"], summary="Удалить пустую зону")
+@router.delete(
+    "/zones/{zone_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=site_managers,
+    tags=["Объекты"],
+    summary="Удалить пустую зону",
+)
 async def delete_zone(zone_id: str, user: CurrentUser, session: Session, request: Request) -> None:
     zone = await session.get(Zone, zone_id)
     if zone is None:
@@ -230,13 +263,25 @@ async def _validate_stage(session, site_id: str, body: StageIn, stage_id: str | 
 
 
 def _stage_fields(stage: Stage) -> dict:
-    return {"name": stage.name, "start": stage.start_date.isoformat(), "end": stage.end_date.isoformat(), "rule": stage.rule_key}
+    return {
+        "name": stage.name,
+        "start": stage.start_date.isoformat(),
+        "end": stage.end_date.isoformat(),
+        "rule": stage.rule_key,
+        "fact": stage.fact_progress,
+    }
+
+
+def _set_fact(stage: Stage, fact: int | None) -> None:
+    if fact is not None and fact != stage.fact_progress:
+        stage.fact_progress, stage.fact_updated_at = fact, utcnow()
 
 
 @router.post(
     "/sites/{site_id}/stages",
     response_model=StageOut,
     status_code=status.HTTP_201_CREATED,
+    dependencies=site_managers,
     tags=["Календарный план"],
     summary="Добавить этап",
 )
@@ -254,7 +299,9 @@ async def create_stage(site_id: str, body: StageIn, user: CurrentUser, session: 
         end_date=body.end,
         rule_key=body.rule_key if body.level == 2 else None,
         position=position,
+        fact_progress=0,
     )
+    _set_fact(stage, body.fact_progress)
     session.add(stage)
     audit.record(
         session, request, user, "stage.create", f"Добавил в план объекта «{site.name}» этап «{stage.name}»",
@@ -265,7 +312,9 @@ async def create_stage(site_id: str, body: StageIn, user: CurrentUser, session: 
     return stage_out(stage, local_day(utcnow()))
 
 
-@router.patch("/stages/{stage_id}", response_model=StageOut, tags=["Календарный план"], summary="Изменить этап")
+@router.patch(
+    "/stages/{stage_id}", response_model=StageOut, dependencies=site_managers, tags=["Календарный план"], summary="Изменить этап"
+)
 async def update_stage(stage_id: str, body: StageIn, user: CurrentUser, session: Session, request: Request) -> StageOut:
     stage = await session.get(Stage, stage_id)
     if stage is None:
@@ -277,6 +326,7 @@ async def update_stage(stage_id: str, body: StageIn, user: CurrentUser, session:
     stage.name, stage.start_date, stage.end_date = body.name.strip(), body.start, body.end
     if stage.level == 2:
         stage.parent_id, stage.rule_key = body.parent_id, body.rule_key
+    _set_fact(stage, body.fact_progress)
     if changed := audit.changes(before, _stage_fields(stage)):
         audit.record(
             session, request, user, "stage.update", f"Изменил этап «{stage.name}»",
@@ -287,7 +337,13 @@ async def update_stage(stage_id: str, body: StageIn, user: CurrentUser, session:
     return stage_out(stage, local_day(utcnow()))
 
 
-@router.delete("/stages/{stage_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Календарный план"], summary="Удалить этап")
+@router.delete(
+    "/stages/{stage_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=site_managers,
+    tags=["Календарный план"],
+    summary="Удалить этап",
+)
 async def delete_stage(stage_id: str, user: CurrentUser, session: Session, request: Request) -> None:
     stage = await session.get(Stage, stage_id)
     if stage is None:
@@ -306,6 +362,33 @@ async def delete_stage(stage_id: str, user: CurrentUser, session: Session, reque
     await session.delete(stage)
     await session.commit()
     get_pipeline().request_check({stage.site_id})
+
+
+@router.patch(
+    "/stages/{stage_id}/progress",
+    response_model=StageOut,
+    dependencies=reporters,
+    tags=["Календарный план"],
+    summary="Отметить, сколько работ сделано по факту",
+)
+async def set_stage_progress(
+    stage_id: str, body: StageProgressIn, user: CurrentUser, session: Session, request: Request
+) -> StageOut:
+    stage = await session.get(Stage, stage_id)
+    if stage is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Этап не найден")
+    ensure_site_access(user, stage.site_id)  # прораб — только на своём объекте
+    before = stage.fact_progress
+    _set_fact(stage, body.fact_progress)
+    if stage.fact_progress != before:
+        site = await session.get(Site, stage.site_id)
+        audit.record(
+            session, request, user, "stage.progress",
+            f"Отметил выполнение «{stage.name}» ({site.name if site else stage.site_id}): {stage.fact_progress}% (было {before}%)",
+            entity_type="stage", entity_id=stage.id, entity_name=stage.name, details={"fact": [before, stage.fact_progress]},
+        )  # fmt: skip
+    await session.commit()
+    return stage_out(stage, local_day(utcnow()))
 
 
 # =====================================================================================
@@ -333,13 +416,18 @@ def _user_fields(u: User) -> dict:
     return {"name": u.name, "role": u.role, "phone": u.phone, "sites": sorted(s.id for s in u.sites), "active": u.is_active}
 
 
-@router.get("/users", response_model=list[UserOut], tags=["Сотрудники"], summary="Сотрудники")
+@router.get("/users", response_model=list[UserOut], dependencies=site_managers, tags=["Сотрудники"], summary="Сотрудники")
 async def list_users(session: Session) -> list[UserOut]:
     return [user_out(u) for u in await session.scalars(select(User).order_by(User.role, User.name))]
 
 
 @router.post(
-    "/users", response_model=UserOut, status_code=status.HTTP_201_CREATED, tags=["Сотрудники"], summary="Завести сотрудника"
+    "/users",
+    response_model=UserOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=admin_only,
+    tags=["Сотрудники"],
+    summary="Завести сотрудника",
 )
 async def create_user(body: UserIn, user: CurrentUser, session: Session, request: Request) -> UserOut:
     login = body.login.strip().lower()
@@ -369,7 +457,9 @@ async def create_user(body: UserIn, user: CurrentUser, session: Session, request
     return user_out(new)
 
 
-@router.patch("/users/{user_id}", response_model=UserOut, tags=["Сотрудники"], summary="Изменить сотрудника")
+@router.patch(
+    "/users/{user_id}", response_model=UserOut, dependencies=admin_only, tags=["Сотрудники"], summary="Изменить сотрудника"
+)
 async def update_user(user_id: str, body: UserPatch, user: CurrentUser, session: Session, request: Request) -> UserOut:
     target = await _get_user(session, user_id)
     before = _user_fields(target)
@@ -415,7 +505,13 @@ async def update_user(user_id: str, body: UserPatch, user: CurrentUser, session:
     return user_out(target)
 
 
-@router.post("/users/{user_id}/password", status_code=status.HTTP_204_NO_CONTENT, tags=["Сотрудники"], summary="Задать пароль")
+@router.post(
+    "/users/{user_id}/password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=admin_only,
+    tags=["Сотрудники"],
+    summary="Задать пароль",
+)
 async def set_password(user_id: str, body: PasswordIn, user: CurrentUser, session: Session, request: Request) -> None:
     target = await _get_user(session, user_id)
     if keycloak := _keycloak():
@@ -434,7 +530,13 @@ async def set_password(user_id: str, body: PasswordIn, user: CurrentUser, sessio
     await session.commit()
 
 
-@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Сотрудники"], summary="Удалить сотрудника")
+@router.delete(
+    "/users/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=admin_only,
+    tags=["Сотрудники"],
+    summary="Удалить сотрудника",
+)
 async def delete_user(user_id: str, user: CurrentUser, session: Session, request: Request) -> None:
     target = await _get_user(session, user_id)
     if target.id == user.id:

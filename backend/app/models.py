@@ -143,11 +143,21 @@ class Stage(Base):
     end_date: Mapped[date] = mapped_column(Date)
     rule_key: Mapped[str | None] = mapped_column(ForeignKey("rules.key"))
     position: Mapped[int] = mapped_column(default=0)
+    # сколько сделано по факту, % — отмечают прораб, руководитель и администратор; у этапа с работами считается по работам
+    fact_progress: Mapped[int] = mapped_column(default=0, server_default="0")
+    fact_updated_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
     def status_on(self, day: date) -> str:
         if day > self.end_date:
             return "done"
         return "in_progress" if day >= self.start_date else "planned"
+
+    def plan_progress_on(self, day: date) -> int:
+        """Сколько процентов должно быть сделано к концу этого дня по графику — равномерно по дням этапа."""
+        if day < self.start_date:
+            return 0
+        total = (self.end_date - self.start_date).days + 1
+        return min(100, round(((day - self.start_date).days + 1) * 100 / total))
 
 
 class CheckRun(Base):

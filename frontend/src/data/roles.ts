@@ -14,3 +14,7 @@ export const ROLES: Role[] = [
 
 /** Кто подключает новые камеры — как на сервере. Менять и удалять камеры может только администратор. */
 export const CAMERA_ADDERS: RoleId[] = ['admin', 'manager']
+/** Кто добавляет и настраивает объекты: карточка, зоны, план. Удалить объект — только администратор. */
+export const SITE_MANAGERS: RoleId[] = ['admin', 'manager']
+/** Кто отмечает, сколько работ сделано по факту (прораб — на своём объекте) */
+export const PROGRESS_REPORTERS: RoleId[] = ['admin', 'manager', 'foreman']

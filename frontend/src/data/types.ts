@@ -106,6 +106,11 @@ export interface Stage {
   end: string
   status: 'done' | 'in_progress' | 'planned'
   ruleKey: string | null
+  /** Сколько должно быть сделано к сегодняшнему дню по графику, % */
+  planProgress: number
+  /** Сколько сделано по факту, % (у этапа с работами считается по работам) */
+  factProgress: number
+  factUpdatedAt: string | null
 }
 
 export interface RuleRequirement { type: EquipmentType; min: number; why: string; risk?: string }
@@ -259,7 +264,7 @@ export interface SiteInput {
 
 export interface ZoneInput { name: string; kind: ZoneKind }
 
-export interface StageInput { name: string; level: 1 | 2; parentId: string | null; start: string; end: string; ruleKey: string | null }
+export interface StageInput { name: string; level: 1 | 2; parentId: string | null; start: string; end: string; ruleKey: string | null; factProgress?: number | null }
 
 export interface UserInput { login: string; name: string; role: RoleId; phone: string; siteIds: string[]; password: string }
 

@@ -1,5 +1,5 @@
 import { PageHeader } from '@/components/ui/PageHeader'
-import { CAMERA_ADDERS, EQUIPMENT_LIST } from '@/data'
+import { CAMERA_ADDERS, EQUIPMENT_LIST, SITE_MANAGERS } from '@/data'
 import { useApp } from '@/store/context'
 import { VehicleIcon } from '@/components/VehicleIcon'
 
@@ -42,7 +42,15 @@ export function Help() {
         </ol>
       </Section>
 
-      {role?.id === 'admin' && (
+      <Section title="Как читать план работ">
+        <ul className="list-disc pl-6 space-y-2">
+          <li>План разделён на <b>завершённые</b>, <b>текущие</b> и <b>будущие</b> этапы.</li>
+          <li>У текущих этапов заливка полосы — сколько сделано <b>по факту</b>, а тёмная черта — где работы должны быть <b>по графику</b> на сегодня. Заливка левее черты — отставание, система пишет его и в днях.</li>
+          <li>Сколько сделано, отмечают прораб, руководитель проекта и администратор: кнопка <b>«Отметить выполнение»</b> у работы.</li>
+        </ul>
+      </Section>
+
+      {role && SITE_MANAGERS.includes(role.id) && (
         <Section title="Как добавить объект">
           <ol className="list-decimal pl-6 space-y-2">
             <li>Раздел «Объекты» → <b>«Добавить объект»</b>: название, адрес, подрядчик, прораб.</li>

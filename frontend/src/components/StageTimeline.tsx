@@ -1,81 +1,269 @@
-import { useState } from 'react'
-import { EQUIPMENT, type Stage } from '@/data'
+import { useId, useState, type FormEvent } from 'react'
+import { motion } from 'framer-motion'
+import { CheckCircle2, Circle, Loader2, PencilLine } from 'lucide-react'
+import { api } from '@/api'
+import { EQUIPMENT, PROGRESS_REPORTERS, type Stage } from '@/data'
 import { useApp } from '@/store/context'
-import { fmtDate } from '@/lib/utils'
-import { STAGE_STATUS } from '@/lib/labels'
-import { Badge } from './ui/Badge'
+import { ago, cn, daysBetween, fmtDate, plural, todayISO } from '@/lib/utils'
+import { Button } from './ui/Button'
 import { VehicleIcon } from './VehicleIcon'
-import { cn } from '@/lib/utils'
 
-/** Календарный план объекта: уровень 1 → уровень 2, с полосами прогресса и отметкой «сегодня» */
-export function StageTimeline({ siteId, compact }: { siteId: string; compact?: boolean }) {
-  const { rules, stagesOf } = useApp()
-  const [now] = useState(() => Date.now())
+type Kind = 'done' | 'current' | 'future'
+type Tone = 'ok' | 'warn' | 'danger'
+interface Phase { stage: Stage; works: Stage[]; plan: number; fact: number; days: number; kind: Kind }
+
+const FILL: Record<Tone, string> = { ok: 'bg-ok', warn: 'bg-warn', danger: 'bg-danger' }
+const TEXT: Record<Tone, string> = { ok: 'text-ok', warn: 'text-warn', danger: 'text-danger' }
+
+const length = (s: Stage) => daysBetween(s.start, s.end) + 1
+const range = (s: Stage) => `${fmtDate(s.start)} — ${fmtDate(s.end)}`
+/** Завершён — сделан по факту; текущий — по графику уже начался или работы уже идут; будущий — остальное */
+const kindOf = (plan: number, fact: number): Kind => (fact >= 100 ? 'done' : plan > 0 || fact > 0 ? 'current' : 'future')
+
+/** Выполнение укрупнённого этапа: по его работам с весом по длительности, у этапа без работ — его собственное */
+function measure(stage: Stage, works: Stage[]): Omit<Phase, 'stage' | 'works' | 'kind'> {
+  if (!works.length) return { plan: stage.planProgress, fact: stage.factProgress, days: length(stage) }
+  const total = works.reduce((n, w) => n + length(w), 0)
+  const avg = (key: 'planProgress' | 'factProgress') => Math.round(works.reduce((n, w) => n + w[key] * length(w), 0) / total)
+  return { plan: avg('planProgress'), fact: avg('factProgress'), days: length(stage) }
+}
+
+/** Словами: успевают ли по графику. Отставание в процентах переводим в дни этапа. */
+function pace(plan: number, fact: number, days: number): { tone: Tone; text: string } {
+  const lag = plan - fact
+  if (Math.abs(lag) <= 2) return { tone: 'ok', text: 'идёт по графику' }
+  if (lag < 0) return { tone: 'ok', text: `опережает график на ${-lag}%` }
+  const behind = Math.max(1, Math.round((lag * days) / 100))
+  return { tone: lag > 10 ? 'danger' : 'warn', text: `отстаёт на ${lag}% — примерно на ${plural(behind, 'день', 'дня', 'дней')}` }
+}
+
+/**
+ * План работ объекта: завершённые этапы, текущие и будущие. У текущих полоса показывает, сколько сделано по факту,
+ * а черта на ней — где работы должны быть по графику на сегодня. Сколько сделано, отмечают прораб, руководитель и администратор.
+ */
+export function StageTimeline({ siteId }: { siteId: string }) {
+  const { stagesOf, role } = useApp()
   const stages = stagesOf(siteId)
-  const l1 = stages.filter((s) => s.level === 1)
+  const canReport = !!role && PROGRESS_REPORTERS.includes(role.id)
+  const phases: Phase[] = stages
+    .filter((s) => s.level === 1)
+    .sort((a, b) => a.start.localeCompare(b.start))
+    .map((stage) => {
+      const works = stages.filter((w) => w.parentId === stage.id).sort((a, b) => a.start.localeCompare(b.start))
+      const m = measure(stage, works)
+      return { stage, works, ...m, kind: kindOf(m.plan, m.fact) }
+    })
+  if (!phases.length) return <p className="text-muted-foreground">План работ пока пуст.</p>
+  const of = (kind: Kind) => phases.filter((p) => p.kind === kind)
+
   return (
-    <div className="space-y-4">
-      {l1.map((p) => {
-        const children = stages.filter((s) => s.parentId === p.id)
-        return (
-          <div key={p.id} className="bg-card rounded-xl border border-border overflow-hidden">
-            <div className={cn('px-4 py-3 flex flex-wrap items-center justify-between gap-2 border-b border-border', p.status === 'in_progress' ? 'bg-info-bg/60' : 'bg-muted/50')}>
-              <div className="font-semibold text-lg">{p.name}</div>
-              <div className="flex items-center gap-2 text-[14px] text-muted-foreground">
-                <span>{fmtDate(p.start)} — {fmtDate(p.end)}</span>
-                <Badge tone={STAGE_STATUS[p.status].tone}>{STAGE_STATUS[p.status].label}</Badge>
-              </div>
-            </div>
-            <ul className="divide-y divide-border">
-              {children.map((s) => (
-                <li key={s.id} className={cn('px-4 py-3', s.status === 'in_progress' && 'bg-info-bg/30')}>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="font-semibold text-[16px] flex items-center gap-2">
-                      {s.status === 'in_progress' && <span className="w-2.5 h-2.5 rounded-sm bg-primary" aria-hidden />}
-                      {s.name}
-                    </div>
-                    <div className="text-[14px] text-muted-foreground">{fmtDate(s.start)} — {fmtDate(s.end)}</div>
-                  </div>
-                  <ProgressBar stage={s} now={now} />
-                  {!compact && s.ruleKey && rules[s.ruleKey] && (
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[14px]">
-                      <span className="text-muted-foreground">Нужна техника:</span>
-                      {rules[s.ruleKey].required.map((r) => (
-                        <span key={r.type} className="inline-flex items-center gap-1.5 bg-muted rounded-sm pl-1.5 pr-3 py-0.5 font-semibold">
-                          <VehicleIcon type={r.type} className="w-7 h-4" fill={EQUIPMENT[r.type].color} />
-                          {EQUIPMENT[r.type].name} ×{r.min}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
+    <div className="space-y-8">
+      {of('done').length > 0 && (
+        <Section title="Завершённые" count={of('done').length}>
+          <ul className="bg-card rounded-xl border border-border divide-y divide-border">
+            {of('done').map((p) => (
+              <li key={p.stage.id} className="px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <CheckCircle2 className="w-5 h-5 text-ok shrink-0" aria-hidden />
+                <span className="font-semibold">{p.stage.name}</span>
+                <span className="text-[14px] text-muted-foreground">{range(p.stage)}</span>
+                {p.plan < 100 && <span className="text-[14px] text-ok font-semibold">досрочно</span>}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {of('current').length > 0 && (
+        <Section title="Текущие" count={of('current').length}>
+          <Legend />
+          <div className="space-y-4">
+            {of('current').map((p) => <CurrentPhase key={p.stage.id} phase={p} canReport={canReport} />)}
           </div>
-        )
-      })}
+        </Section>
+      )}
+
+      {of('future').length > 0 && (
+        <Section title="Будущие" count={of('future').length}>
+          <ul className="bg-card rounded-xl border border-border divide-y divide-border">
+            {of('future').map((p) => (
+              <li key={p.stage.id} className="px-4 py-3">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <Circle className="w-5 h-5 text-muted-foreground shrink-0" aria-hidden />
+                  <span className="font-semibold">{p.stage.name}</span>
+                  <span className="text-[14px] text-muted-foreground">{range(p.stage)} · {startsIn(p.stage)}</span>
+                </div>
+                {p.works.length > 0 && (
+                  <p className="mt-1 pl-8 text-[14px] text-muted-foreground">{p.works.map((w) => w.name).join(' → ')}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
     </div>
   )
 }
 
-const DAY = 86_400_000
-/** Дата плана «2026-10-01» — это весь день по Москве, с полуночи. Иначе этап «кончался» в 03:00 своего последнего дня. */
-const dayStart = (date: string) => Date.parse(date.length === 10 ? `${date}T00:00:00+03:00` : date)
+function startsIn(stage: Stage) {
+  const n = daysBetween(todayISO(), stage.start)
+  return n <= 0 ? 'начинается сегодня' : n === 1 ? 'начнётся завтра' : `начнётся через ${plural(n, 'день', 'дня', 'дней')}`
+}
 
-function ProgressBar({ stage, now }: { stage: Stage; now: number }) {
-  const start = dayStart(stage.start)
-  const end = dayStart(stage.end) + DAY  // включительно; и однодневный этап не делит на ноль (было «NaN%»)
-  const pct = Math.round(Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100)))
-  const fill = stage.status === 'done' ? 100 : stage.status === 'planned' ? 0 : pct
+function Section({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
   return (
-    <div className="mt-2 flex items-center gap-3">
-      <div className="flex-1 h-3 rounded-sm bg-muted overflow-hidden" aria-hidden>
-        <div
-          className={cn('h-full rounded-sm', stage.status === 'done' ? 'bg-ok' : 'bg-primary')}
-          style={{ width: `${fill}%` }}
-        />
-      </div>
-      <span className="text-[14px] font-semibold w-12 text-right">{fill}%</span>
+    <section>
+      <h2 className="text-[18px] font-semibold mb-3">{title} <span className="text-muted-foreground font-normal">· {count}</span></h2>
+      {children}
+    </section>
+  )
+}
+
+function Legend() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mb-3 text-[14px] text-muted-foreground">
+      <span className="inline-flex items-center gap-2"><span className="w-7 h-2.5 rounded-full bg-ok" aria-hidden /> сделано по факту</span>
+      <span className="inline-flex items-center gap-2"><span className="w-[3px] h-4 rounded-full bg-foreground" aria-hidden /> где должно быть по графику на сегодня</span>
     </div>
+  )
+}
+
+/** Полоса выполнения: заливка — сделано по факту, черта — где должно быть по графику */
+function Track({ plan, fact, tone, big }: { plan: number; fact: number; tone: Tone; big?: boolean }) {
+  return (
+    <div className={cn('relative rounded-full bg-muted', big ? 'h-3.5' : 'h-2.5')} role="img" aria-label={`Сделано по факту ${fact}%, по графику должно быть ${plan}%`}>
+      <motion.div
+        className={cn('absolute inset-y-0 left-0 rounded-full', FILL[tone])}
+        initial={{ width: 0 }} animate={{ width: `${fact}%` }} transition={{ duration: 0.5, ease: 'easeOut' }}
+      />
+      <span className="absolute -top-1.5 -bottom-1.5 w-[3px] -ml-[1.5px] rounded-full bg-foreground" style={{ left: `${plan}%` }} aria-hidden />
+    </div>
+  )
+}
+
+function Numbers({ plan, fact, days, className }: { plan: number; fact: number; days: number; className?: string }) {
+  const p = pace(plan, fact, days)
+  return (
+    <div className={cn('flex flex-wrap items-baseline gap-x-4 gap-y-1', className)}>
+      <span>По факту <b>{fact}%</b></span>
+      <span className="text-muted-foreground">по графику {plan}%</span>
+      <span className={cn('font-semibold', TEXT[p.tone])}>{p.text}</span>
+    </div>
+  )
+}
+
+function CurrentPhase({ phase, canReport }: { phase: Phase; canReport: boolean }) {
+  const { stage, works, plan, fact, days } = phase
+  const today = todayISO()
+  const overdue = daysBetween(stage.end, today)
+  // «на каком этапе должно быть и на каком по факту» — словами, по работам этапа
+  const bySchedule = works.filter((w) => w.start <= today && today <= w.end)
+  const inWork = works.filter((w) => w.factProgress > 0 && w.factProgress < 100)
+  return (
+    <article className="bg-card rounded-xl border border-border shadow-[var(--shadow-card)] p-4 sm:p-5">
+      <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h3 className="text-[18px] font-semibold leading-snug">{stage.name}</h3>
+        <span className="text-[14px] text-muted-foreground">{range(stage)}</span>
+      </header>
+      <div className="mt-4"><Track big plan={plan} fact={fact} tone={pace(plan, fact, days).tone} /></div>
+      <Numbers plan={plan} fact={fact} days={days} className="mt-2.5 text-[15px]" />
+      {overdue > 0 && <p className="mt-1 text-[15px] font-semibold text-danger">Срок этапа вышел {plural(overdue, 'день', 'дня', 'дней')} назад</p>}
+
+      {works.length > 0 && (
+        <>
+          <dl className="mt-4 grid sm:grid-cols-2 gap-3 text-[15px]">
+            <div className="rounded-lg bg-muted/60 px-3 py-2">
+              <dt className="text-[13px] text-muted-foreground">Должно идти по графику</dt>
+              <dd className="font-semibold">{bySchedule.length ? bySchedule.map((w) => w.name).join(', ') : 'по графику перерыв между работами'}</dd>
+            </div>
+            <div className="rounded-lg bg-muted/60 px-3 py-2">
+              <dt className="text-[13px] text-muted-foreground">Идёт по факту</dt>
+              <dd className="font-semibold">{inWork.length ? inWork.map((w) => `${w.name} (${w.factProgress}%)`).join(', ') : 'работы ещё не начаты'}</dd>
+            </div>
+          </dl>
+          <ul className="mt-4 border-t border-border divide-y divide-border">
+            {works.map((w) => <WorkRow key={w.id} work={w} canReport={canReport} />)}
+          </ul>
+        </>
+      )}
+      {works.length === 0 && canReport && <FactControl stage={stage} />}
+    </article>
+  )
+}
+
+function WorkRow({ work, canReport }: { work: Stage; canReport: boolean }) {
+  const { rules } = useApp()
+  const kind = kindOf(work.planProgress, work.factProgress)
+  const rule = work.ruleKey ? rules[work.ruleKey] : undefined
+  if (kind !== 'current') {
+    return (
+      <li className="py-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[15px]">
+        {kind === 'done'
+          ? <CheckCircle2 className="w-5 h-5 text-ok shrink-0" aria-hidden />
+          : <Circle className="w-5 h-5 text-muted-foreground shrink-0" aria-hidden />}
+        <span className={cn('font-semibold', kind === 'done' && 'text-muted-foreground')}>{work.name}</span>
+        <span className="text-[14px] text-muted-foreground">{range(work)}{kind === 'future' && ` · ${startsIn(work)}`}</span>
+      </li>
+    )
+  }
+  return (
+    <li className="py-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <span className="font-semibold text-[16px]">{work.name}</span>
+        <span className="text-[14px] text-muted-foreground">{range(work)}</span>
+      </div>
+      <div className="mt-2.5"><Track plan={work.planProgress} fact={work.factProgress} tone={pace(work.planProgress, work.factProgress, length(work)).tone} /></div>
+      <Numbers plan={work.planProgress} fact={work.factProgress} days={length(work)} className="mt-2 text-[14px]" />
+      {work.factUpdatedAt && <p className="text-[13px] text-muted-foreground mt-0.5">Выполнение отмечено {ago(work.factUpdatedAt)}</p>}
+      {rule && rule.required.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[14px]">
+          <span className="text-muted-foreground">Нужна техника:</span>
+          {rule.required.map((r) => (
+            <span key={r.type} className="inline-flex items-center gap-1.5 bg-muted rounded-sm pl-1.5 pr-3 py-0.5 font-semibold">
+              <VehicleIcon type={r.type} className="w-7 h-4" fill={EQUIPMENT[r.type].color} />
+              {EQUIPMENT[r.type].name} ×{r.min}
+            </span>
+          ))}
+        </div>
+      )}
+      {canReport && <FactControl stage={work} />}
+    </li>
+  )
+}
+
+/** «Отметить выполнение»: сколько сделано по факту — ползунком с шагом 5% */
+function FactControl({ stage }: { stage: Stage }) {
+  const { run } = useApp()
+  const [open, setOpen] = useState(false)
+  const [value, setValue] = useState(stage.factProgress)
+  const [busy, setBusy] = useState(false)
+  const id = useId()
+  if (!open) {
+    return (
+      <Button variant="outline" className="mt-3" onClick={() => { setValue(stage.factProgress); setOpen(true) }}>
+        <PencilLine className="w-4 h-4" /> Отметить выполнение
+      </Button>
+    )
+  }
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    setBusy(true)
+    const ok = await run(() => api.setStageProgress(stage.id, value), `«${stage.name}»: отмечено ${value}%`)
+    setBusy(false)
+    if (ok) setOpen(false)
+  }
+  return (
+    <form onSubmit={submit} className="mt-3 rounded-lg bg-muted/60 p-3 space-y-2">
+      <label htmlFor={id} className="flex items-baseline justify-between gap-3 font-semibold text-[15px]">
+        Сделано по факту <span className="tabular-nums text-[20px]">{value}%</span>
+      </label>
+      <input
+        id={id} type="range" min={0} max={100} step={5} value={value} onChange={(e) => setValue(Number(e.target.value))}
+        className="w-full h-11 cursor-pointer accent-[var(--color-primary)]"
+      />
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" disabled={busy || value === stage.factProgress}>{busy && <Loader2 className="w-4 h-4 animate-spin" />} Сохранить</Button>
+        <Button type="button" variant="outline" onClick={() => setOpen(false)}>Отмена</Button>
+      </div>
+    </form>
   )
 }

@@ -294,6 +294,11 @@ STAGES = [
 ]
 
 
+# Выполнение текущих работ по факту: на сколько процентов оно расходится с графиком (минус — отставание).
+# ЖК заметно отстаёт — как и в его отклонениях; детский сад идёт чуть впереди графика.
+FACT_SHIFT = {"s1": -15, "s2": -6, "s3": -7, "s4": 4}
+
+
 def _h(hours: float = 0, days: int = 0, minutes: int = 0) -> timedelta:
     return timedelta(days=days, hours=hours, minutes=minutes)
 
@@ -377,19 +382,24 @@ async def _catalog(session: AsyncSession, today: date) -> None:
     await session.flush()
     shift = today - _PLAN_ANCHOR  # сдвигаем план так, чтобы «сегодня» попадало на те же этапы
     for pos, (sid, site, parent, level, name, start, end, rule_key) in enumerate(STAGES):
-        session.add(
-            Stage(
-                id=sid,
-                site_id=site,
-                parent_id=parent,
-                level=level,
-                name=name,
-                rule_key=rule_key,
-                position=pos,
-                start_date=date.fromisoformat(start) + shift,
-                end_date=date.fromisoformat(end) + shift,
-            )
+        stage = Stage(
+            id=sid,
+            site_id=site,
+            parent_id=parent,
+            level=level,
+            name=name,
+            rule_key=rule_key,
+            position=pos,
+            start_date=date.fromisoformat(start) + shift,
+            end_date=date.fromisoformat(end) + shift,
         )
+        if level == 2:  # у укрупнённых этапов выполнение считается по их работам
+            if stage.end_date < today:
+                stage.fact_progress = 100
+            elif stage.start_date <= today:
+                stage.fact_progress = max(0, min(100, stage.plan_progress_on(today) + FACT_SHIFT[site]))
+                stage.fact_updated_at = utcnow() - _h(18)  # прораб отмечал вчера
+        session.add(stage)
     await session.flush()
 
 

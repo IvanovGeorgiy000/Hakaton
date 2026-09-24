@@ -120,6 +120,11 @@ class StageIn(ApiModel):
     start: date
     end: date
     rule_key: str | None = None
+    fact_progress: int | None = Field(default=None, ge=0, le=100)  # None — не менять
+
+
+class StageProgressIn(ApiModel):
+    fact_progress: int = Field(ge=0, le=100)
 
 
 class ZoneOut(ApiModel):
@@ -143,6 +148,9 @@ class StageOut(ApiModel):
     end: date
     status: Literal["done", "in_progress", "planned"]
     rule_key: str | None
+    plan_progress: int  # сколько должно быть сделано к сегодняшнему дню по графику, %
+    fact_progress: int  # сколько сделано по факту, %
+    fact_updated_at: datetime | None
 
 
 def stage_out(s: Stage, today: date) -> StageOut:
@@ -156,6 +164,9 @@ def stage_out(s: Stage, today: date) -> StageOut:
         end=s.end_date,
         status=s.status_on(today),
         rule_key=s.rule_key,
+        plan_progress=s.plan_progress_on(today),
+        fact_progress=s.fact_progress,
+        fact_updated_at=s.fact_updated_at,
     )
 
 

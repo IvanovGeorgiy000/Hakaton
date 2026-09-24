@@ -13,7 +13,8 @@ import { Badge } from './ui/Badge'
 
 /*
  * Объект целиком: создать, изменить, календарный план, зоны, удалить.
- * Диалоги открываются там, где объект виден, — в списке объектов и на странице объекта (администратор).
+ * Диалоги открываются там, где объект виден, — в списке объектов и на странице объекта (руководитель и администратор;
+ * удалить объект может только администратор).
  */
 
 const ZONE_KINDS: { id: ZoneKind; label: string }[] = [
@@ -74,7 +75,7 @@ function SiteForm({ site, onClose, onCreated }: { site: Site | null; onClose: ()
       <Field label="Подрядчик">
         {(id) => <input id={id} value={form.contractor} maxLength={200} onChange={(e) => set({ contractor: e.target.value })} className={inputCls} />}
       </Field>
-      <Field label="Прораб" hint="Получит доступ к объекту. Нет нужного — сначала заведите его в «Сотрудниках»">
+      <Field label="Прораб" hint="Получит доступ к объекту. Нужного нет в списке — его заводит администратор в «Управлении → Сотрудники»">
         {(id, d) => (
           <select id={id} value={foremanId ?? ''} onChange={(e) => set({ foremanId: e.target.value || null })} aria-describedby={d} className={inputCls}>
             <option value="">— не назначен —</option>
@@ -156,7 +157,7 @@ function Plan({ site }: { site: Site }) {
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold">{work.name}</div>
                         <div className="text-[14px] text-muted-foreground">
-                          {fmtDate(work.start)} — {fmtDate(work.end)} · правило: {work.ruleKey ? rules[work.ruleKey]?.stageName ?? work.ruleKey : 'не задано'}
+                          {fmtDate(work.start)} — {fmtDate(work.end)} · сделано {work.factProgress}% · правило: {work.ruleKey ? rules[work.ruleKey]?.stageName ?? work.ruleKey : 'не задано'}
                         </div>
                       </div>
                       <Badge tone={STAGE_STATUS[work.status].tone}>{STAGE_STATUS[work.status].label}</Badge>
@@ -214,6 +215,7 @@ function StageForm({ stage, level, parentId, defaults, onSave, onCancel }: {
   const [start, setStart] = useState(stage?.start ?? defaults?.start ?? '')
   const [end, setEnd] = useState(stage?.end ?? defaults?.end ?? '')
   const [ruleKey, setRuleKey] = useState(stage?.ruleKey ?? '')
+  const [fact, setFact] = useState(stage?.factProgress ?? 0)
   const [tried, setTried] = useState(false)
   const [busy, setBusy] = useState(false)
   const error = name.trim().length < 2 ? 'Введите название' : !start || !end ? 'Укажите даты' : end < start ? 'Окончание раньше начала' : undefined
@@ -223,7 +225,7 @@ function StageForm({ stage, level, parentId, defaults, onSave, onCancel }: {
     setTried(true)
     if (error) return
     setBusy(true)
-    await onSave({ name: name.trim(), level, parentId: parentId ?? null, start, end, ruleKey: level === 2 ? ruleKey || null : null })
+    await onSave({ name: name.trim(), level, parentId: parentId ?? null, start, end, ruleKey: level === 2 ? ruleKey || null : null, factProgress: fact })
     setBusy(false)
   }
 
@@ -234,6 +236,9 @@ function StageForm({ stage, level, parentId, defaults, onSave, onCancel }: {
       </Field>
       <Field label="Начало">{(id) => <input id={id} type="date" value={start} onChange={(e) => setStart(e.target.value)} className={inputCls} />}</Field>
       <Field label="Окончание">{(id) => <input id={id} type="date" value={end} onChange={(e) => setEnd(e.target.value)} className={inputCls} />}</Field>
+      <Field label="Сделано по факту, %" className="sm:col-span-2" hint={level === 1 ? 'Если у этапа есть работы, выполнение считается по ним' : 'Прораб отмечает это и сам — на странице плана'}>
+        {(id, d) => <input id={id} type="number" min={0} max={100} step={5} value={fact} onChange={(e) => setFact(clampPercent(e.target.value))} aria-describedby={d} className={inputCls} />}
+      </Field>
       {level === 2 && (
         <Field label="Правило «этап → техника»" className="sm:col-span-2" hint="По нему система решает, какая техника должна быть на площадке">
           {(id, d) => (
