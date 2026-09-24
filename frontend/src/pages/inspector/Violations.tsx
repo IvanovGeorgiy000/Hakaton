@@ -86,7 +86,7 @@ export function InspectorViolations() {
                 <td className="px-4 py-3 text-right">
                   {/* настоящая кнопка: строку таблицы с клавиатуры не открыть */}
                   <button type="button" onClick={(e) => { e.stopPropagation(); setSel(a) }} aria-label={`Открыть нарушение № ${a.code}`}
-                    className={cn('inline-flex items-center gap-1 min-h-[44px] px-2 rounded-md font-semibold text-primary hover:underline cursor-pointer')}>
+                    className={cn('inline-flex items-center gap-1 min-h-[44px] px-2 rounded-md font-semibold text-primary hover:underline cursor-pointer whitespace-nowrap')}>
                     {a.status === 'prescribed' ? <><FileWarning className="w-4 h-4" /> № {a.prescriptionNo}</> : 'Открыть'}
                   </button>
                 </td>

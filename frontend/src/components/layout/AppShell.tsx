@@ -1,4 +1,4 @@
-import { Suspense, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { AlertTriangle, Bell, CircleHelp, LogOut, CheckCircle2 } from 'lucide-react'
@@ -11,6 +11,31 @@ import { bySeverity, initials } from '@/store/selectors'
 import { SEVERITY } from '@/lib/labels'
 import { ago, fmtWhen, shortName, todayLabel } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+
+/** Кадр для журнала сохраняется раз в минуту — данные старше 3 минут уже запаздывают, старше 10 — «слепая» зона */
+const STALE_MIN = 3
+const BLIND_MIN = 10
+
+/** Насколько свежие данные с камер: зелёный — всё идёт, жёлтый — запаздывают, красный — кадров давно нет */
+function DataFreshness({ at }: { at: string | null }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
+  const ageMin = at ? (now - Date.parse(at)) / 60_000 : Infinity
+  const tone = !at ? 'bg-border-strong' : ageMin <= STALE_MIN ? 'bg-ok' : ageMin <= BLIND_MIN ? 'bg-warn' : 'bg-danger'
+  const text = !at ? 'Кадров пока нет' : ageMin <= BLIND_MIN ? `Данные на ${fmtWhen(at)}` : `Нет новых кадров с ${fmtWhen(at)}`
+  return (
+    <span
+      className={cn('hidden sm:inline-flex items-center gap-2 text-[14px] mr-2', at && ageMin > BLIND_MIN ? 'text-danger font-medium' : 'text-muted-foreground')}
+      title={at ? `Последний кадр с камер — ${ago(at, new Date(now))}. Кадры разбираются каждые 2 секунды, объекты сверяются с планом раз в минуту` : undefined}
+    >
+      <span className={cn('w-2 h-2 rounded-full', tone)} aria-hidden />
+      {text}
+    </span>
+  )
+}
 
 export interface NavItem { to: string; label: string; Icon: LucideIcon; end?: boolean }
 
@@ -81,10 +106,7 @@ export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: stri
             <span className="font-semibold">{todayLabel()}</span>
           </div>
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
-            <span className="hidden sm:inline-flex items-center gap-2 text-[14px] text-muted-foreground mr-2" title="Кадры с камер разбираются каждые 2 секунды, объекты сверяются с планом раз в минуту">
-              <span className={cn('w-2 h-2 rounded-full', lastDataAt ? 'bg-ok' : 'bg-border-strong')} />
-              {lastDataAt ? `Данные на ${fmtWhen(lastDataAt)}` : 'Кадров пока нет'}
-            </span>
+            <DataFreshness at={lastDataAt} />
             <ThemeMenuButton />
             <NotificationsBell alertsPath={alertsPath} />
             {/* на телефоне справка — здесь: нижняя панель занята разделами роли */}
