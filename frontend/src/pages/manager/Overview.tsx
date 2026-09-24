@@ -10,14 +10,14 @@ import { cn } from '@/lib/utils'
 
 /** Все объекты одним взглядом: светофор, этап, отставание, открытые замечания */
 export function ManagerOverview() {
-  const { sites: visibleSites, siteStatus, alertsForSite, byStage, lastDataAt, base } = useApp()
+  const { sites: visibleSites, siteStatus, alertsForSite, byStage, lastDataAt, base, role } = useApp()
   const counts = { ok: 0, warning: 0, critical: 0 }
   visibleSites.forEach((s) => { counts[siteStatus(s.id)]++ })
   const totalOpen = visibleSites.reduce((n, s) => n + alertsForSite(s.id).filter((a) => isOpen(a.status)).length, 0)
 
   return (
     <div>
-      <PageHeader title="Мои объекты" subtitle={`${todayLabel()}${lastDataAt ? ` · данные на ${fmtWhen(lastDataAt)}` : ''}`} />
+      <PageHeader title={role?.id === 'admin' ? 'Все объекты' : 'Мои объекты'} subtitle={`${todayLabel()}${lastDataAt ? ` · данные на ${fmtWhen(lastDataAt)}` : ''}`} />
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <StatTile label="Нужно вмешаться" value={counts.critical} hint={pluralWord(counts.critical, 'объект', 'объекта', 'объектов')} tone="danger" />
         <StatTile label="Есть замечания" value={counts.warning} hint={pluralWord(counts.warning, 'объект', 'объекта', 'объектов')} tone="warn" />

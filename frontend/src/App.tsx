@@ -1,3 +1,4 @@
+import { lazy, Suspense, type ComponentType } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { MotionConfig } from 'framer-motion'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -6,25 +7,32 @@ import { AppProvider } from '@/store/AppContext'
 import { ThemeProvider } from '@/store/theme'
 import { useApp } from '@/store/context'
 import { AppShell, type NavItem } from '@/components/layout/AppShell'
+import { PageLoading } from '@/components/ui/PageLoading'
 import { Login } from '@/pages/Login'
-import { Help } from '@/pages/Help'
-import { MinimalDemo } from '@/pages/MinimalDemo'
-import { ForemanToday } from '@/pages/foreman/Today'
-import { ForemanCameras } from '@/pages/foreman/Cameras'
-import { ForemanPlan } from '@/pages/foreman/Plan'
-import { ManagerOverview } from '@/pages/manager/Overview'
-import { ManagerSite } from '@/pages/manager/SiteDetail'
-import { ManagerAlerts } from '@/pages/manager/Alerts'
-import { CheckSnapshot } from '@/pages/manager/CheckSnapshot'
-import { InspectorViolations } from '@/pages/inspector/Violations'
-import { InspectorReports } from '@/pages/inspector/Reports'
-import { CamerasPage } from '@/pages/shared/Cameras'
-import { AdminManage } from '@/pages/admin/Manage'
-import { AdminSites } from '@/pages/admin/Sites'
-import { AdminRules } from '@/pages/admin/Rules'
-import { AdminCameras } from '@/pages/admin/Cameras'
-import { AdminUsers } from '@/pages/admin/Users'
-import { AdminAudit } from '@/pages/admin/Audit'
+
+/** Экраны грузятся, когда понадобятся: прорабу на телефоне не нужен код админки */
+function page<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) {
+  return lazy(() => load().then((module) => ({ default: module[name] })))
+}
+
+const Help = page(() => import('@/pages/Help'), 'Help')
+const MinimalDemo = page(() => import('@/pages/MinimalDemo'), 'MinimalDemo')
+const ForemanToday = page(() => import('@/pages/foreman/Today'), 'ForemanToday')
+const ForemanCameras = page(() => import('@/pages/foreman/Cameras'), 'ForemanCameras')
+const ForemanPlan = page(() => import('@/pages/foreman/Plan'), 'ForemanPlan')
+const ManagerOverview = page(() => import('@/pages/manager/Overview'), 'ManagerOverview')
+const ManagerSite = page(() => import('@/pages/manager/SiteDetail'), 'ManagerSite')
+const ManagerAlerts = page(() => import('@/pages/manager/Alerts'), 'ManagerAlerts')
+const CheckSnapshot = page(() => import('@/pages/manager/CheckSnapshot'), 'CheckSnapshot')
+const InspectorViolations = page(() => import('@/pages/inspector/Violations'), 'InspectorViolations')
+const InspectorReports = page(() => import('@/pages/inspector/Reports'), 'InspectorReports')
+const CamerasPage = page(() => import('@/pages/shared/Cameras'), 'CamerasPage')
+const AdminManage = page(() => import('@/pages/admin/Manage'), 'AdminManage')
+const AdminSites = page(() => import('@/pages/admin/Sites'), 'AdminSites')
+const AdminRules = page(() => import('@/pages/admin/Rules'), 'AdminRules')
+const AdminCameras = page(() => import('@/pages/admin/Cameras'), 'AdminCameras')
+const AdminUsers = page(() => import('@/pages/admin/Users'), 'AdminUsers')
+const AdminAudit = page(() => import('@/pages/admin/Audit'), 'AdminAudit')
 
 /** Меню ролей: у каждой роли — не больше пяти разделов (помещаются в нижнюю панель телефона) */
 const NAV: Record<string, NavItem[]> = {
@@ -63,7 +71,7 @@ function Router() {
   return (
     <Routes>
       {/* Минимальная страница по ТЗ — доступна без выбора роли */}
-      <Route path="/demo" element={<MinimalDemo />} />
+      <Route path="/demo" element={<Suspense fallback={<PageLoading />}><MinimalDemo /></Suspense>} />
       {!role && <Route path="*" element={<Login />} />}
       {role && (
       <Route element={<AppShell nav={NAV[role.id]} alertsPath={ALERTS_PATH[role.id]} />}>

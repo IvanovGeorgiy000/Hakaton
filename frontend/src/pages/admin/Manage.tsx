@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { Suspense, useEffect, useRef } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Building2, Camera, History, ListChecks, Users } from 'lucide-react'
+import { PageLoading } from '@/components/ui/PageLoading'
 import { cn } from '@/lib/utils'
 
 const SECTIONS = [
@@ -35,7 +36,10 @@ export function AdminManage() {
           </NavLink>
         ))}
       </nav>
-      <Outlet />
+      {/* вкладки остаются на месте, пока грузится код раздела */}
+      <Suspense fallback={<PageLoading />}>
+        <Outlet />
+      </Suspense>
     </div>
   )
 }

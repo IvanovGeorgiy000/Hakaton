@@ -4,7 +4,7 @@
  * keycloak-js сам ведёт поток авторизации (redirect + PKCE) и обновляет токен; мы кладём свежий access-token
  * туда же, откуда его берёт API-клиент (setToken), поэтому остальной код запросов не меняется.
  */
-import Keycloak from 'keycloak-js'
+import type Keycloak from 'keycloak-js'
 import { setToken, setTokenRefresher } from '@/api'
 
 export interface KeycloakConfig {
@@ -20,16 +20,17 @@ let unavailable = false  // проверка сессии не удалась: K
 /** Инициализировать один раз: тихо проверить активную сессию и подключить продление токена */
 export function initKeycloak(cfg: KeycloakConfig): Promise<boolean> {
   if (ready) return ready
-  const kc = new Keycloak({ url: cfg.url, realm: cfg.realm, clientId: cfg.clientId })
-  instance = kc
-  ready = kc
-    .init({
-      onLoad: 'check-sso',
-      pkceMethod: 'S256',
-      silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
-      checkLoginIframe: false,
-    })
-    .then((authenticated) => {
+  // библиотека грузится, только когда вход идёт через Keycloak
+  ready = import('keycloak-js')
+    .then(async ({ default: KeycloakClient }) => {
+      const kc = new KeycloakClient({ url: cfg.url, realm: cfg.realm, clientId: cfg.clientId })
+      instance = kc
+      const authenticated = await kc.init({
+        onLoad: 'check-sso',
+        pkceMethod: 'S256',
+        silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
+        checkLoginIframe: false,
+      })
       if (authenticated && kc.token) {
         setToken(kc.token)
         // Перед каждым запросом: осталось меньше 30 с — обновляем. Обновление ровно в момент истечения опаздывало:
@@ -51,6 +52,7 @@ export function initKeycloak(cfg: KeycloakConfig): Promise<boolean> {
 export async function keycloakLogin(): Promise<void> {
   // PKCE требует Web Crypto, а он есть только на https и localhost: по http://192.168.… с телефона вход не заработает
   if (!window.isSecureContext) throw new Error('Вход через Keycloak работает только по https или прямо на сервере (localhost).')
+  await ready  // библиотека и проверка сессии могут ещё загружаться
   if (!instance || unavailable) throw new Error('Сервер входа Keycloak не отвечает. Проверьте, что он запущен, и обновите страницу.')
   await instance.login()
 }
