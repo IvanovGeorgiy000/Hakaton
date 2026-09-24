@@ -35,7 +35,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
   const [comment, setComment] = useState('')
   const [saving, setSaving] = useState(false)
   const [watching, setWatching] = useState(false)
-  const [zoomed, setZoomed] = useState(false)  // кадр-доказательство на весь экран
+  const [zoomed, setZoomed] = useState(false)  // кадр-доказательство на всю вкладку
   const snaps = alert.evidenceSnapshots
   const [picked, setPicked] = useState<string | null>(null)
   const snap = snaps.find((s) => s.id === picked) ?? snaps[snaps.length - 1]
@@ -88,7 +88,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
               <Button variant="outline" size="sm" onClick={() => setWatching(true)}><Video className="w-4 h-4" /> Смотреть камеру сейчас</Button>
             )}
           </div>
-          <button type="button" onClick={() => setZoomed(true)} aria-label="Открыть кадр на весь экран" className="relative block w-full rounded-lg cursor-zoom-in group">
+          <button type="button" onClick={() => setZoomed(true)} aria-label="Развернуть кадр на всю вкладку" className="relative block w-full rounded-lg cursor-zoom-in group">
             <CameraFrame camera={cam} snapshot={snap} highlight={highlight} offline={alert.kind === 'camera_offline'} />
             <span className="absolute left-2 bottom-2 w-9 h-9 rounded-md bg-black/60 text-white flex items-center justify-center transition-colors group-hover:bg-black/80" aria-hidden>
               <Maximize2 className="w-4 h-4" />

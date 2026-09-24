@@ -13,7 +13,7 @@ function readBoxes() {
 }
 
 /**
- * Видеостена: живое видео всех камер сразу. Нажатие на камеру — на весь экран, там же стрелками — к соседним.
+ * Видеостена: живое видео всех камер сразу. Нажатие на камеру — просмотр на всю вкладку, там же стрелками — к соседним.
  * sections — камеры разложены по объектам (у руководителя, инспектора, администратора).
  */
 export function VideoWall({ cameras, sections, empty = 'Камер пока нет.', actions }: {
@@ -39,7 +39,7 @@ export function VideoWall({ cameras, sections, empty = 'Камер пока не
     <div>
       <div className={cn('flex flex-wrap items-center justify-between gap-3 mb-4', !cameras.length && 'hidden')}>
         <p className="text-muted-foreground" role="status">
-          В эфире {onAir} из {cameras.length} {pluralWord(cameras.length, 'камеры', 'камер', 'камер')} · нажмите на видео, чтобы открыть на весь экран
+          В эфире {onAir} из {cameras.length} {pluralWord(cameras.length, 'камеры', 'камер', 'камер')} · нажмите на видео, чтобы развернуть его на всю вкладку
         </p>
         <button
           type="button" onClick={() => setShowBoxes(!showBoxes)} aria-pressed={showBoxes}

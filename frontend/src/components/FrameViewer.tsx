@@ -2,7 +2,7 @@ import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import type { Snapshot } from '@/data'
 import { useApp } from '@/store/context'
 import { cn, fmtWhen } from '@/lib/utils'
-import { FullscreenPanel } from './ui/FullscreenPanel'
+import { ViewerPanel } from './ui/ViewerPanel'
 import { CameraFrame } from './CameraFrame'
 
 interface Props {
@@ -16,7 +16,7 @@ interface Props {
   offline?: boolean
 }
 
-/** Кадры-доказательства на весь экран: стрелки ← → листают кадры, Escape закрывает */
+/** Кадры-доказательства на всю вкладку: стрелки ← → листают кадры, Escape закрывает */
 export function FrameViewer({ snapshots, index, onIndex, onClose, highlight, offline }: Props) {
   const { cameraOf, bySite, byZone } = useApp()
   const snapshot = index !== null ? snapshots[index] : undefined
@@ -25,8 +25,8 @@ export function FrameViewer({ snapshots, index, onIndex, onClose, highlight, off
   const step = (d: number) => index !== null && many && onIndex((index + d + snapshots.length) % snapshots.length)
   const control = 'w-11 h-11 rounded-lg flex items-center justify-center cursor-pointer transition-colors hover:bg-white/15'
   return (
-    <FullscreenPanel
-      open={!!snapshot} label={camera ? `Кадр с камеры «${camera.name}» — на весь экран` : ''} onClose={onClose}
+    <ViewerPanel
+      open={!!snapshot} label={camera ? `Кадр с камеры «${camera.name}» — просмотр на всю вкладку` : ''} onClose={onClose}
       onKey={(e) => {
         if (e.key === 'ArrowRight') step(1)
         if (e.key === 'ArrowLeft') step(-1)
@@ -62,6 +62,6 @@ export function FrameViewer({ snapshots, index, onIndex, onClose, highlight, off
           </div>
         </>
       )}
-    </FullscreenPanel>
+    </ViewerPanel>
   )
 }

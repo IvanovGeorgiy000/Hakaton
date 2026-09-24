@@ -4,7 +4,7 @@ import type { Camera, LiveCamera } from '@/data'
 import { useApp } from '@/store/context'
 import { tileStatus, usePageVisible, useWhep, whepUrl } from '@/lib/video'
 import { ago, cn } from '@/lib/utils'
-import { FullscreenPanel } from '@/components/ui/FullscreenPanel'
+import { ViewerPanel } from '@/components/ui/ViewerPanel'
 import { DetectionBoxes } from './DetectionBoxes'
 import { LiveBadge, SeenNow } from './VideoTile'
 
@@ -19,13 +19,13 @@ interface Props {
   onShowBoxes: (on: boolean) => void
 }
 
-/** Камера на весь экран: стрелки ← → листают камеры, Escape закрывает */
+/** Камера на всю вкладку: стрелки ← → листают камеры, Escape закрывает */
 export function CameraViewer({ cameras, index, onIndex, onClose, live, showBoxes, onShowBoxes }: Props) {
   const camera = index !== null ? cameras[index] : undefined
   const step = (d: number) => index !== null && cameras.length > 1 && onIndex((index + d + cameras.length) % cameras.length)
   return (
-    <FullscreenPanel
-      open={!!camera} label={camera ? `${camera.name} — на весь экран` : ''} onClose={onClose}
+    <ViewerPanel
+      open={!!camera} label={camera ? `${camera.name} — просмотр на всю вкладку` : ''} onClose={onClose}
       onKey={(e) => {
         if (e.key === 'ArrowRight') step(1)
         if (e.key === 'ArrowLeft') step(-1)
@@ -39,7 +39,7 @@ export function CameraViewer({ cameras, index, onIndex, onClose, live, showBoxes
           onClose={onClose}
         />
       )}
-    </FullscreenPanel>
+    </ViewerPanel>
   )
 }
 

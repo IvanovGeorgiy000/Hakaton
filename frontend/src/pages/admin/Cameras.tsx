@@ -39,7 +39,7 @@ export function AdminCameras() {
   return (
     <div>
       <PageHeader
-        title="Камеры" subtitle="Какая камера за какой зоной следит, на связи ли она. Нажмите на видео — откроется на весь экран"
+        title="Камеры" subtitle="Какая камера за какой зоной следит, на связи ли она. Нажмите на видео — развернётся на всю вкладку"
         action={<Button size="lg" onClick={() => setAdding(true)}><Plus className="w-5 h-5" /> Добавить камеру</Button>}
       />
       <VideoWall

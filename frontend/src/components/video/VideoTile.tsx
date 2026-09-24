@@ -10,14 +10,14 @@ interface Props {
   camera: Camera
   live?: LiveCamera
   showBoxes: boolean
-  /** Видео не подключать (открыт просмотр на весь экран — не держим два потока одной камеры) */
+  /** Видео не подключать (открыт просмотр на всю вкладку — не держим два потока одной камеры) */
   paused?: boolean
   onOpen: () => void
   /** Кнопки под видео (у администратора — управление камерой) */
   actions?: ReactNode
 }
 
-/** Плитка видеостены: живое видео камеры. Нажатие на видео — на весь экран. Видео идёт, только пока плитка на экране. */
+/** Плитка видеостены: живое видео камеры. Нажатие на видео — просмотр на всю вкладку. Видео идёт, только пока плитка на экране. */
 export function VideoTile({ camera, live, showBoxes, paused, onOpen, actions }: Props) {
   const { meta, byZone } = useApp()
   const { ref, inView } = useInView<HTMLElement>()
@@ -30,7 +30,7 @@ export function VideoTile({ camera, live, showBoxes, paused, onOpen, actions }: 
   return (
     <article ref={ref} className="bg-card rounded-xl border border-border shadow-[var(--shadow-card)] overflow-hidden transition-[box-shadow,border-color] duration-150 hover:border-border-strong hover:shadow-[var(--shadow-hover)] flex flex-col">
       <button
-        type="button" onClick={onOpen} aria-label={`${camera.name}: ${STATUS_LABEL[status]}. Открыть на весь экран`}
+        type="button" onClick={onOpen} aria-label={`${camera.name}: ${STATUS_LABEL[status]}. Развернуть на всю вкладку`}
         className="group relative block w-full aspect-video bg-slate-950 overflow-hidden cursor-pointer"
       >
         <video ref={videoRef} autoPlay muted playsInline className={cn('absolute inset-0 w-full h-full object-contain', state !== 'playing' && 'opacity-0')} />
