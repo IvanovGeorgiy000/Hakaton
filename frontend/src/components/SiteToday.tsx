@@ -40,7 +40,7 @@ export function SiteToday({ siteId, camerasLink }: { siteId: string; camerasLink
         </div>
         <div className="grid sm:grid-cols-3 gap-3 mt-5">{/* показатели */}
           <StatTile label="Этап сейчас" value={<span className="text-xl">{stage?.name ?? 'Нет этапа по плану'}</span>} hint={stage ? `по графику до ${fmtDate(stage.end)}` : undefined} />
-          <StatTile label="Выполнено работ" value={`${site.factProgress}%`} hint={lag > 0 ? `отставание ${lag}% от плана (${site.planProgress}%)` : `с опережением плана (${site.planProgress}%)`} tone={lag > 5 ? 'danger' : lag > 0 ? 'warn' : 'ok'} />
+          <StatTile label="Выполнено работ" value={`${site.factProgress}%`} hint={lag > 0 ? `отставание ${lag}% от плана (${site.planProgress}%)` : lag < 0 ? `с опережением плана (${site.planProgress}%)` : 'точно по плану'} tone={lag > 5 ? 'danger' : lag > 0 ? 'warn' : 'ok'} />
           <StatTile label="Открытых замечаний" value={open.length} hint={!open.length ? 'всё спокойно' : open.some((a) => a.severity === 'high') ? `из них ${plural(open.filter((a) => a.severity === 'high').length, 'срочное', 'срочных', 'срочных')}` : 'срочных нет'} tone={open.some((a) => a.severity === 'high') ? 'danger' : open.length ? 'warn' : 'ok'} />
         </div>
       </div>

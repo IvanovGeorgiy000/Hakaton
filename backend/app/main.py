@@ -35,7 +35,12 @@ async def _scheduler() -> None:
         try:
             async with SessionLocal() as session:
                 site_ids = await all_site_ids(session)
-            for site_id in site_ids:
+        except Exception:
+            log.exception("Сбой фоновой проверки — повторим в следующем цикле")
+            site_ids = []
+        # каждый объект отдельно: сбой одной камеры или сервиса анализа не должен оставлять без проверки остальные
+        for site_id in site_ids:
+            try:
                 async with SessionLocal() as session:
                     report = await capture_site(session, site_id, trigger="schedule")
                     log.info(
@@ -45,16 +50,21 @@ async def _scheduler() -> None:
                         len(report.errors),
                         len(report.check.violations),
                     )
-            if (cycle := cycle + 1) % 12 == 0:
+            except Exception:
+                log.exception("Сбой проверки объекта %s — остальные объекты проверяем дальше", site_id)
+        if (cycle := cycle + 1) % 12 == 0:
+            try:
                 async with SessionLocal() as session:
                     log.info("Удалено старых кадров: %d", await cleanup_frames(session))
-        except Exception:
-            log.exception("Сбой фоновой проверки — повторим в следующем цикле")
+            except Exception:
+                log.exception("Не удалось удалить старые кадры")
         await asyncio.sleep(max(5.0, interval - (time.monotonic() - started)))
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    if problems := settings.insecure_defaults():
+        raise RuntimeError("Боевой запуск (SK_DEMO_MODE=false) с небезопасными настройками:\n- " + "\n- ".join(problems))
     settings.frames_dir.mkdir(parents=True, exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

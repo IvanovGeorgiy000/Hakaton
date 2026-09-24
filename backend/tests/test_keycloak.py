@@ -99,3 +99,52 @@ async def test_local_login_still_works_when_keycloak_enabled(client, keycloak):
     # свои HS256-токены принимаются одновременно с Keycloak
     foreman = await login_as(client, "foreman")
     assert (await client.get("/api/alerts", headers=foreman)).status_code == 200
+
+
+async def test_role_comes_from_keycloak_and_is_synced_to_database(client, keycloak):
+    # прорабу в Keycloak выдали роль руководителя: приложение слушается Keycloak, привязка к объекту остаётся своя
+    me = (
+        await client.get("/api/auth/me", headers={"Authorization": f"Bearer {_make_token(realm_access={'roles': ['manager']})}"})
+    ).json()
+    assert me["role"] == "manager" and me["siteIds"] == ["s1"]
+    admin = await login_as(client, "admin")
+    staff = {u["login"]: u for u in (await client.get("/api/users", headers=admin)).json()}
+    assert staff["prorab"]["role"] == "manager"
+    # роль вернули в Keycloak — вернулась и в приложении
+    me = (await client.get("/api/auth/me", headers={"Authorization": f"Bearer {_make_token()}"})).json()
+    assert me["role"] == "foreman"
+
+
+async def test_keycloak_down_is_503_not_logout(client, keycloak, monkeypatch):
+    from app.keycloak import KeycloakUnavailable
+
+    async def down(*, force: bool = False) -> None:
+        raise KeycloakUnavailable("нет связи")
+
+    monkeypatch.setattr(keycloak, "_load_keys", down)
+    response = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {_make_token()}"})
+    assert response.status_code == 503  # не 401: фронтенд на 401 выходит из системы
+
+
+async def test_disabled_user_is_told_so(client, keycloak):
+    from sqlalchemy import update
+
+    from app.db import SessionLocal
+    from app.models import User
+
+    async with SessionLocal() as session:
+        await session.execute(update(User).where(User.login == "prorab").values(is_active=False))
+        await session.commit()
+    response = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {_make_token()}"})
+    assert response.status_code == 403 and "отключена" in response.json()["detail"]
+
+
+async def test_unknown_kid_refetches_keys_at_most_every_30s():
+    from app.keycloak import KeycloakVerifier
+
+    verifier = KeycloakVerifier(ISSUER, CLIENT)
+    verifier._keys = {"k": object()}
+    verifier._fetched_at = time.monotonic() - 10
+    assert verifier._cache_ok(force=True)  # только что перечитывали — мусорный kid в Keycloak не гоняет
+    verifier._fetched_at = time.monotonic() - 40
+    assert not verifier._cache_ok(force=True) and verifier._cache_ok(force=False)

@@ -43,13 +43,20 @@ export function Login() {
     <div className="min-h-dvh flex flex-col items-center px-4 py-10 sm:py-16">
       <Logo className="text-xl mb-8" />
 
-      {keycloak ? (
+      {meta.isPending ? (
+        // режим входа ещё не известен — не показываем форму, которая через миг может смениться кнопкой Keycloak
+        <div role="status" className="w-full max-w-[420px] min-h-[200px] bg-card border border-border rounded-2xl shadow-[var(--shadow-card)] flex items-center justify-center">
+          <Loader2 className="w-7 h-7 text-muted-foreground animate-spin" />
+          <span className="sr-only">Загружаем…</span>
+        </div>
+      ) : keycloak ? (
         <div className="w-full max-w-[420px] bg-card border border-border rounded-2xl shadow-[var(--shadow-card)] p-6 sm:p-8 text-center">
           <h1 className="text-2xl font-semibold">Вход в систему</h1>
           <p className="text-muted-foreground mt-1">Единый вход организации через Keycloak</p>
-          <Button size="lg" full className="mt-6" onClick={keycloakLogin}>
+          <Button size="lg" full className="mt-6" onClick={() => { setError(null); keycloakLogin().catch((e) => setError(e instanceof Error ? e.message : 'Не удалось перейти ко входу')) }}>
             <LogIn className="w-5 h-5" /> Войти через Keycloak
           </Button>
+          {error && <p role="alert" className="text-danger text-[15px] mt-3">{error}</p>}
           <p className="text-[13px] text-muted-foreground mt-3">Вас перенаправит на страницу входа Keycloak и обратно.</p>
         </div>
       ) : (

@@ -1,5 +1,6 @@
 """Доступ: пароли (scrypt из стандартной библиотеки), токены JWT, роли, шифрование паролей камер."""
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -16,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db import get_session, utcnow
-from app.keycloak import KeycloakError, get_verifier, roles_from_claims, select_role
+from app.keycloak import KeycloakError, KeycloakUnavailable, get_verifier, roles_from_claims, select_role
 from app.models import User, new_id
 
 settings = get_settings()
@@ -39,6 +40,16 @@ def verify_password(password: str, stored: str) -> bool:
     except (ValueError, TypeError):
         return False
     return hmac.compare_digest(digest.hex(), digest_hex)
+
+
+# хэш для несуществующего логина: проверяем пароль всегда, чтобы по времени ответа нельзя было узнать, есть ли такой логин
+_DUMMY_HASH = hash_password(secrets.token_hex(8))
+
+
+async def check_password(password: str, stored: str | None) -> bool:
+    """scrypt занимает ~25 мс процессора — считаем в отдельном потоке, не останавливая сервер."""
+    ok = await asyncio.to_thread(verify_password, password, stored or _DUMMY_HASH)
+    return ok and stored is not None
 
 
 # ---------- пароли камер: шифруем, чтобы в базе не лежали в открытом виде ----------
@@ -71,7 +82,10 @@ def create_token(user: User) -> str:
 
 
 async def _user_from_keycloak(session: AsyncSession, claims: dict) -> User:
-    """Сопоставить пользователя Keycloak с записью в базе (по логину) или собрать временного по роли из токена."""
+    """Сопоставить пользователя Keycloak с записью в базе (по логину) или собрать временного по роли из токена.
+
+    Роль всегда из Keycloak: ролями управляют там. Из базы — только привязка к объектам.
+    """
     role = select_role(roles_from_claims(claims))
     if role is None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "У пользователя нет роли для СтройКонтроля")
@@ -79,8 +93,11 @@ async def _user_from_keycloak(session: AsyncSession, claims: dict) -> User:
     user = await session.scalar(select(User).where(User.login == username)) if username else None
     if user is not None:
         if not user.is_active:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Учётная запись отключена")
-        return user  # запись из базы — с её ролью и привязкой к объектам
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Учётная запись отключена администратором")
+        if user.role != role:  # роль поменяли в Keycloak — переносим в базу, чтобы и список сотрудников показывал её
+            user.role = role
+            await session.commit()
+        return user
     if not settings.keycloak_auto_provision:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Пользователь не заведён в системе")
     # временный пользователь: роль из Keycloak, объектов нет (руководителю/инспектору/админу они и не нужны)
@@ -109,11 +126,17 @@ async def current_user(
         alg = jwt.get_unverified_header(token).get("alg", "")
     except jwt.PyJWTError:
         raise unauthorized from None
+    if not isinstance(alg, str):  # "alg": null или число раньше давали 500
+        raise unauthorized
 
     verifier = get_verifier()
     if alg.startswith("RS") and verifier is not None:  # токен Keycloak
         try:
             claims = await verifier.verify(token)
+        except KeycloakUnavailable:  # 401 выкинул бы пользователя, хотя токен, возможно, в порядке
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE, "Сервер входа Keycloak не отвечает. Попробуйте чуть позже."
+            ) from None
         except KeycloakError:
             raise unauthorized from None
         return await _user_from_keycloak(session, claims)

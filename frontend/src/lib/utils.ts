@@ -60,6 +60,16 @@ export function fmtWhen(iso: string) {
   return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', timeZone: TZ }) + ', ' + fmtTime(iso)
 }
 
+/** Цвет текста на плашке цвета `bg` (#rrggbb): чёрный или белый — где контраст по WCAG выше. Белый на жёлтом и салатовом не читался. */
+export function inkOn(bg: string): '#000' | '#fff' {
+  const lin = (i: number) => {
+    const c = parseInt(bg.slice(i, i + 2), 16) / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }
+  const luminance = 0.2126 * lin(1) + 0.7152 * lin(3) + 0.0722 * lin(5)
+  return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) ? '#000' : '#fff'
+}
+
 export function plural(n: number, one: string, few: string, many: string) {
   const m10 = n % 10, m100 = n % 100
   if (m10 === 1 && m100 !== 11) return `${n} ${one}`

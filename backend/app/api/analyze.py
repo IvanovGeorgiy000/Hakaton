@@ -14,7 +14,7 @@ from app.models import Rule
 from app.schemas import AnalyzeOut, ApiModel, BoxOut, CheckRow, DetectionOut, DeviationOut, RuleOut, rule_out
 from app.security import CurrentUser, Session
 from app.services.analysis import AnalysisError, get_analyzer, get_mock
-from app.services.camera_client import CameraError, mock_frame, normalize_frame
+from app.services.camera_client import CameraError, mock_frame, normalize_frame_async
 from app.services.engine import current_stage, local_day
 
 settings = get_settings()
@@ -58,7 +58,7 @@ async def _analyze(session: AsyncSession, *, image: UploadFile | None, sample: s
         if len(raw) > settings.max_frame_bytes:
             raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Файл слишком большой")
         try:
-            jpeg = normalize_frame(raw)
+            jpeg = await normalize_frame_async(raw)
         except CameraError:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Это не картинка. Загрузите фото JPG или PNG.") from None
         # рамки считаются по кадру 16:9 — возвращаем именно его, чтобы они легли на изображение точно

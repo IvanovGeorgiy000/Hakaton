@@ -28,6 +28,12 @@ export function setToken(value: string | null) {
   } catch { /* приватный режим */ }
 }
 
+/** Продление токена перед запросом — задаёт вход через Keycloak (store/keycloak.ts); у своих токенов его нет */
+let ensureFreshToken: (() => Promise<void>) | null = null
+export function setTokenRefresher(fn: (() => Promise<void>) | null) {
+  ensureFreshToken = fn
+}
+
 /** Сервер сообщил, что вход больше не действует — хранилище выходит из системы */
 export const UNAUTHORIZED_EVENT = 'sk:unauthorized'
 
@@ -35,13 +41,17 @@ function messageOf(payload: unknown, status: number): string {
   const detail = (payload as { detail?: unknown } | null)?.detail
   if (typeof detail === 'string') return detail
   if (Array.isArray(detail) && detail.length) return 'Проверьте заполнение полей формы'
+  if (status === 413) return 'Файл слишком большой. Выберите фото поменьше.'  // nginx отвечает на это HTML-страницей
   return status >= 500 ? 'Ошибка на сервере. Попробуйте ещё раз.' : `Запрос не выполнен (${status})`
 }
 
 export async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  // не удалось продлить — отправляем как есть: сервер ответит 401, и приложение покажет вход
+  if (ensureFreshToken && token) await ensureFreshToken().catch(() => {})
+  const sent = token
   const form = body instanceof FormData
   const headers: Record<string, string> = {}
-  if (token) headers.Authorization = `Bearer ${token}`
+  if (sent) headers.Authorization = `Bearer ${sent}`
   if (body !== undefined && !form) headers['Content-Type'] = 'application/json'
 
   let response: Response
@@ -55,7 +65,8 @@ export async function request<T>(method: string, path: string, body?: unknown): 
   if (response.status === 204) return undefined as T
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
-    if (response.status === 401 && token && path !== '/auth/login' && path !== '/auth/demo-login') {
+    // выходим, только если отказали текущему токену: поздний ответ на запрос со старым токеном не должен выбить новый вход
+    if (response.status === 401 && sent && sent === token && path !== '/auth/login' && path !== '/auth/demo-login') {
       setToken(null)
       window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
     }

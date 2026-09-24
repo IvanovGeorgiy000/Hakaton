@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Plus, Minus, Trash2, ChevronDown, Save } from 'lucide-react'
+import { useId, useState } from 'react'
+import { Plus, Minus, Trash2, ChevronDown, Save, Loader2 } from 'lucide-react'
 import { EQUIPMENT, EQUIPMENT_LIST, type EquipmentType, type Rule } from '@/data'
 import { useApp } from '@/store/context'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -60,12 +60,14 @@ export function AdminRules() {
   )
 }
 
-function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => void; saved: boolean }) {
+function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => Promise<void>; saved: boolean }) {
   const [draft, setDraft] = useState<Rule>(rule)
+  const [saving, setSaving] = useState(false)  // двойное нажатие не шлёт правило дважды
   const used = new Set<EquipmentType>([...draft.required.map((r) => r.type), ...draft.unexpected.map((u) => u.type)])
   const free = EQUIPMENT_LIST.filter((e) => !used.has(e.type))
 
-  const setMin = (t: EquipmentType, d: number) => setDraft({ ...draft, required: draft.required.map((r) => r.type === t ? { ...r, min: Math.max(1, r.min + d) } : r) })
+  // пределы те же, что проверяет сервер: иначе «Сохранить» падало бы с невнятной ошибкой
+  const setMin = (t: EquipmentType, d: number) => setDraft({ ...draft, required: draft.required.map((r) => r.type === t ? { ...r, min: clamp(r.min + d, 1, MAX_MIN) } : r) })
   const removeReq = (t: EquipmentType) => setDraft({ ...draft, required: draft.required.filter((r) => r.type !== t) })
   const addReq = (t: EquipmentType) => setDraft({ ...draft, required: [...draft.required, { type: t, min: 1, why: 'Добавлено администратором' }] })
   const removeUnexp = (t: EquipmentType) => setDraft({ ...draft, unexpected: draft.unexpected.filter((u) => u.type !== t) })
@@ -82,9 +84,9 @@ function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => 
               <VehicleIcon type={r.type} className="w-12 h-8 shrink-0" fill={EQUIPMENT[r.type].color} />
               <div className="flex-1 min-w-0"><div className="font-semibold">{EQUIPMENT[r.type].name}</div><div className="text-muted-foreground text-[13px] truncate">{r.why}</div></div>
               <div className="flex items-center gap-1">
-                <Btn onClick={() => setMin(r.type, -1)} label={`Уменьшить ${EQUIPMENT[r.type].name}`}><Minus className="w-5 h-5" /></Btn>
+                <Btn onClick={() => setMin(r.type, -1)} disabled={r.min <= 1} label={`Уменьшить ${EQUIPMENT[r.type].name}`}><Minus className="w-5 h-5" /></Btn>
                 <span className="w-10 text-center text-[18px] font-semibold">{r.min}</span>
-                <Btn onClick={() => setMin(r.type, 1)} label={`Увеличить ${EQUIPMENT[r.type].name}`}><Plus className="w-5 h-5" /></Btn>
+                <Btn onClick={() => setMin(r.type, 1)} disabled={r.min >= MAX_MIN} label={`Увеличить ${EQUIPMENT[r.type].name}`}><Plus className="w-5 h-5" /></Btn>
               </div>
               <Btn onClick={() => removeReq(r.type)} label="Убрать" danger><Trash2 className="w-5 h-5" /></Btn>
             </li>
@@ -109,37 +111,45 @@ function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => 
       </section>
 
       <div className="lg:col-span-2 flex flex-wrap items-center gap-3 pt-2 border-t border-border">
-        <label className="flex items-center gap-3">
+        {/* не <label>: иначе нажатие на подпись срабатывало как «−» и незаметно ослабляло правило */}
+        <div role="group" aria-label="Сообщать после скольких проверок подряд" className="flex items-center gap-3">
           <span className="font-semibold">Сообщать после</span>
-          <Btn onClick={() => setDraft({ ...draft, confirmAfterSnapshots: Math.max(1, draft.confirmAfterSnapshots - 1) })} label="Меньше снимков"><Minus className="w-5 h-5" /></Btn>
+          <Btn onClick={() => setDraft({ ...draft, confirmAfterSnapshots: clamp(draft.confirmAfterSnapshots - 1, 1, MAX_CONFIRM) })} disabled={draft.confirmAfterSnapshots <= 1} label="Меньше снимков"><Minus className="w-5 h-5" /></Btn>
           <span className="w-8 text-center text-[18px] font-semibold">{draft.confirmAfterSnapshots}</span>
-          <Btn onClick={() => setDraft({ ...draft, confirmAfterSnapshots: draft.confirmAfterSnapshots + 1 })} label="Больше снимков"><Plus className="w-5 h-5" /></Btn>
+          <Btn onClick={() => setDraft({ ...draft, confirmAfterSnapshots: clamp(draft.confirmAfterSnapshots + 1, 1, MAX_CONFIRM) })} disabled={draft.confirmAfterSnapshots >= MAX_CONFIRM} label="Больше снимков"><Plus className="w-5 h-5" /></Btn>
           <span className="text-muted-foreground">проверок подряд</span>
-        </label>
+        </div>
         <div className="ml-auto flex items-center gap-3">
           {saved && <span className="text-ok font-semibold">Сохранено</span>}
-          <Button size="lg" onClick={() => onSave(draft)}><Save className="w-5 h-5" /> Сохранить</Button>
+          <Button size="lg" disabled={saving} onClick={async () => { setSaving(true); await onSave(draft); setSaving(false) }}>
+            {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />} Сохранить
+          </Button>
         </div>
       </div>
     </div>
   )
 }
 
-function Btn({ onClick, label, danger, children }: { onClick: () => void; label: string; danger?: boolean; children: React.ReactNode }) {
+const MAX_MIN = 50 // не больше 50 единиц одного типа техники
+const MAX_CONFIRM = 24 // не больше 24 проверок подряд
+const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
+
+function Btn({ onClick, label, danger, disabled, children }: { onClick: () => void; label: string; danger?: boolean; disabled?: boolean; children: React.ReactNode }) {
   return (
-    <button type="button" onClick={onClick} aria-label={label} className={cn('w-11 h-11 rounded-lg border flex items-center justify-center cursor-pointer transition-colors', danger ? 'border-transparent text-danger hover:bg-danger-bg' : 'border-border bg-card hover:border-primary hover:text-primary')}>
+    <button type="button" onClick={onClick} disabled={disabled} aria-label={label} className={cn('w-11 h-11 rounded-lg border flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed', danger ? 'border-transparent text-danger hover:bg-danger-bg' : 'border-border bg-card enabled:hover:border-primary enabled:hover:text-primary')}>
       {children}
     </button>
   )
 }
 
 function AddPicker({ free, onPick, label }: { free: { type: EquipmentType; name: string }[]; onPick: (t: EquipmentType) => void; label: string }) {
+  const id = useId()
   if (!free.length) return null
   return (
     <div className="mt-3">
-      <label className="block text-[14px] font-semibold mb-1">{label}</label>
+      <label htmlFor={id} className="block text-[14px] font-semibold mb-1">{label}</label>
       <select
-        className="w-full min-h-[48px] rounded-lg border border-border bg-card px-3 text-[16px]"
+        id={id} className="w-full min-h-[48px] rounded-lg border border-border bg-card px-3 text-[16px]"
         value="" onChange={(e) => e.target.value && onPick(e.target.value as EquipmentType)}
       >
         <option value="">Выберите технику…</option>

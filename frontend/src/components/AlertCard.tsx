@@ -17,9 +17,9 @@ interface Props {
 export function AlertCard({ alert, onOpen, showSite, compact }: Props) {
   const sev = SEVERITY[alert.severity]
   const st = STATUS[alert.status]
-  const { bySite, byZone, byCamera } = useApp()
+  const { bySite, byZone, cameraOf } = useApp()
   const snap = alert.evidenceSnapshots[alert.evidenceSnapshots.length - 1]
-  const cam = snap ? byCamera(snap.cameraId) : undefined
+  const cam = snap ? cameraOf(snap) : undefined
   const offline = alert.kind === 'camera_offline'
   const highlight = alert.equipment && (alert.kind === 'unexpected' || alert.kind === 'idle') ? [alert.equipment] : undefined
   return (

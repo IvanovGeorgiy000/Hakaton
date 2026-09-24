@@ -46,6 +46,6 @@ async def snapshot(scene: int) -> Response:
 async def secure_snapshot(scene: int, authorization: Annotated[str | None, Header()] = None) -> Response:
     expected = base64.b64encode(f"{settings.mock_camera_user}:{settings.mock_camera_password}".encode()).decode()
     given = (authorization or "").removeprefix("Basic ").strip()
-    if not hmac.compare_digest(given, expected):
+    if not hmac.compare_digest(given.encode(), expected.encode()):  # байты: не-ASCII в заголовке не роняет в 500
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, headers={"WWW-Authenticate": 'Basic realm="camera"'})
     return _frame(scene)

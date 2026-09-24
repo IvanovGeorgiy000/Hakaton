@@ -77,7 +77,11 @@ export function InspectorViolations() {
                 <td className="px-4 py-3"><Badge tone={SEVERITY[a.severity].tone}>{SEVERITY[a.severity].label}</Badge></td>
                 <td className="px-4 py-3"><Badge tone={STATUS[a.status].tone}>{STATUS[a.status].label}</Badge></td>
                 <td className="px-4 py-3 text-right">
-                  <span className={cn('inline-flex items-center gap-1 font-semibold text-primary')}>{a.status === 'prescribed' ? <><FileWarning className="w-4 h-4" /> № {a.prescriptionNo}</> : 'Открыть'}</span>
+                  {/* настоящая кнопка: строку таблицы с клавиатуры не открыть */}
+                  <button type="button" onClick={(e) => { e.stopPropagation(); setSel(a) }} aria-label={`Открыть нарушение № ${a.code}`}
+                    className={cn('inline-flex items-center gap-1 min-h-[44px] px-2 rounded-md font-semibold text-primary hover:underline cursor-pointer')}>
+                    {a.status === 'prescribed' ? <><FileWarning className="w-4 h-4" /> № {a.prescriptionNo}</> : 'Открыть'}
+                  </button>
                 </td>
               </tr>
             ))}

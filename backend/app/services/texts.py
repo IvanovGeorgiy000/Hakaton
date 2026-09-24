@@ -13,6 +13,7 @@ from app.config import get_settings
 from app.equipment import EQUIPMENT, at_least  # noqa: F401 — EQUIPMENT нужен движку
 
 _TZ = ZoneInfo(get_settings().timezone)
+_MONTHS = ("января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря")
 
 
 @dataclass
@@ -25,6 +26,16 @@ class AlertTexts:
 
 def hhmm(dt: datetime) -> str:
     return dt.astimezone(_TZ).strftime("%H:%M")
+
+
+def day_month(dt: datetime) -> str:
+    """«22 сентября» по местному времени."""
+    local = dt.astimezone(_TZ)
+    return f"{local.day} {_MONTHS[local.month - 1]}"
+
+
+def _same_day(a: datetime, b: datetime) -> bool:
+    return a.astimezone(_TZ).date() == b.astimezone(_TZ).date()
 
 
 def plural(n: int, one: str, few: str, many: str) -> str:
@@ -53,6 +64,8 @@ def _checks(n: int) -> str:
 
 
 def _period(start: datetime, end: datetime) -> str:
+    if not _same_day(start, end):  # за несколько дней без дат выходило «с 17:55 до 17:14» — будто конец раньше начала
+        return f"с {day_month(start)} {hhmm(start)} до {day_month(end)} {hhmm(end)}"
     return f"в {hhmm(end)}" if hhmm(start) == hhmm(end) else f"с {hhmm(start)} до {hhmm(end)}"
 
 
@@ -108,7 +121,10 @@ def idle(*, equipment: str, camera_name: str, snapshots: int, start: datetime, e
 
 def camera_offline(*, camera_name: str, zone_name: str, last_snapshot: datetime | None, now: datetime) -> AlertTexts:
     if last_snapshot:
-        summary = f"Последний снимок получен в {hhmm(last_snapshot)}. Уже {duration(now - last_snapshot)} нет данных."
+        at = (
+            f"в {hhmm(last_snapshot)}" if _same_day(last_snapshot, now) else f"{day_month(last_snapshot)} в {hhmm(last_snapshot)}"
+        )
+        summary = f"Последний снимок получен {at}. Уже {duration(now - last_snapshot)} нет данных."
     else:
         summary = "С момента подключения от камеры не получено ни одного снимка."
     return AlertTexts(

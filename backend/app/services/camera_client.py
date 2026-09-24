@@ -24,6 +24,8 @@ settings = get_settings()
 log = logging.getLogger("stroykontrol.cameras")
 
 FRAME_SIZE = (1280, 720)  # все кадры приводим к 16:9 — рамки считаются в процентах от такого кадра
+# Потолок размера картинки: крошечный PNG 14000×14000 разворачивался в сотни мегабайт памяти. 40 Мп — с запасом для 8K-камер
+Image.MAX_IMAGE_PIXELS = 40_000_000
 DEFAULT_PORTS = {"http": 80, "https": 443, "rtsp": 554}
 _HOST_RE = re.compile(
     r"^(?=.{1,253}$)([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
@@ -83,6 +85,9 @@ def validate_address(addr: CameraAddress) -> None:
         raise CameraError("Порт должен быть числом от 1 до 65535", "bad_port")
     if not addr.path.startswith("/"):
         raise CameraError("Путь должен начинаться с «/»", "bad_path")
+    # перевод строки в пути дописал бы свои строки в запрос RTSP к любому узлу сети
+    if any(ch < " " or ch == "\x7f" for part in (addr.host, addr.path, addr.username or "", addr.password or "") for ch in part):
+        raise CameraError("В адресе камеры есть недопустимые символы", "bad_path")
     try:
         ipaddress.ip_address(addr.host)
     except ValueError:
@@ -125,11 +130,17 @@ def normalize_frame(raw: bytes) -> bytes:
             if img.format == "JPEG" and img.size == FRAME_SIZE and img.mode == "RGB":
                 return raw  # уже в нужном виде — не пересжимаем
             frame = ImageOps.pad(img.convert("RGB"), FRAME_SIZE, Image.Resampling.LANCZOS, color=(0, 0, 0))
-    except (UnidentifiedImageError, OSError, ValueError):
+    # SyntaxError Pillow бросает на битом PNG, DecompressionBombError — на слишком большой картинке
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError, Image.DecompressionBombError):
         raise CameraError("По этому адресу пришла не картинка. Проверьте путь к снимку.", "not_image") from None
     out = io.BytesIO()
     frame.save(out, "JPEG", quality=84, optimize=True)
     return out.getvalue()
+
+
+async def normalize_frame_async(raw: bytes) -> bytes:
+    """То же в отдельном потоке: разбор и пережатие картинки не останавливают сервер для остальных запросов."""
+    return await asyncio.to_thread(normalize_frame, raw)
 
 
 def _first_jpeg(buffer: bytes) -> bytes | None:
@@ -195,7 +206,7 @@ async def _rtsp_options(addr: CameraAddress) -> int:
         writer.write(f"OPTIONS {addr.url()} RTSP/1.0\r\nCSeq: 1\r\nUser-Agent: StroyKontrol\r\n\r\n".encode())
         await writer.drain()
         line = await asyncio.wait_for(reader.readline(), timeout=settings.camera_timeout_s)
-    except (TimeoutError, OSError):
+    except (TimeoutError, OSError, ValueError):  # ValueError — строка длиннее 64 КБ без перевода строки
         raise CameraError("Порт открыт, но устройство не отвечает по протоколу RTSP", "not_rtsp") from None
     finally:
         writer.close()
@@ -240,8 +251,15 @@ async def _rtsp_frame(addr: CameraAddress) -> bytes:
 async def grab_address(addr: CameraAddress) -> bytes:
     """Кадр с настоящей камеры по адресу. Возвращает нормализованный JPEG."""
     await ensure_allowed(addr)
-    raw = await (_rtsp_frame(addr) if addr.scheme == "rtsp" else _http_frame(addr))
-    return normalize_frame(raw)
+    if addr.scheme == "rtsp":
+        raw = await _rtsp_frame(addr)
+    else:
+        # общий срок: камера, отдающая по байту в секунду, иначе держала бы проверку объекта бесконечно
+        try:
+            raw = await asyncio.wait_for(_http_frame(addr), timeout=settings.camera_timeout_s * 3)
+        except TimeoutError:
+            raise CameraError(f"Камера не отдала кадр за отведённое время ({addr.display})", "timeout") from None
+    return await normalize_frame_async(raw)
 
 
 async def probe(addr: CameraAddress) -> ProbeResult:

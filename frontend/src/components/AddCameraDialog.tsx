@@ -163,7 +163,7 @@ function Body({ onClose, defaultSiteId }: { onClose: () => void; defaultSiteId?:
         {form.zoneId === NEW_ZONE && (
           <>
             <Field label="Название новой зоны" error={shown('newZoneName')}>
-              {(id, describedBy) => <input id={id} value={form.newZoneName} onChange={(e) => set({ newZoneName: e.target.value })} onBlur={() => touch('newZoneName')}
+              {(id, describedBy) => <input id={id} value={form.newZoneName} maxLength={200} onChange={(e) => set({ newZoneName: e.target.value })} onBlur={() => touch('newZoneName')}
                 aria-invalid={!!shown('newZoneName')} aria-describedby={describedBy} className={inputCls} placeholder="Например: Въезд № 2" />}
             </Field>
             <Field label="Вид зоны">
@@ -176,7 +176,7 @@ function Body({ onClose, defaultSiteId }: { onClose: () => void; defaultSiteId?:
           </>
         )}
         <Field label="Название камеры" error={shown('name')} className="sm:col-span-2">
-          {(id, describedBy) => <input id={id} value={form.name} onChange={(e) => set({ name: e.target.value })} onBlur={() => touch('name')}
+          {(id, describedBy) => <input id={id} value={form.name} maxLength={200} onChange={(e) => set({ name: e.target.value })} onBlur={() => touch('name')}
             aria-invalid={!!shown('name')} aria-describedby={describedBy} className={inputCls} placeholder="Камера 2 — въезд" />}
         </Field>
       </section>
@@ -215,15 +215,15 @@ function Body({ onClose, defaultSiteId }: { onClose: () => void; defaultSiteId?:
           </Field>
         </div>
         <Field label={form.protocol === 'rtsp' ? 'Путь к видеопотоку' : 'Путь к снимку'} error={shown('path')}>
-          {(id, describedBy) => <input id={id} value={form.path} autoComplete="off" spellCheck={false} onChange={(e) => set({ path: e.target.value, preset: '' })} onBlur={() => touch('path')}
+          {(id, describedBy) => <input id={id} value={form.path} maxLength={500} autoComplete="off" spellCheck={false} onChange={(e) => set({ path: e.target.value, preset: '' })} onBlur={() => touch('path')}
             aria-invalid={!!shown('path')} aria-describedby={describedBy} className={cn(inputCls, 'font-mono text-[15px]')} />}
         </Field>
         <div className="grid sm:grid-cols-2 gap-4">
           <Field label="Логин камеры" hint="Если камера без пароля — оставьте пустым">
-            {(id, describedBy) => <input id={id} value={form.username} autoComplete="off" onChange={(e) => set({ username: e.target.value })} aria-describedby={describedBy} className={inputCls} />}
+            {(id, describedBy) => <input id={id} value={form.username} maxLength={120} autoComplete="off" onChange={(e) => set({ username: e.target.value })} aria-describedby={describedBy} className={inputCls} />}
           </Field>
           <Field label="Пароль камеры" hint="Хранится на сервере в зашифрованном виде">
-            {(id, describedBy) => <input id={id} type="password" value={form.password} autoComplete="new-password" onChange={(e) => set({ password: e.target.value })} aria-describedby={describedBy} className={inputCls} />}
+            {(id, describedBy) => <input id={id} type="password" value={form.password} maxLength={200} autoComplete="new-password" onChange={(e) => set({ password: e.target.value })} aria-describedby={describedBy} className={inputCls} />}
           </Field>
         </div>
 

@@ -49,6 +49,9 @@ class HttpAnalyzer:
             payload = response.json()
         except (httpx.HTTPError, ValueError) as exc:
             raise AnalysisError(f"Сервис анализа недоступен: {exc}") from exc
+        # ответ «[]», «null» или {"detections": null} раньше ронял фоновую проверку целиком
+        if not isinstance(payload, dict) or not isinstance(payload.get("detections", []), list):
+            raise AnalysisError(f"Непонятный ответ сервиса анализа: {str(payload)[:200]}")
 
         detections, skipped = [], set()
         for item in payload.get("detections", []):
@@ -58,14 +61,18 @@ class HttpAnalyzer:
                     skipped.add(str(kind))
                     continue
                 x, y, w, h = clamp_box(float(box["x"]), float(box["y"]), float(box["w"]), float(box["h"]))
-                detections.append(DetectedObject(kind, round(float(item.get("confidence", 0)), 3), x, y, w, h))
+                confidence = min(max(float(item.get("confidence", 0)), 0.0), 1.0)
+                if confidence != confidence:  # NaN
+                    raise ValueError("confidence NaN")
+                detections.append(DetectedObject(kind, round(confidence, 3), x, y, w, h))
             except (KeyError, TypeError, ValueError) as exc:
                 raise AnalysisError(f"Непонятный ответ сервиса анализа: {item!r}") from exc
         note = f"Пропущены неизвестные типы техники: {', '.join(sorted(skipped))}" if skipped else None
+        model = payload.get("model")
         return AnalysisResult(
             provider=self.name,
             detections=detections,
-            model=payload.get("model"),
+            model=model[:80] if isinstance(model, str) else None,
             note=note,
             elapsed_ms=int((time.perf_counter() - started) * 1000),
         )

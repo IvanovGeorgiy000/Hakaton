@@ -58,9 +58,13 @@ export function StageTimeline({ siteId, compact }: { siteId: string; compact?: b
   )
 }
 
+const DAY = 86_400_000
+/** Дата плана «2026-10-01» — это весь день по Москве, с полуночи. Иначе этап «кончался» в 03:00 своего последнего дня. */
+const dayStart = (date: string) => Date.parse(date.length === 10 ? `${date}T00:00:00+03:00` : date)
+
 function ProgressBar({ stage, now }: { stage: Stage; now: number }) {
-  const start = new Date(stage.start).getTime()
-  const end = new Date(stage.end).getTime()
+  const start = dayStart(stage.start)
+  const end = dayStart(stage.end) + DAY  // включительно; и однодневный этап не делит на ноль (было «NaN%»)
   const pct = Math.round(Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100)))
   const fill = stage.status === 'done' ? 100 : stage.status === 'planned' ? 0 : pct
   return (

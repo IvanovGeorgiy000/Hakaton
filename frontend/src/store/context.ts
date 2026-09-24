@@ -14,7 +14,7 @@ export interface AppState {
   authMode: 'local' | 'keycloak'
   login: (login: string, password: string) => Promise<void>
   demoLogin: (role: RoleId) => Promise<void>
-  keycloakLogin: () => void
+  keycloakLogin: () => Promise<void>
   logout: () => void
 
   // ---- данные с сервера ----
@@ -34,6 +34,8 @@ export interface AppState {
   byZone: (id: string) => Zone | undefined
   byStage: (id: string | null) => Stage | undefined
   byCamera: (id: string | null) => Camera | undefined
+  /** Камера снимка; для удалённой — заглушка «Камера удалена» (кадры-доказательства остаются) */
+  cameraOf: (snapshot: Snapshot) => Camera
   bySnapshot: (id: string) => Snapshot | undefined
   stagesOf: (siteId: string) => Stage[]
   /** Снимки камеры, от новых к старым */

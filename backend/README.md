@@ -110,19 +110,22 @@ Authorization: Bearer {SK_ANALYSIS_API_KEY}    — если ключ задан
 По умолчанию вход локальный (логин/пароль + быстрый вход по роли). Единый вход организации через Keycloak
 (OpenID Connect) включается заданием `SK_KEYCLOAK_ISSUER` — тогда бэкенд принимает **и** свои токены (HS256),
 **и** токены Keycloak (RS256): подпись проверяется публичными ключами realm (JWKS), роль берётся из realm-ролей
-токена, привязка к объектам — из базы по логину (`preferred_username`).
+токена, привязка к объектам — из базы по логину (`preferred_username`). Ролями управляют в Keycloak: если роль там
+поменяли, она переносится в базу при следующем запросе пользователя. Если Keycloak не отвечает, API возвращает 503,
+а не 401 — пользователя не выкидывает из системы.
 
-Запуск Keycloak для разработки (Docker):
+Запуск Keycloak для разработки (Docker), из каталога `backend/`:
 
 ```bash
-docker compose -f infra/keycloak/compose.yml up -d      # http://localhost:8080, admin/admin, realm импортируется
-SK_KEYCLOAK_ISSUER=http://localhost:8080/realms/stroykontrol uv run uvicorn app.main:app --port 8100
+docker compose -f ../infra/keycloak/compose.yml up -d   # http://localhost:8080, admin/admin, realm импортируется
+SK_KEYCLOAK_ISSUER=http://localhost:8080/realms/stroykontrol uv run uvicorn app.main:app --port 8100 --reload
 ```
 
-Realm `stroykontrol` ([infra/keycloak/realm-stroykontrol.json](infra/keycloak/realm-stroykontrol.json)) уже содержит
-роли `foreman/manager/inspector/admin`, клиент `stroykontrol-web` (public + PKCE) и пользователей
+Realm `stroykontrol` ([infra/keycloak/realm-stroykontrol.json](../infra/keycloak/realm-stroykontrol.json)) уже содержит
+роли `foreman/manager/inspector/admin`, клиент `stroykontrol-web` (public + PKCE), русскую страницу входа и пользователей
 `prorab / rukovoditel / inspektor / admin` с паролем `demo`. Фронтенд берёт режим из `/api/meta` и показывает
-кнопку «Войти через Keycloak» без пересборки.
+кнопку «Войти через Keycloak» без пересборки. Токен продлевается перед запросами; кнопка «Выйти» завершает и сессию
+Keycloak, а истёкший токен — нет (повторный вход пройдёт без пароля, пока сессия Keycloak жива).
 
 ## Модель данных
 

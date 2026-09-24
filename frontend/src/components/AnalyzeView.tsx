@@ -2,7 +2,7 @@ import { CheckCircle2, Info } from 'lucide-react'
 import { mediaUrl } from '@/api'
 import { EQUIPMENT, type AnalyzeResult, type Detection } from '@/data'
 import { VehicleIcon } from './VehicleIcon'
-import { cn } from '@/lib/utils'
+import { cn, inkOn } from '@/lib/utils'
 
 /** Кадр с рамками найденной техники (кадр 16:9 приходит с сервера — рамки считаются по нему) */
 export function AnalyzedFrame({ src, detections, busy }: { src: string; detections: Detection[]; busy?: boolean }) {
@@ -14,8 +14,8 @@ export function AnalyzedFrame({ src, detections, busy }: { src: string; detectio
           left: `${d.box.x}%`, top: `${d.box.y}%`, width: `${d.box.w}%`, height: `${d.box.h}%`,
           border: `2px solid ${EQUIPMENT[d.type].color}`, boxShadow: '0 0 0 1px rgba(0,0,0,.45)',
         }}>
-          <span className={cn('absolute -left-[2px] text-[11px] leading-none font-semibold text-white px-1.5 py-[3px] whitespace-nowrap font-mono', d.box.y >= 12 ? '-top-[19px]' : 'top-0')}
-            style={{ background: EQUIPMENT[d.type].color }}>
+          <span className={cn('absolute -left-[2px] text-[11px] leading-none font-semibold px-1.5 py-[3px] whitespace-nowrap font-mono', d.box.y >= 12 ? '-top-[19px]' : 'top-0')}
+            style={{ background: EQUIPMENT[d.type].color, color: inkOn(EQUIPMENT[d.type].color) }}>
             {EQUIPMENT[d.type].name} {d.confidence.toFixed(2)}
           </span>
         </div>
@@ -50,8 +50,8 @@ export function AnalyzeSummary({ result }: { result: AnalyzeResult }) {
         {result.detections.length === 0 ? <p className="text-muted-foreground">На снимке техники не обнаружено.</p> : (
           <ul className="flex flex-wrap gap-2">
             {result.detections.map((d) => (
-              <li key={d.id} className="inline-flex items-center gap-2 rounded-sm pl-1.5 pr-2.5 py-1 text-[14px] font-medium text-white" style={{ background: EQUIPMENT[d.type].color }}>
-                <VehicleIcon type={d.type} className="w-7 h-4" fill="#fff" /> {EQUIPMENT[d.type].name} · {Math.round(d.confidence * 100)}%
+              <li key={d.id} className="inline-flex items-center gap-2 rounded-sm pl-1.5 pr-2.5 py-1 text-[14px] font-medium" style={{ background: EQUIPMENT[d.type].color, color: inkOn(EQUIPMENT[d.type].color) }}>
+                <VehicleIcon type={d.type} className="w-7 h-4" fill={inkOn(EQUIPMENT[d.type].color)} /> {EQUIPMENT[d.type].name} · {Math.round(d.confidence * 100)}%
               </li>
             ))}
           </ul>

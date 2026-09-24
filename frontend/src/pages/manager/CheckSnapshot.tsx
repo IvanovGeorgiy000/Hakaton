@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Upload, Loader2, ImagePlus } from 'lucide-react'
 import { api, ApiError } from '@/api'
@@ -20,21 +20,28 @@ export function CheckSnapshot() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const request = useRef(0)  // номер запроса: ответ на прежний выбор не показываем под новым
   const stage = byStage(sites.find((s) => s.id === siteId)?.currentStageId ?? null)
 
-  const pick = (next: typeof source) => { setSource(next); setResult(null); setError(null) }
+  // предпросмотр своего фото держит память, пока не освободим ссылку
+  useEffect(() => () => { if (source && 'file' in source) URL.revokeObjectURL(source.preview) }, [source])
+
+  const reset = () => { request.current++; setResult(null); setError(null); setBusy(false) }
+  const pick = (next: typeof source) => { setSource(next); reset() }
   const onFile = (file?: File) => file && pick({ file, preview: URL.createObjectURL(file) })
 
   const analyze = async () => {
     if (!source) return
+    const id = ++request.current
     setBusy(true)
     setError(null)
     try {
-      setResult(await api.analyze('file' in source ? { image: source.file, siteId } : { sample: source.sample, siteId }))
+      const res = await api.analyze('file' in source ? { image: source.file, siteId } : { sample: source.sample, siteId })
+      if (id === request.current) setResult(res)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Не удалось разобрать снимок')
+      if (id === request.current) setError(e instanceof ApiError ? e.message : 'Не удалось разобрать снимок')
     } finally {
-      setBusy(false)
+      if (id === request.current) setBusy(false)
     }
   }
 
@@ -56,7 +63,9 @@ export function CheckSnapshot() {
               <span className="text-[14px]">JPG или PNG</span>
             </button>
           )}
-          <input ref={inputRef} type="file" accept="image/*" className="sr-only" onChange={(e) => onFile(e.target.files?.[0])} />
+          {/* скрыто от Tab: выбирают кнопками выше; value сбрасываем, чтобы тот же файл можно было выбрать снова */}
+          <input ref={inputRef} type="file" accept="image/*" className="sr-only" tabIndex={-1} aria-hidden="true"
+            onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = '' }} />
 
           <div className="flex flex-wrap gap-3 mt-4">
             <Button variant="outline" size="lg" onClick={() => inputRef.current?.click()}><Upload className="w-5 h-5" /> {source ? 'Другое фото' : 'Выбрать фото'}</Button>
@@ -85,7 +94,7 @@ export function CheckSnapshot() {
         <div className="space-y-4">
           <Card><CardBody>
             <label className="block font-semibold mb-2" htmlFor="site">С каким объектом сверять</label>
-            <select id="site" value={siteId} onChange={(e) => { setSiteId(e.target.value); setResult(null) }}
+            <select id="site" value={siteId} onChange={(e) => { setSiteId(e.target.value); reset() }}
               className="w-full min-h-[48px] rounded-lg border border-border-strong bg-card px-3 text-[16px] font-medium">
               {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>

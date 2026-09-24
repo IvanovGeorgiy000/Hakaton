@@ -4,7 +4,7 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.models import User
 from app.schemas import DemoLoginIn, LoginIn, TokenOut, UserOut, user_out
-from app.security import CurrentUser, Session, create_token, verify_password
+from app.security import CurrentUser, Session, check_password, create_token
 
 router = APIRouter(prefix="/auth", tags=["Вход"])
 settings = get_settings()
@@ -13,7 +13,8 @@ settings = get_settings()
 @router.post("/login", response_model=TokenOut, summary="Вход по логину и паролю")
 async def login(body: LoginIn, session: Session) -> TokenOut:
     user = await session.scalar(select(User).where(User.login == body.login.strip().lower()))
-    if user is None or not user.is_active or not verify_password(body.password, user.password_hash):
+    password_ok = await check_password(body.password, user.password_hash if user else None)
+    if user is None or not user.is_active or not password_ok:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный логин или пароль")
     return TokenOut(token=create_token(user), user=user_out(user))
 

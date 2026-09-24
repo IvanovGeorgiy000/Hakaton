@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Upload, Loader2, ArrowLeft } from 'lucide-react'
@@ -23,22 +23,30 @@ export function MinimalDemo() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const request = useRef(0)  // номер запроса: ответ на прежний выбор не показываем под новым
 
   const samples = demo.data?.samples ?? []
   const rule = demo.data?.rules.find((r) => r.key === ruleKey)
   const current = source ?? (samples[0] ? { sample: samples[0].id, preview: samples[0].imageUrl } : null)
-  const pick = (next: typeof source) => { setSource(next); setResult(null); setError(null) }
+
+  // предпросмотр своего фото держит память, пока не освободим ссылку
+  useEffect(() => () => { if (source && 'file' in source) URL.revokeObjectURL(source.preview) }, [source])
+
+  const reset = () => { request.current++; setResult(null); setError(null); setBusy(false) }
+  const pick = (next: typeof source) => { setSource(next); reset() }
 
   const run = async () => {
     if (!current) return
+    const id = ++request.current
     setBusy(true)
     setError(null)
     try {
-      setResult(await api.publicAnalyze('file' in current ? { image: current.file, ruleKey } : { sample: current.sample, ruleKey }))
+      const res = await api.publicAnalyze('file' in current ? { image: current.file, ruleKey } : { sample: current.sample, ruleKey })
+      if (id === request.current) setResult(res)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Не удалось разобрать снимок')
+      if (id === request.current) setError(e instanceof ApiError ? e.message : 'Не удалось разобрать снимок')
     } finally {
-      setBusy(false)
+      if (id === request.current) setBusy(false)
     }
   }
 
@@ -77,14 +85,15 @@ export function MinimalDemo() {
                     'file' in current ? 'border-primary bg-info-bg text-info-fg' : 'border-dashed border-border-strong hover:bg-muted')}>
                   <Upload className="w-4 h-4" /> Своё фото
                 </button>
-                <input ref={inputRef} type="file" accept="image/*" className="sr-only"
-                  onChange={(e) => { const file = e.target.files?.[0]; if (file) pick({ file, preview: URL.createObjectURL(file) }) }} />
+                {/* скрыто от Tab: выбирают кнопкой «Своё фото»; value сбрасываем, чтобы тот же файл можно было выбрать снова */}
+                <input ref={inputRef} type="file" accept="image/*" className="sr-only" tabIndex={-1} aria-hidden="true"
+                  onChange={(e) => { const file = e.target.files?.[0]; if (file) pick({ file, preview: URL.createObjectURL(file) }); e.target.value = '' }} />
               </div>
             </div>
 
             <div>
               <h2 className="font-semibold text-[17px] mb-2">2. Этап работ по графику</h2>
-              <select value={ruleKey} onChange={(e) => { setRuleKey(e.target.value); setResult(null) }} aria-label="Этап работ"
+              <select value={ruleKey} onChange={(e) => { setRuleKey(e.target.value); reset() }} aria-label="Этап работ"
                 className="w-full min-h-[48px] rounded-lg border border-border-strong bg-card px-3 text-[16px] font-medium">
                 {demo.data.rules.map((r) => <option key={r.key} value={r.key}>{r.stageName}</option>)}
               </select>

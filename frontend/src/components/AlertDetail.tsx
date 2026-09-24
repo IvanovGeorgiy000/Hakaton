@@ -3,7 +3,7 @@ import { Truck, CheckCircle2, XCircle, FileWarning, Wrench, ClipboardCheck } fro
 import { EQUIPMENT, type Alert, type AlertStatus } from '@/data'
 import { useApp } from '@/store/context'
 import { isOpen } from '@/store/selectors'
-import { fmtDate, fmtDateShort, fmtTime, fmtWhen, plural } from '@/lib/utils'
+import { fmtDate, fmtDateShort, fmtWhen, plural } from '@/lib/utils'
 import { KIND, SEVERITY, STATUS } from '@/lib/labels'
 import { Modal } from './ui/Modal'
 import { Badge } from './ui/Badge'
@@ -29,7 +29,7 @@ export function AlertDetail({ alert, onClose }: Props) {
 }
 
 function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
-  const { role, rules, updateAlert, notify, bySite, byZone, byStage, byCamera } = useApp()
+  const { role, rules, updateAlert, notify, bySite, byZone, byStage, cameraOf } = useApp()
   const [comment, setComment] = useState('')
   const [saving, setSaving] = useState(false)
   const snaps = alert.evidenceSnapshots
@@ -39,7 +39,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
   const zone = byZone(alert.zoneId)
   const stage = byStage(alert.stageId)
   const rule = stage?.ruleKey ? rules[stage.ruleKey] : undefined
-  const cam = snap ? byCamera(snap.cameraId) : undefined
+  const cam = snap ? cameraOf(snap) : undefined
   const eq = alert.equipment ? EQUIPMENT[alert.equipment] : undefined
   const sev = SEVERITY[alert.severity]
   const st = STATUS[alert.status]
@@ -129,11 +129,11 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
           )}
           <Step n={3} title="Смотрим на снимки">
             {alert.kind === 'camera_offline'
-              ? <>Последний снимок получен в {snap ? fmtTime(snap.takenAt) : '—'}. С тех пор данных нет.</>
+              ? <>Последний снимок: {snap ? fmtWhen(snap.takenAt) : '—'}. С тех пор данных нет.</>
               : alert.kind === 'idle' && eq
-                ? <>{eq.name} стоит в одном и том же месте на {plural(snaps.length, 'снимке', 'снимках', 'снимках')} подряд ({snaps.map((s) => fmtTime(s.takenAt)).join(', ')}).</>
+                ? <>{eq.name} стоит в одном и том же месте на {plural(snaps.length, 'снимке', 'снимках', 'снимках')} подряд ({snaps.map((s) => fmtWhen(s.takenAt)).join('; ')}).</>
                 : eq && (
-                  <>На {plural(snaps.length, 'снимке', 'снимках', 'снимках')} ({snaps.map((s) => fmtTime(s.takenAt)).join(', ')}) видим: <b>{eq.genitivePlural} — {alert.observed ?? 0}</b>{alert.expected != null && alert.kind !== 'unexpected' && <>, а нужно не меньше {alert.expected}</>}.</>
+                  <>На {plural(snaps.length, 'снимке', 'снимках', 'снимках')} ({snaps.map((s) => fmtWhen(s.takenAt)).join('; ')}) видим: <b>{eq.genitivePlural} — {alert.observed ?? 0}</b>{alert.expected != null && alert.kind !== 'unexpected' && <>, а нужно не меньше {alert.expected}</>}.</>
                 )}
           </Step>
           <Step n={4} title="Вывод">
@@ -154,7 +154,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
         <section className="border-t border-border pt-5">
           <h3 className="font-semibold mb-2">Ваш ответ</h3>
           <textarea
-            value={comment} onChange={(e) => setComment(e.target.value)}
+            value={comment} onChange={(e) => setComment(e.target.value)} maxLength={1000} aria-label="Комментарий к ответу"
             placeholder="Комментарий (необязательно), например: «самосвалы будут к 14:00»"
             className="w-full min-h-[80px] rounded-lg border border-border bg-card p-3 text-[16px] focus:border-primary outline-none"
           />

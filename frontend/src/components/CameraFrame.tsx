@@ -3,7 +3,7 @@ import { EQUIPMENT, type Camera, type Detection, type Snapshot } from '@/data'
 import { mediaUrl } from '@/api'
 import { fmtTime, fmtTimeSec, fmtDateShort } from '@/lib/utils'
 import { VehicleIcon } from './VehicleIcon'
-import { cn } from '@/lib/utils'
+import { cn, inkOn } from '@/lib/utils'
 
 interface Props {
   camera: Camera
@@ -95,8 +95,8 @@ export function CameraFrame({ camera, snapshot, highlight, showLabels = true, sh
           >
             {showLabels && !thumb && (
               <span
-                className={cn('absolute -left-[2px] text-[11px] leading-none font-semibold text-white px-1.5 py-[3px] whitespace-nowrap font-mono', d.box.y >= 25 ? '-top-[19px]' : d.box.x < 35 ? 'bottom-0' : 'top-0')}
-                style={{ background: info.color }}
+                className={cn('absolute -left-[2px] text-[11px] leading-none font-semibold px-1.5 py-[3px] whitespace-nowrap font-mono', d.box.y >= 25 ? '-top-[19px]' : d.box.x < 35 ? 'bottom-0' : 'top-0')}
+                style={{ background: info.color, color: inkOn(info.color) }}
               >
                 {info.name} {d.confidence.toFixed(2)}
               </span>

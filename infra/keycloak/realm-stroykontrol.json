@@ -2,7 +2,10 @@
   "realm": "stroykontrol",
   "enabled": true,
   "sslRequired": "none",
-  "loginTheme": "keycloak",
+  "loginTheme": "keycloak.v2",
+  "internationalizationEnabled": true,
+  "supportedLocales": ["ru"],
+  "defaultLocale": "ru",
   "displayName": "СтройКонтроль",
   "roles": {
     "realm": [

@@ -17,6 +17,7 @@ export function AdminCameras() {
   const { cameras, sites, byZone, snapshotsOf, setCameraEnabled, deleteCamera, notify, refresh } = useApp()
   const [adding, setAdding] = useState<string | true | null>(null)
   const [removing, setRemoving] = useState<Camera | null>(null)
+  const [deleting, setDeleting] = useState(false)  // двойное нажатие не шлёт второй DELETE
   const [testing, setTesting] = useState<string | null>(null)
   const [watching, setWatching] = useState<Camera | null>(null)
 
@@ -96,7 +97,9 @@ export function AdminCameras() {
           <div className="space-y-5">
             <p>«{removing.name}» перестанет опрашиваться и исчезнет из списков. Снимки, которые служат доказательствами в предупреждениях, сохранятся.</p>
             <div className="flex flex-wrap gap-3">
-              <Button variant="danger" size="lg" onClick={async () => { await deleteCamera(removing); setRemoving(null) }}>Удалить</Button>
+              <Button variant="danger" size="lg" disabled={deleting} onClick={async () => { setDeleting(true); await deleteCamera(removing); setDeleting(false); setRemoving(null) }}>
+                {deleting && <Loader2 className="w-5 h-5 animate-spin" />} Удалить
+              </Button>
               <Button variant="outline" size="lg" onClick={() => setRemoving(null)}>Отмена</Button>
             </div>
           </div>

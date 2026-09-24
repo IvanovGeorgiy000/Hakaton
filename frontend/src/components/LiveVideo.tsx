@@ -31,36 +31,44 @@ function LivePlayer({ path }: { path: string }) {
     let stopped = false
 
     async function connect() {
-      pc = new RTCPeerConnection()
-      pc.addTransceiver('video', { direction: 'recvonly' })
-      pc.addTransceiver('audio', { direction: 'recvonly' })
-      pc.ontrack = (e) => {
+      const conn = new RTCPeerConnection()
+      pc = conn
+      conn.addTransceiver('video', { direction: 'recvonly' })
+      conn.addTransceiver('audio', { direction: 'recvonly' })
+      conn.ontrack = (e) => {
         if (videoRef.current && e.streams[0]) videoRef.current.srcObject = e.streams[0]
       }
-      pc.onconnectionstatechange = () => {
-        if (!pc || stopped) return
-        if (pc.connectionState === 'connected') setState('playing')
-        else if (pc.connectionState === 'failed') setState('error')
+      conn.onconnectionstatechange = () => {
+        if (stopped) return
+        if (conn.connectionState === 'connected') setState('playing')
+        else if (conn.connectionState === 'failed') setState('error')
       }
 
-      const offer = await pc.createOffer()
-      await pc.setLocalDescription(offer)
-      // WHEP без trickle-ICE: дожидаемся сбора всех кандидатов, затем отправляем предложение
+      const offer = await conn.createOffer()
+      await conn.setLocalDescription(offer)
+      // WHEP без trickle-ICE: дожидаемся сбора всех кандидатов (не дольше 1,5 с), затем отправляем предложение
       await new Promise<void>((resolve) => {
-        if (pc!.iceGatheringState === 'complete') return resolve()
-        const done = () => { if (pc!.iceGatheringState === 'complete') { pc!.removeEventListener('icegatheringstatechange', done); resolve() } }
-        pc!.addEventListener('icegatheringstatechange', done)
-        setTimeout(resolve, 1500)
+        if (conn.iceGatheringState === 'complete') return resolve()
+        const finish = () => { clearTimeout(timer); conn.removeEventListener('icegatheringstatechange', check); resolve() }
+        const check = () => { if (conn.iceGatheringState === 'complete') finish() }
+        const timer = setTimeout(finish, 1500)
+        conn.addEventListener('icegatheringstatechange', check)
       })
+      if (stopped) return
 
       const whep = `${GATEWAY}/${path}/whep`
-      const resp = await fetch(whep, { method: 'POST', headers: { 'Content-Type': 'application/sdp' }, body: pc.localDescription!.sdp })
+      const resp = await fetch(whep, { method: 'POST', headers: { 'Content-Type': 'application/sdp' }, body: conn.localDescription!.sdp })
       if (!resp.ok) throw new Error(`шлюз ответил ${resp.status}`)
       const location = resp.headers.get('Location')
       if (location) resourceUrl = new URL(location, whep).href
+      // окно закрыли, пока шлюз отвечал: очистка уже прошла без адреса сессии — закрываем сессию сами
+      if (stopped) {
+        if (resourceUrl) fetch(resourceUrl, { method: 'DELETE' }).catch(() => {})
+        return
+      }
       const answer = await resp.text()
       if (stopped) return
-      await pc.setRemoteDescription({ type: 'answer', sdp: answer })
+      await conn.setRemoteDescription({ type: 'answer', sdp: answer })
     }
 
     connect().catch(() => { if (!stopped) setState('error') })

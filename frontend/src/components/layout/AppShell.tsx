@@ -6,7 +6,7 @@ import type { LucideIcon } from 'lucide-react'
 import { useApp } from '@/store/context'
 import { ThemeMenuButton } from '@/components/ThemePicker'
 import { useDismiss } from '@/lib/useDismiss'
-import { bySeverity, initials, isOpen } from '@/store/selectors'
+import { bySeverity, initials } from '@/store/selectors'
 import { SEVERITY } from '@/lib/labels'
 import { ago, fmtWhen, shortName, todayLabel } from '@/lib/utils'
 import { cn } from '@/lib/utils'
@@ -124,11 +124,16 @@ export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: stri
 
 /** Уведомления: новые отклонения, доступные роли */
 function NotificationsBell({ alertsPath }: { alertsPath: string }) {
-  const { alerts, role, bySite } = useApp()
+  const { alerts, role, bySite, ownSiteId } = useApp()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const nav = useNavigate()
-  const fresh = alerts.filter((a) => a.status === 'new' && isOpen(a.status)).sort(bySeverity)
+  // считаем только то, что человек найдёт, перейдя по колокольчику: прораб — свой объект, инспектор — журнал без «камера не отвечает»
+  const fresh = alerts
+    .filter((a) => a.status === 'new'
+      && (role?.id !== 'foreman' || a.siteId === ownSiteId)
+      && (role?.id !== 'inspector' || a.kind !== 'camera_offline'))
+    .sort(bySeverity)
 
   useDismiss(ref, open, () => setOpen(false))
 

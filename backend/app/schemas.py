@@ -2,10 +2,12 @@
 
 from datetime import date, datetime
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
+from app.config import get_settings
 from app.equipment import EQUIPMENT_TYPES
 from app.models import OPEN_STATUSES, Alert, Camera, CheckRun, Rule, Site, Snapshot, Stage, User, Zone
 from app.services.camera_client import CameraAddress
@@ -13,6 +15,7 @@ from app.services.camera_client import CameraAddress
 EquipmentType = Literal["excavator", "dump_truck", "roller", "manipulator", "mixer", "bulldozer", "truck", "crane"]
 RoleId = Literal["foreman", "manager", "inspector", "admin"]
 assert set(EquipmentType.__args__) == set(EQUIPMENT_TYPES)
+_TZ = ZoneInfo(get_settings().timezone)
 
 
 class ApiModel(BaseModel):
@@ -309,7 +312,8 @@ class AlertOut(ApiModel):
 
 
 def alert_code(a: Alert) -> str:
-    return f"ОТК-{a.started_at.year % 100:02d}-{a.number:04d}"
+    # год по местному времени: отклонение в 01:00 1 января иначе получало номер прошлого года
+    return f"ОТК-{a.started_at.astimezone(_TZ).year % 100:02d}-{a.number:04d}"
 
 
 def alert_out(a: Alert) -> AlertOut:

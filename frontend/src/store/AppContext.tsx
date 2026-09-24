@@ -27,7 +27,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const authMode = metaQ.data?.authMode ?? 'local'
 
   // ---------- вход ----------
-  const me = useQuery({ queryKey: ['me', token], queryFn: api.me, enabled: !!token, retry: false, staleTime: Infinity })
+  // placeholderData: когда Keycloak после проверки сессии выдаёт свежий токен, не гасим весь экран заставкой загрузки
+  const me = useQuery({ queryKey: ['me', token], queryFn: api.me, enabled: !!token, retry: false, staleTime: Infinity, placeholderData: (prev) => prev })
   const user = token ? me.data ?? null : null
   const role = user ? ROLES.find((r) => r.id === user.role) ?? null : null
 
@@ -35,20 +36,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setToken(null)
     setTokenState(null)
     queryClient.clear()
-    if (authMode === 'keycloak') keycloakLogout()  // завершаем и сессию Keycloak
-  }, [queryClient, authMode])
+  }, [queryClient])
 
+  // выход по кнопке; в режиме Keycloak завершаем и его сессию
+  const logout = useCallback(() => {
+    forget()
+    if (authMode === 'keycloak') keycloakLogout()
+  }, [forget, authMode])
+
+  // Сервер ответил 401 — токен истёк или отозван: забываем его и показываем вход.
+  // Сессию Keycloak не трогаем: пока она жива, повторный вход пройдёт без пароля.
   useEffect(() => {
     window.addEventListener(UNAUTHORIZED_EVENT, forget)
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, forget)
   }, [forget])
 
-  // Keycloak: один раз проверяем сессию и, если пользователь уже вошёл, подхватываем токен
+  // Keycloak: один раз проверяем сессию и, если пользователь уже вошёл, подхватываем токен.
+  // При возврате со страницы входа Keycloak (#…code=…) до конца обмена кода на токен показываем загрузку, а не форму входа.
   const keycloakCfg = metaQ.data?.keycloak
+  const [kcCallback, setKcCallback] = useState(() => /[#&]code=/.test(window.location.hash))
   useEffect(() => {
     if (authMode !== 'keycloak' || !keycloakCfg) return
-    initKeycloak(keycloakCfg).then(() => setTokenState(getToken()))
-  }, [authMode, keycloakCfg])
+    initKeycloak(keycloakCfg).then(() => {
+      setTokenState((prev) => {
+        const next = getToken()
+        if (prev && next !== prev) void queryClient.invalidateQueries()  // вход сменился — данные перечитаем в фоне
+        return next
+      })
+      setKcCallback(false)
+    })
+  }, [authMode, keycloakCfg, queryClient])
+  const kcBusy = kcCallback && (metaQ.isPending || authMode === 'keycloak')
 
   const open = useCallback((session: { token: string }) => {
     queryClient.clear()
@@ -91,6 +109,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       byZone: (id: string) => zoneMap.get(id),
       byStage: (id: string | null) => (id ? stageMap.get(id) : undefined),
       byCamera: (id: string | null) => (id ? cameraMap.get(id) : undefined),
+      // камеру могли удалить, а её кадры остаются доказательствами — показываем их с пометкой, а не прячем
+      cameraOf: (snapshot: Snapshot) => cameraMap.get(snapshot.cameraId) ?? removedCamera(snapshot.cameraId),
       bySnapshot: (id: string) => snapshotMap.get(id),
       stagesOf: (siteId: string) => stages.filter((s) => s.siteId === siteId),
       snapshotsOf: (cameraId: string) => snapshots.filter((s) => s.cameraId === cameraId),
@@ -143,22 +163,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [notify, refresh])
 
   const value: AppState = {
-    user, role, ownSiteId: user?.role === 'foreman' ? user.siteIds[0] ?? null : null, authMode, login, demoLogin, keycloakLogin, logout: forget,
+    user, role, ownSiteId: user?.role === 'foreman' ? user.siteIds[0] ?? null : null, authMode, login, demoLogin, keycloakLogin, logout,
     ...data, refresh, updateAlert, saveRule, setCameraEnabled, addCamera, deleteCamera, captureSite, notify, toasts,
   }
 
   // ---------- состояния загрузки ----------
   const failed = queries.find((q) => q.isError && !q.data)
-  const loading = (!!token && me.isPending) || (enabled && queries.some((q) => q.isPending))
+  const loading = kcBusy || (!!token && me.isPending) || (enabled && queries.some((q) => q.isPending))
   let screen = children
-  if (token && me.isError && !(me.error instanceof ApiError && me.error.status === 401)) {
-    screen = <Splash error={message(me.error)} onRetry={() => me.refetch()} onExit={forget} />
+  // !me.data: разовый сбой фонового обновления (перезапуск сервера) не должен закрывать уже загруженное приложение
+  if (token && me.isError && !me.data && !(me.error instanceof ApiError && me.error.status === 401)) {
+    screen = <Splash error={message(me.error)} onRetry={() => me.refetch()} onExit={logout} />
   } else if (failed) {
-    screen = <Splash error={message(failed.error)} onRetry={refresh} onExit={forget} />
+    screen = <Splash error={message(failed.error)} onRetry={refresh} onExit={logout} />
   } else if (loading) {
     screen = <Splash />
   }
   return <Ctx.Provider value={value}>{screen}</Ctx.Provider>
+}
+
+/** Подпись и фон для кадра удалённой камеры */
+function removedCamera(id: string): Camera {
+  return {
+    id, siteId: '', zoneId: '', name: 'Камера удалена', online: false, enabled: false, status: 'unknown', sourceType: 'http',
+    address: null, hasCredentials: false, lastError: null, lastSnapshotAt: null, scene: 'yard',
+  }
 }
 
 /** Экран на весь вид: идёт загрузка или сервер недоступен */

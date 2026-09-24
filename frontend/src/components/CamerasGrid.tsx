@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { RefreshCw, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { EQUIPMENT, type Camera, type CaptureResult, type EquipmentType, type Snapshot } from '@/data'
 import { useApp } from '@/store/context'
-import { ago, fmtWhen, plural } from '@/lib/utils'
+import { ago, fmtWhen, inkOn, plural } from '@/lib/utils'
 import { Video } from 'lucide-react'
 import { CameraFrame } from './CameraFrame'
 import { LiveVideoModal } from './LiveVideo'
@@ -49,8 +49,12 @@ export function CamerasGrid({ siteId }: { siteId: string }) {
             <div>
               <div className="font-semibold">
                 Проверка выполнена: {plural(report.snapshots.length, 'новый снимок', 'новых снимка', 'новых снимков')},{' '}
-                {report.check.violations.length ? plural(report.check.violations.length, 'отклонение', 'отклонения', 'отклонений') : 'отклонений нет'}
+                {report.check.violations.length ? `расхождений с планом: ${report.check.violations.length}` : 'расхождений с планом нет'}
               </div>
+              {/* это находки одной проверки: предупреждением они становятся, когда подтвердятся нужное по правилу число проверок подряд */}
+              {report.check.violations.length > 0 && (
+                <div className="text-[15px]">Если расхождение подтвердится, оно появится в предупреждениях.</div>
+              )}
               {failed.map(([id, reason]) => <div key={id} className="text-[15px]">{byCamera(id)?.name ?? 'Камера'}: {reason}</div>)}
             </div>
           </div>
@@ -94,7 +98,7 @@ function DetectionTags({ snapshot }: { snapshot: Snapshot }) {
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">
       {[...counts].map(([type, n]) => (
-        <span key={type} className="text-[13px] font-medium rounded-sm px-2 py-0.5 text-white" style={{ background: EQUIPMENT[type].color }}>
+        <span key={type} className="text-[13px] font-medium rounded-sm px-2 py-0.5" style={{ background: EQUIPMENT[type].color, color: inkOn(EQUIPMENT[type].color) }}>
           {EQUIPMENT[type].name} ×{n}
         </span>
       ))}

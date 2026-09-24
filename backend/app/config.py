@@ -48,6 +48,19 @@ class Settings(BaseSettings):
     mock_camera_user: str = "demo"
     mock_camera_password: str = "demo"
 
+    def insecure_defaults(self) -> list[str]:
+        """Что нельзя оставлять по умолчанию в боевом запуске (демо-режим выключен)."""
+        if self.demo_mode:
+            return []
+        fields = type(self).model_fields
+        problems = []
+        # оба стандартных ключа (здесь и в docker-compose.yml) открыты в репозитории — по ним любой подпишет себе вход администратора
+        if self.secret_key in {fields["secret_key"].default, "change-me-before-real-use"} or len(self.secret_key) < 16:
+            problems.append("SK_SECRET_KEY: задайте свой случайный ключ не короче 16 символов (стандартный открыт в репозитории)")
+        if self.seed_on_start and self.demo_password == fields["demo_password"].default:
+            problems.append("SK_DEMO_PASSWORD не задан: у всех учётных записей из наполнения базы был бы пароль «demo»")
+        return problems
+
     @property
     def auth_mode(self) -> str:
         return "keycloak" if self.keycloak_issuer else "local"
