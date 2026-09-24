@@ -4,11 +4,12 @@ import { AlertTriangle, Loader2 } from 'lucide-react'
 import { api, ApiError, getToken, setToken, UNAUTHORIZED_EVENT } from '@/api'
 import { ROLES, type Alert, type AlertStatus, type Camera, type NewCamera, type RoleId, type Rule, type SiteStatus, type Snapshot } from '@/data'
 import { Button } from '@/components/ui/Button'
-import { Ctx, type AppState, type Toast } from './context'
+import { Ctx, ToastCtx, type AppState, type Toast } from './context'
 import { initKeycloak, keycloakLogin, keycloakLogout } from './keycloak'
 import { isOpen } from './selectors'
 
 const POLL_MS = 20_000 // как часто подтягиваем свежие кадры и предупреждения
+const CORE_KEYS = new Set(['sites', 'zones', 'stages', 'rules', 'cameras', 'alerts'])
 const message = (error: unknown) => (error instanceof ApiError ? error.message : 'Что-то пошло не так. Попробуйте ещё раз.')
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -86,9 +87,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const camerasQ = useQuery({ queryKey: ['cameras'], queryFn: api.cameras, ...live })
   const snapshotsQ = useQuery({ queryKey: ['snapshots'], queryFn: api.snapshots, ...live })
   const alertsQ = useQuery({ queryKey: ['alerts'], queryFn: api.alerts, ...live })
-  const queries = [sitesQ, zonesQ, stagesQ, rulesQ, camerasQ, snapshotsQ, alertsQ]
+  // без этих данных экраны показали бы неправду («Всё по плану» при недошедших отклонениях) — ждём их;
+  // свежие кадры нужны только для миниатюр и индикатора свежести — без них приложение работает
+  const queries = [sitesQ, zonesQ, stagesQ, rulesQ, camerasQ, alertsQ]
 
-  const refresh = useCallback(() => queryClient.invalidateQueries(), [queryClient])
+  // После действия ждём только данные, которые видны на экранах сразу (списки объектов, камер, отклонений):
+  // остальное — отчёт, журнал, сверка техники — перечитываем в фоне, кнопка не крутится до самого медленного запроса.
+  const refresh = useCallback(async () => {
+    const isCore = (key: unknown) => typeof key === 'string' && CORE_KEYS.has(key)
+    void queryClient.invalidateQueries({ predicate: (q) => !isCore(q.queryKey[0]) && q.queryKey[0] !== 'meta' })
+    await queryClient.invalidateQueries({ predicate: (q) => isCore(q.queryKey[0]) })
+  }, [queryClient])
 
   const data = useMemo(() => {
     const sites = sitesQ.data ?? [], zones = zonesQ.data ?? [], stages = stagesQ.data ?? []
@@ -152,11 +161,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [refresh])
 
-  const value: AppState = {
-    user, role, ownSiteId: user?.role === 'foreman' ? user.siteIds[0] ?? null : null, base: role ? `/${role.id}` : '', authMode, meta: metaQ.data,
+  // один объект на все экраны: пересоздаём, только когда что-то поменялось, — иначе перерисовывались бы все, кто вызывает useApp()
+  const meta = metaQ.data
+  const value = useMemo<AppState>(() => ({
+    user, role, ownSiteId: user?.role === 'foreman' ? user.siteIds[0] ?? null : null, base: role ? `/${role.id}` : '', authMode, meta,
     login, demoLogin, keycloakLogin, logout,
-    ...data, refresh, updateAlert, saveRule, setCameraEnabled, addCamera, deleteCamera, run, notify, toasts,
-  }
+    ...data, refresh, updateAlert, saveRule, setCameraEnabled, addCamera, deleteCamera, run, notify,
+  }), [user, role, authMode, meta, login, demoLogin, logout, data, refresh, updateAlert, saveRule, setCameraEnabled, addCamera, deleteCamera, run, notify])
 
   // ---------- состояния загрузки ----------
   const failed = queries.find((q) => q.isError && !q.data)
@@ -170,7 +181,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   } else if (loading) {
     screen = <Splash />
   }
-  return <Ctx.Provider value={value}>{screen}</Ctx.Provider>
+  return <Ctx.Provider value={value}><ToastCtx.Provider value={toasts}>{screen}</ToastCtx.Provider></Ctx.Provider>
 }
 
 /** Подпись и фон для кадра удалённой камеры */

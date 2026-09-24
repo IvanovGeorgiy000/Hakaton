@@ -58,10 +58,15 @@ export interface AppState {
   run: (action: () => Promise<unknown>, done?: string) => Promise<boolean>
 
   notify: (text: string, tone?: Toast['tone']) => void
-  toasts: Toast[]
 }
 
 export const Ctx = createContext<AppState | null>(null)
+/** Всплывающие сообщения — отдельно: иначе каждый тост перерисовывал бы всё приложение */
+export const ToastCtx = createContext<Toast[]>([])
+
+export function useToasts() {
+  return useContext(ToastCtx)
+}
 
 export function useApp() {
   const v = useContext(Ctx)

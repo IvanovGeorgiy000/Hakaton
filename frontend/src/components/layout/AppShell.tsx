@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { AlertTriangle, Bell, CircleHelp, LogOut, CheckCircle2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { useApp } from '@/store/context'
+import { useApp, useToasts } from '@/store/context'
 import { ThemeMenuButton } from '@/components/ThemePicker'
 import { PageLoading } from '@/components/ui/PageLoading'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -59,7 +59,8 @@ const navCls = ({ isActive }: { isActive: boolean }) => cn(
  * Каркас. Десктоп: светлое боковое меню + верхняя панель. Телефон: верхняя панель + нижняя навигация.
  */
 export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: string }) {
-  const { role, user, logout, toasts, ownSiteId, bySite, lastDataAt } = useApp()
+  const { role, user, logout, ownSiteId, bySite, lastDataAt } = useApp()
+  const toasts = useToasts()
   const ownSite = ownSiteId ? bySite(ownSiteId) : undefined
   const { pathname } = useLocation()
 

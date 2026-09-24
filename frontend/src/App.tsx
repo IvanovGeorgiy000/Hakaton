@@ -69,8 +69,6 @@ function Router() {
   const home = role ? `/${role.id}` : '/'
   return (
     <Routes>
-      {/* Минимальная страница по ТЗ — доступна без выбора роли */}
-      <Route path="/demo" element={<Suspense fallback={<PageLoading />}><MinimalDemo /></Suspense>} />
       {!role && <Route path="*" element={<Login />} />}
       {role && (
       <Route element={<AppShell nav={NAV[role.id]} alertsPath={ALERTS_PATH[role.id]} />}>
@@ -136,9 +134,11 @@ export default function App() {
       <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
-          <AppProvider>
-            <Router />
-          </AppProvider>
+          <Routes>
+            {/* Минимальная страница по ТЗ — без входа и без данных приложения: её не блокирует ни загрузка, ни сбой других запросов */}
+            <Route path="/demo" element={<Suspense fallback={<PageLoading />}><MinimalDemo /></Suspense>} />
+            <Route path="*" element={<AppProvider><Router /></AppProvider>} />
+          </Routes>
         </BrowserRouter>
       </QueryClientProvider>
       </ThemeProvider>
