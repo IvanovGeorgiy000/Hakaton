@@ -1,23 +1,32 @@
-import { Link } from 'react-router-dom'
-import { ChevronRight, MapPin } from 'lucide-react'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { ChevronRight, MapPin, Plus } from 'lucide-react'
 import { useApp } from '@/store/context'
 import { isOpen } from '@/store/selectors'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { StatusPill } from '@/components/ui/StatusPill'
 import { StatTile } from '@/components/ui/StatTile'
+import { Button } from '@/components/ui/Button'
+import { SiteDialog } from '@/components/SiteDialogs'
 import { fmtWhen, plural, pluralWord, todayLabel } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
-/** Все объекты одним взглядом: светофор, этап, отставание, открытые замечания */
+/** Все объекты одним взглядом: светофор, этап, отставание, открытые замечания. Администратор здесь же добавляет объекты. */
 export function ManagerOverview() {
   const { sites: visibleSites, siteStatus, alertsForSite, byStage, lastDataAt, base, role } = useApp()
+  const navigate = useNavigate()
+  const [creating, setCreating] = useState(false)
+  const isAdmin = role?.id === 'admin'
   const counts = { ok: 0, warning: 0, critical: 0 }
   visibleSites.forEach((s) => { counts[siteStatus(s.id)]++ })
   const totalOpen = visibleSites.reduce((n, s) => n + alertsForSite(s.id).filter((a) => isOpen(a.status)).length, 0)
 
   return (
     <div>
-      <PageHeader title={role?.id === 'admin' ? 'Все объекты' : 'Мои объекты'} subtitle={`${todayLabel()}${lastDataAt ? ` · данные на ${fmtWhen(lastDataAt)}` : ''}`} />
+      <PageHeader
+        title={isAdmin ? 'Все объекты' : 'Мои объекты'} subtitle={`${todayLabel()}${lastDataAt ? ` · данные на ${fmtWhen(lastDataAt)}` : ''}`}
+        action={isAdmin && <Button size="lg" onClick={() => setCreating(true)}><Plus className="w-5 h-5" /> Добавить объект</Button>}
+      />
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <StatTile label="Нужно вмешаться" value={counts.critical} hint={pluralWord(counts.critical, 'объект', 'объекта', 'объектов')} tone="danger" />
         <StatTile label="Есть замечания" value={counts.warning} hint={pluralWord(counts.warning, 'объект', 'объекта', 'объектов')} tone="warn" />
@@ -64,6 +73,7 @@ export function ManagerOverview() {
           )
         })}
       </div>
+      {isAdmin && <SiteDialog site={creating ? 'new' : null} onClose={() => setCreating(false)} onCreated={(site) => navigate(`${base}/site/${site.id}`)} />}
     </div>
   )
 }

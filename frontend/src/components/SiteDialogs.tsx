@@ -1,16 +1,20 @@
 import { useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { CalendarDays, Loader2, MapPin, Pencil, Plus, Trash2, Layers } from 'lucide-react'
+import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { api } from '@/api'
 import type { Site, SiteInput, Stage, StageInput, Zone, ZoneKind } from '@/data'
 import { useApp } from '@/store/context'
-import { PageHeader } from '@/components/ui/PageHeader'
-import { Button } from '@/components/ui/Button'
-import { Modal } from '@/components/ui/Modal'
-import { Field, inputCls } from '@/components/ui/Field'
-import { Badge } from '@/components/ui/Badge'
 import { fmtDate, pluralWord } from '@/lib/utils'
 import { STAGE_STATUS } from '@/lib/labels'
+import { Button } from './ui/Button'
+import { Modal } from './ui/Modal'
+import { Field, inputCls } from './ui/Field'
+import { Badge } from './ui/Badge'
+
+/*
+ * Объект целиком: создать, изменить, календарный план, зоны, удалить.
+ * Диалоги открываются там, где объект виден, — в списке объектов и на странице объекта (администратор).
+ */
 
 const ZONE_KINDS: { id: ZoneKind; label: string }[] = [
   { id: 'work', label: 'Рабочая зона' },
@@ -18,72 +22,16 @@ const ZONE_KINDS: { id: ZoneKind; label: string }[] = [
   { id: 'storage', label: 'Склад' },
 ]
 
-/** Объекты: создать, изменить, календарный план, зоны, удалить (администратор) */
-export function AdminSites() {
-  const { sites, cameras, zones, stagesOf, byStage } = useApp()
-  const [editing, setEditing] = useState<Site | 'new' | null>(null)
-  const [plan, setPlan] = useState<Site | null>(null)
-  const [zonesOf, setZonesOf] = useState<Site | null>(null)
-  const [removing, setRemoving] = useState<Site | null>(null)
-
-  return (
-    <div>
-      <PageHeader
-        title="Объекты" subtitle="Стройки, их прорабы, календарный план и зоны на площадке"
-        action={<Button size="lg" onClick={() => setEditing('new')}><Plus className="w-5 h-5" /> Добавить объект</Button>}
-      />
-      {sites.length === 0 && <p className="text-muted-foreground">Объектов пока нет — добавьте первый.</p>}
-      <div className="space-y-3">
-        {sites.map((s) => {
-          const siteCameras = cameras.filter((c) => c.siteId === s.id).length
-          const siteZones = zones.filter((z) => z.siteId === s.id).length
-          const works = stagesOf(s.id).filter((st) => st.level === 2).length
-          return (
-            <article key={s.id} className="bg-card rounded-xl border border-border shadow-[var(--shadow-card)] p-4 sm:p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="text-[18px] font-semibold leading-snug">{s.name}</h2>
-                  <div className="text-[14px] text-muted-foreground mt-0.5 flex flex-wrap gap-x-3">
-                    {s.address && <span className="inline-flex items-center gap-1"><MapPin className="w-4 h-4" />{s.address}</span>}
-                    {s.contractor && <span>{s.contractor}</span>}
-                  </div>
-                  <div className="text-[15px] mt-2">
-                    Прораб: <b>{s.foreman || 'не назначен'}</b> · Этап сейчас: <b>{byStage(s.currentStageId)?.name ?? 'нет по плану'}</b>
-                  </div>
-                  <div className="text-[14px] text-muted-foreground mt-1">
-                    {siteCameras} {pluralWord(siteCameras, 'камера', 'камеры', 'камер')} · {siteZones} {pluralWord(siteZones, 'зона', 'зоны', 'зон')} · {works} {pluralWord(works, 'работа', 'работы', 'работ')} в плане
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setEditing(s)}><Pencil className="w-4 h-4" /> Изменить</Button>
-                  <Button variant="outline" size="sm" onClick={() => setPlan(s)}><CalendarDays className="w-4 h-4" /> План работ</Button>
-                  <Button variant="outline" size="sm" onClick={() => setZonesOf(s)}><Layers className="w-4 h-4" /> Зоны</Button>
-                  <Button variant="ghost" size="sm" aria-label={`Удалить объект ${s.name}`} onClick={() => setRemoving(s)}><Trash2 className="w-4 h-4" /></Button>
-                </div>
-              </div>
-            </article>
-          )
-        })}
-      </div>
-
-      <SiteDialog site={editing} onClose={() => setEditing(null)} />
-      <PlanDialog site={plan} onClose={() => setPlan(null)} />
-      <ZonesDialog site={zonesOf} onClose={() => setZonesOf(null)} />
-      <DeleteSiteDialog site={removing} onClose={() => setRemoving(null)} />
-    </div>
-  )
-}
-
 // ---------- объект ----------
-function SiteDialog({ site, onClose }: { site: Site | 'new' | null; onClose: () => void }) {
+export function SiteDialog({ site, onClose, onCreated }: { site: Site | 'new' | null; onClose: () => void; onCreated?: (site: Site) => void }) {
   return (
     <Modal open={site !== null} onClose={onClose} title={site === 'new' ? 'Новый объект' : site ? `Изменить: ${site.name}` : ''}>
-      {site !== null && <SiteForm key={site === 'new' ? 'new' : site.id} site={site === 'new' ? null : site} onClose={onClose} />}
+      {site !== null && <SiteForm key={site === 'new' ? 'new' : site.id} site={site === 'new' ? null : site} onClose={onClose} onCreated={onCreated} />}
     </Modal>
   )
 }
 
-function SiteForm({ site, onClose }: { site: Site | null; onClose: () => void }) {
+function SiteForm({ site, onClose, onCreated }: { site: Site | null; onClose: () => void; onCreated?: (site: Site) => void }) {
   const { run } = useApp()
   const users = useQuery({ queryKey: ['users'], queryFn: api.users })
   const foremen = (users.data ?? []).filter((u) => u.role === 'foreman' && u.isActive)
@@ -104,9 +52,15 @@ function SiteForm({ site, onClose }: { site: Site | null; onClose: () => void })
     if (nameError) return
     setBusy(true)
     const body = { ...form, name: form.name.trim(), foremanId }
-    const ok = await run(() => (site ? api.updateSite(site.id, body) : api.createSite(body)), site ? 'Объект сохранён' : `Объект «${body.name}» создан`)
+    const result: { created?: Site } = {}
+    const ok = await run(
+      async () => { if (site) await api.updateSite(site.id, body); else result.created = await api.createSite(body) },
+      site ? 'Объект сохранён' : `Объект «${body.name}» создан`,
+    )
     setBusy(false)
-    if (ok) onClose()
+    if (!ok) return
+    onClose()
+    if (result.created) onCreated?.(result.created)
   }
 
   return (
@@ -147,7 +101,7 @@ function SiteForm({ site, onClose }: { site: Site | null; onClose: () => void })
 const clampPercent = (value: string) => Math.min(100, Math.max(0, Math.round(Number(value) || 0)))
 
 // ---------- календарный план ----------
-function PlanDialog({ site, onClose }: { site: Site | null; onClose: () => void }) {
+export function PlanDialog({ site, onClose }: { site: Site | null; onClose: () => void }) {
   return (
     <Modal open={!!site} onClose={onClose} title={site ? `План работ: ${site.name}` : ''} wide>
       {site && <Plan site={site} />}
@@ -299,7 +253,7 @@ function StageForm({ stage, level, parentId, defaults, onSave, onCancel }: {
 }
 
 // ---------- зоны ----------
-function ZonesDialog({ site, onClose }: { site: Site | null; onClose: () => void }) {
+export function ZonesDialog({ site, onClose }: { site: Site | null; onClose: () => void }) {
   return (
     <Modal open={!!site} onClose={onClose} title={site ? `Зоны: ${site.name}` : ''}>
       {site && <Zones site={site} />}
@@ -362,7 +316,7 @@ function ZoneRow({ zone, used }: { zone: Zone; used: boolean }) {
 }
 
 // ---------- удаление объекта ----------
-function DeleteSiteDialog({ site, onClose }: { site: Site | null; onClose: () => void }) {
+export function DeleteSiteDialog({ site, onClose, onDeleted }: { site: Site | null; onClose: () => void; onDeleted?: () => void }) {
   const { cameras, stagesOf, alertsForSite, run } = useApp()
   const [sure, setSure] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -388,7 +342,9 @@ function DeleteSiteDialog({ site, onClose }: { site: Site | null; onClose: () =>
             setBusy(true)
             const ok = await run(() => api.deleteSite(site.id), `Объект «${site.name}» удалён`)
             setBusy(false)
-            if (ok) close()
+            if (!ok) return
+            close()
+            onDeleted?.()
           }}>
             {busy && <Loader2 className="w-5 h-5 animate-spin" />} Удалить объект
           </Button>

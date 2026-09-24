@@ -42,6 +42,16 @@ export function Help() {
         </ol>
       </Section>
 
+      {role?.id === 'admin' && (
+        <Section title="Как добавить объект">
+          <ol className="list-decimal pl-6 space-y-2">
+            <li>Раздел «Объекты» → <b>«Добавить объект»</b>: название, адрес, подрядчик, прораб.</li>
+            <li>Откроется страница нового объекта. Вкладка «План работ» → <b>«Изменить план»</b>: этапы и работы с правилами «этап → техника».</li>
+            <li>Вкладка «Камеры» → <b>«Камера на этот объект»</b>. Зоны объекта — кнопка «Зоны» рядом с названием.</li>
+          </ol>
+        </Section>
+      )}
+
       {role && CAMERA_ADDERS.includes(role.id) && (
         <Section title="Как подключить новую камеру">
           <ol className="list-decimal pl-6 space-y-2">

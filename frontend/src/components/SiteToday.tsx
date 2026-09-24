@@ -4,7 +4,7 @@ import { MapPin, HardHat, Building } from 'lucide-react'
 import type { Alert } from '@/data'
 import { useApp } from '@/store/context'
 import { isOpen, bySeverity } from '@/store/selectors'
-import { fmtDate, plural } from '@/lib/utils'
+import { cn, fmtDate, plural } from '@/lib/utils'
 import { StatusPill } from './ui/StatusPill'
 import { StatTile } from './ui/StatTile'
 import { EmptyState } from './ui/EmptyState'
@@ -13,7 +13,11 @@ import { AlertDetail } from './AlertDetail'
 import { EquipmentCheck } from './EquipmentCheck'
 
 /** Главный экран объекта: светофор, этап, что не так, техника по плану и по факту */
-export function SiteToday({ siteId, camerasLink, onShowCameras }: { siteId: string; camerasLink?: string; onShowCameras?: () => void }) {
+export function SiteToday({ siteId, camerasLink, onShowCameras, showName = true }: {
+  siteId: string; camerasLink?: string; onShowCameras?: () => void
+  /** false — название объекта уже стоит над вкладками страницы объекта */
+  showName?: boolean
+}) {
   const { siteStatus, alertsForSite, bySite, byStage } = useApp()
   const [sel, setSel] = useState<Alert | null>(null)
   const site = bySite(siteId)
@@ -29,8 +33,8 @@ export function SiteToday({ siteId, camerasLink, onShowCameras }: { siteId: stri
       <div>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-[22px] sm:text-2xl font-semibold leading-tight">{site.name}</h1>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-muted-foreground text-[15px]">
+            {showName && <h1 className="text-[22px] sm:text-2xl font-semibold leading-tight">{site.name}</h1>}
+            <div className={cn('flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground text-[15px]', showName && 'mt-2')}>
               <span className="inline-flex items-center gap-1.5"><MapPin className="w-4 h-4" />{site.address}</span>
               <span className="inline-flex items-center gap-1.5"><Building className="w-4 h-4" />{site.contractor}</span>
               <span className="inline-flex items-center gap-1.5"><HardHat className="w-4 h-4" />Прораб: {site.foreman}</span>

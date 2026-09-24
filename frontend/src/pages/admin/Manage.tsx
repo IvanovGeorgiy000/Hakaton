@@ -1,18 +1,17 @@
 import { Suspense, useEffect, useRef } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Building2, Camera, History, ListChecks, Users } from 'lucide-react'
+import { History, ListChecks, Users } from 'lucide-react'
 import { PageLoading } from '@/components/ui/PageLoading'
 import { cn } from '@/lib/utils'
 
 const SECTIONS = [
-  { to: 'sites', label: 'Объекты', Icon: Building2 },
-  { to: 'cameras', label: 'Камеры', Icon: Camera },
   { to: 'users', label: 'Сотрудники', Icon: Users },
   { to: 'rules', label: 'Правила', Icon: ListChecks },
   { to: 'audit', label: 'Журнал действий', Icon: History },
 ]
 
-/** «Управление» — одно место для всего, что настраивает администратор */
+/** «Управление» — то, у чего нет своего списка на других экранах: сотрудники, правила, журнал действий.
+ * Объекты и камеры добавляют и настраивают там, где их список: «Обзор», страница объекта, «Камеры». */
 export function AdminManage() {
   const nav = useRef<HTMLElement>(null)
   const { pathname } = useLocation()

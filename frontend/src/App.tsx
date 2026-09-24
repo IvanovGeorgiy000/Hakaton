@@ -2,7 +2,7 @@ import { lazy, Suspense, type ComponentType } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { MotionConfig } from 'framer-motion'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Home, Video, CalendarDays, Building2, Bell, ClipboardList, BarChart3, Settings2, LayoutGrid } from 'lucide-react'
+import { Home, Video, CalendarDays, Building2, Bell, ClipboardList, BarChart3, Settings2 } from 'lucide-react'
 import { AppProvider } from '@/store/AppContext'
 import { ThemeProvider } from '@/store/theme'
 import { useApp } from '@/store/context'
@@ -28,9 +28,7 @@ const InspectorViolations = page(() => import('@/pages/inspector/Violations'), '
 const InspectorReports = page(() => import('@/pages/inspector/Reports'), 'InspectorReports')
 const CamerasPage = page(() => import('@/pages/shared/Cameras'), 'CamerasPage')
 const AdminManage = page(() => import('@/pages/admin/Manage'), 'AdminManage')
-const AdminSites = page(() => import('@/pages/admin/Sites'), 'AdminSites')
 const AdminRules = page(() => import('@/pages/admin/Rules'), 'AdminRules')
-const AdminCameras = page(() => import('@/pages/admin/Cameras'), 'AdminCameras')
 const AdminUsers = page(() => import('@/pages/admin/Users'), 'AdminUsers')
 const AdminAudit = page(() => import('@/pages/admin/Audit'), 'AdminAudit')
 
@@ -52,9 +50,9 @@ const NAV: Record<string, NavItem[]> = {
     { to: '/inspector/cameras', label: 'Камеры', Icon: Video },
     { to: '/inspector/reports', label: 'Отчёты', Icon: BarChart3 },
   ],
-  // администратор видит всё, что остальные, и настраивает систему в «Управлении»
+  // администратор видит всё, что остальные; объекты и камеры настраивает прямо в их списках, остальное — в «Управлении»
   admin: [
-    { to: '/admin', label: 'Обзор', Icon: LayoutGrid, end: true },
+    { to: '/admin', label: 'Объекты', Icon: Building2, end: true },
     { to: '/admin/cameras', label: 'Камеры', Icon: Video },
     { to: '/admin/alerts', label: 'Отклонения', Icon: Bell },
     { to: '/admin/reports', label: 'Отчёты', Icon: BarChart3 },
@@ -109,9 +107,10 @@ function Router() {
             <Route path="/admin/reports" element={<InspectorReports />} />
             <Route path="/admin/check" element={<CheckSnapshot />} />
             <Route path="/admin/manage" element={<AdminManage />}>
-              <Route index element={<Navigate to="sites" replace />} />
-              <Route path="sites" element={<AdminSites />} />
-              <Route path="cameras" element={<AdminCameras />} />
+              <Route index element={<Navigate to="users" replace />} />
+              {/* объекты и камеры теперь там, где их списки */}
+              <Route path="sites" element={<Navigate to="/admin" replace />} />
+              <Route path="cameras" element={<Navigate to="/admin/cameras" replace />} />
               <Route path="users" element={<AdminUsers />} />
               <Route path="rules" element={<AdminRules />} />
               <Route path="audit" element={<AdminAudit />} />
