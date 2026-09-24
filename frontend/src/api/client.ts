@@ -20,6 +20,12 @@ try { token = localStorage.getItem(TOKEN_KEY) } catch { /* приватный р
 
 export const getToken = () => token
 
+/** Токен, продлённый при необходимости, — для запросов мимо request() (видеошлюз) */
+export async function getFreshToken() {
+  if (ensureFreshToken && token) await ensureFreshToken().catch(() => {})
+  return token
+}
+
 export function setToken(value: string | null) {
   token = value
   try {

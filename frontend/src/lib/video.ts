@@ -5,12 +5,15 @@
  * Кто может смотреть поток, шлюз спрашивает у сервера: браузер передаёт тот же токен, что и в запросах к API.
  */
 import { useEffect, useRef, useState } from 'react'
-import { getToken } from '@/api'
+import { getFreshToken } from '@/api'
 import type { Camera, LiveCamera, Meta } from '@/data'
 
 export type StreamState = 'idle' | 'connecting' | 'playing' | 'error'
 
 const RETRY_MS = 10_000 // видео прервалось — пробуем снова: камера могла вернуться
+const RETRY_MAX_MS = 60_000 // камера молчит долго — пробуем реже, но не реже раза в минуту
+// «disconnected» у WebRTC обычно временный (моргнула сеть, телефон сменил вышку) и сам проходит за пару секунд
+const DISCONNECT_GRACE_MS = 5_000
 
 /**
  * Адрес шлюза из настроек сервера. Если сервер назвал его «localhost», а приложение открыто по адресу в сети
@@ -34,9 +37,11 @@ export function whepUrl(meta: Meta | undefined, streamPath: string): string | nu
 /** Подключиться к потоку (url = null — отключиться). Возвращает ссылку для <video> и состояние. */
 export function useWhep(url: string | null) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  // состояние помнит, к какому адресу относится: сменился адрес — пока это «подключаемся», без лишнего рендера
-  const [status, setStatus] = useState<{ url: string; state: StreamState } | null>(null)
+  // состояние помнит, к какому адресу и какой попытке относится: сменился адрес или пошла новая попытка —
+  // пока это «подключаемся» (раньше при повторе всё время переподключения висело «нет сигнала»)
+  const [status, setStatus] = useState<{ url: string; attempt: number; state: StreamState } | null>(null)
   const [attempt, setAttempt] = useState(0)
+  const failures = useRef(0)  // неудачи подряд: от них растёт пауза перед повтором; видео пошло — счёт с нуля
 
   useEffect(() => {
     if (!url) return
@@ -44,7 +49,8 @@ export function useWhep(url: string | null) {
     let resourceUrl = ''
     let pc: RTCPeerConnection | null = null
     let retry: number | undefined
-    const setState = (state: StreamState) => setStatus({ url, state })
+    let grace: number | undefined
+    const setState = (state: StreamState) => setStatus({ url, attempt, state })
 
     const dropSession = () => {
       if (resourceUrl) fetch(resourceUrl, { method: 'DELETE' }).catch(() => {})
@@ -56,7 +62,10 @@ export function useWhep(url: string | null) {
       dropSession()
       pc?.close()
       window.clearTimeout(retry)
-      retry = window.setTimeout(() => setAttempt((n) => n + 1), RETRY_MS)
+      window.clearTimeout(grace)
+      const pause = Math.min(RETRY_MS * 2 ** Math.min(failures.current, 3), RETRY_MAX_MS)
+      failures.current += 1
+      retry = window.setTimeout(() => setAttempt((n) => n + 1), pause)
     }
 
     async function connect(target: string) {
@@ -68,8 +77,10 @@ export function useWhep(url: string | null) {
       }
       conn.onconnectionstatechange = () => {
         if (stopped) return
-        if (conn.connectionState === 'connected') setState('playing')
-        else if (conn.connectionState === 'failed' || conn.connectionState === 'disconnected') fail()
+        window.clearTimeout(grace)
+        if (conn.connectionState === 'connected') { failures.current = 0; setState('playing') }
+        else if (conn.connectionState === 'failed') fail()
+        else if (conn.connectionState === 'disconnected') grace = window.setTimeout(fail, DISCONNECT_GRACE_MS)
       }
       await conn.setLocalDescription(await conn.createOffer())
       // WHEP без trickle-ICE: ждём сбора кандидатов (не дольше 1,5 с), затем отправляем предложение целиком
@@ -83,7 +94,8 @@ export function useWhep(url: string | null) {
       if (stopped) return
 
       const headers: Record<string, string> = { 'Content-Type': 'application/sdp' }
-      const token = getToken()
+      const token = await getFreshToken()  // в режиме Keycloak токен мог истечь, пока открыта страница
+      if (stopped) return
       if (token) headers.Authorization = `Bearer ${token}`
       const response = await fetch(target, { method: 'POST', headers, body: conn.localDescription!.sdp })
       if (!response.ok) throw new Error(`шлюз ответил ${response.status}`)
@@ -99,12 +111,13 @@ export function useWhep(url: string | null) {
     return () => {
       stopped = true
       window.clearTimeout(retry)
+      window.clearTimeout(grace)
       dropSession()
       pc?.close()
     }
   }, [url, attempt])
 
-  const state: StreamState = !url ? 'idle' : status?.url === url ? status.state : 'connecting'
+  const state: StreamState = !url ? 'idle' : status?.url === url && status.attempt === attempt ? status.state : 'connecting'
   return { videoRef, state }
 }
 

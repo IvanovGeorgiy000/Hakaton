@@ -4,7 +4,7 @@ import type {
   ProbeResult, RoleId, Rule, Sample, Site, SiteInput, Snapshot, Stage, StageInput, User, UserInput, UserPatch, WeeklyReport, Zone, ZoneInput,
 } from '@/data'
 
-export { ApiError, getToken, mediaUrl, setToken, setTokenRefresher, UNAUTHORIZED_EVENT } from './client'
+export { ApiError, getFreshToken, getToken, mediaUrl, setToken, setTokenRefresher, UNAUTHORIZED_EVENT } from './client'
 
 interface Session { token: string; user: User }
 
