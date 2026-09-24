@@ -3,6 +3,9 @@
 Требование ТЗ: предупреждение должно быть содержательным, понятным и обоснованным.
 Каждое предупреждение отвечает на четыре вопроса: что случилось, чем это грозит, что делать
 и почему система так решила (последнее собирает интерфейс из правила, этапа и кадров).
+
+«Что делать» — одинаково для всех ролей и без названий кнопок: какие кнопки есть у прораба,
+руководителя или инспектора, интерфейс подсказывает сам.
 """
 
 from dataclasses import dataclass
@@ -63,6 +66,17 @@ def _checks(n: int) -> str:
     return "на последней проверке" if n <= 1 else f"на {n} последних проверках"
 
 
+# Короче — говорим о проверках («на 3 проверках подряд»), дольше — о времени: «6 часов подряд» понятнее, чем «на 56 проверках»
+_LONG_ENOUGH = timedelta(minutes=30)
+
+
+def _for_how_long(checks: int, start: datetime, end: datetime) -> str:
+    """«6 часов подряд (с 15:07 до 21:43)» или «на 3 последних проверках (с 16:37 до 16:39)»."""
+    if end - start >= _LONG_ENOUGH:
+        return f"{duration(end - start)} подряд ({_period(start, end)})"
+    return f"{_checks(checks)} ({_period(start, end)})"
+
+
 def _period(start: datetime, end: datetime) -> str:
     if not _same_day(start, end):  # за несколько дней без дат выходило «с 17:55 до 17:14» — будто конец раньше начала
         return f"с {day_month(start)} {hhmm(start)} до {day_month(end)} {hhmm(end)}"
@@ -75,19 +89,16 @@ def shortage(
     eq = EQUIPMENT[equipment]
     if observed == 0:
         title = f"Нет {eq.gen_pl} на этапе «{stage_name}»"
-        seen = "камеры не увидели ни одного"
+        seen = f"Камеры не видят в рабочей зоне ни одного — {_for_how_long(checks, start, end)}"
     else:
         title = f"Мало {eq.gen_pl}: {observed} из {expected}"
-        seen = f"камеры видят только {observed}"
-    summary = (
-        f"По плану идёт этап «{stage_name}», для него нужно {at_least(expected, eq)}. "
-        f"{_checks(checks).capitalize()} ({_period(start, end)}) {seen}."
-    )
+        seen = f"Камеры видят в рабочей зоне только {observed} — {_for_how_long(checks, start, end)}"
+    summary = f"По плану идёт этап «{stage_name}», для него нужно {at_least(expected, eq)}. {seen}."
     return AlertTexts(
         title=title,
         summary=summary,
         consequence=risk or "Работы этапа идут медленнее плана — возможен срыв сроков.",
-        advice=f"Уточните у подрядчика, где {eq.nom_pl}. Если техника уже едет — нажмите «Техника едет».",
+        advice=f"Выяснить у подрядчика, где {eq.nom_pl} и когда они будут на площадке.",
     )
 
 
@@ -99,11 +110,11 @@ def unexpected(
     return AlertTexts(
         title=f"{eq.name} не по этапу «{stage_name}»",
         summary=(
-            f"Камера «{camera_name}» {_checks(checks)} ({_period(start, end)}) видит технику, "
-            f"которой на этапе «{stage_name}» быть не должно: {eq.name.lower()}.{reason}"
+            f"Камера «{camera_name}» видит технику, которой на этапе «{stage_name}» быть не должно: "
+            f"{eq.name.lower()} — {_for_how_long(checks, start, end)}.{reason}"
         ),
         consequence=risk or "Возможно, начаты работы не по графику или техника заехала по ошибке.",
-        advice=f"Проверьте, зачем приехал {eq.name.lower()}. Если это согласовано — нажмите «Это ошибка» и напишите комментарий.",
+        advice=f"Выяснить, зачем на площадке {eq.name.lower()} и согласован ли его заезд.",
     )
 
 
@@ -116,7 +127,7 @@ def idle(*, equipment: str, camera_name: str, start: datetime, end: datetime) ->
             "положение не меняется."
         ),
         consequence="Возможен простой или поломка. Оплаченные машино-часы уходят впустую.",
-        advice="Свяжитесь с машинистом и выясните причину простоя.",
+        advice="Выяснить у машиниста причину простоя.",
     )
 
 
@@ -130,5 +141,5 @@ def camera_offline(*, camera_name: str, zone_name: str, last_snapshot: datetime 
         title=f"{camera_name} не отвечает",
         summary=summary,
         consequence=f"Система не видит зону «{zone_name}». Отклонения в ней обнаружить нельзя.",
-        advice="Проверьте питание и интернет у камеры или позвоните в техподдержку.",
+        advice="Проверить питание и интернет у камеры или обратиться в техподдержку.",
     )

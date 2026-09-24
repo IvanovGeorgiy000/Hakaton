@@ -60,6 +60,7 @@ IDLE_MIN_SPAN = timedelta(hours=2)
 IDLE_WINDOW = timedelta(hours=8)
 IDLE_IOU = 0.9
 OFFLINE_AFTER = timedelta(minutes=10)
+OFFLINE_IMPORTANT = timedelta(hours=1)  # камера молчит дольше часа — отклонение уже «Важно», а не «На заметку»
 EVIDENCE_LIMIT = 6
 FIRST_ALERT_NUMBER = 131
 SYSTEM = "Система"
@@ -515,7 +516,8 @@ async def _sync_alerts(
             words = texts.camera_offline(
                 camera_name=camera.name, zone_name=camera.zone.name, last_snapshot=camera.last_snapshot_at, now=at
             )
-            severity = "low"
+            # первый час — «на заметку» (камеру могли просто перезагрузить), дальше «слепая» зона — это уже важно
+            severity = "medium" if at - started >= OFFLINE_IMPORTANT else "low"
             last = await session.scalar(
                 select(Snapshot).where(Snapshot.camera_id == camera.id).order_by(Snapshot.taken_at.desc()).limit(1)
             )

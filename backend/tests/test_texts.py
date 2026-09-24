@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
-from app.services.texts import _period, camera_offline
+from app.services.texts import _period, camera_offline, shortage
 
 END = datetime(2026, 9, 24, 14, 14, tzinfo=UTC)  # 17:14 по Москве
 
@@ -23,3 +23,17 @@ def test_offline_camera_names_the_day_of_the_last_snapshot():
     assert "не приходит с 14:14." in today.summary
     earlier = camera_offline(camera_name="Камера 3", zone_name="Склад", last_snapshot=END - timedelta(days=2, hours=23), now=END)
     assert "не приходит с 21 сентября 18:14." in earlier.summary
+
+
+def test_long_shortage_is_told_in_hours_not_checks():
+    long = shortage(
+        equipment="dump_truck", expected=2, observed=0, stage_name="Котлован", checks=56,
+        start=END - timedelta(hours=6, minutes=36), end=END, risk="",
+    )  # fmt: skip
+    assert "6 часов подряд (с 10:38 до 17:14)" in long.summary and "56" not in long.summary
+    short = shortage(
+        equipment="dump_truck", expected=2, observed=1, stage_name="Котлован", checks=3,
+        start=END - timedelta(minutes=2), end=END, risk="",
+    )  # fmt: skip
+    assert "только 1 — на 3 последних проверках (с 17:12 до 17:14)" in short.summary
+    assert "нажмите" not in long.advice  # кнопки у каждой роли свои — их подсказывает интерфейс

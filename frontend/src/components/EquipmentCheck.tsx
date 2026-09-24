@@ -19,7 +19,9 @@ export function EquipmentCheck({ siteId }: { siteId: string }) {
   if (isPending) return <div className="bg-card rounded-xl border border-border h-40 animate-pulse" aria-busy />
   if (isError || !data) return <p className="text-muted-foreground">Не удалось загрузить сверку техники.</p>
   if (!data.stageName) return <p className="text-muted-foreground">На сегодня в календарном плане нет этапа работ.</p>
-  const arriving = Object.entries(data.arriving) as [EquipmentType, number][]
+  // лишняя техника уже показана своей строкой — в «подъезжает» её не дублируем, иначе автокран был бы и «лишним», и «подъезжающим»
+  const extraTypes = new Set(data.extra.map((e) => e.type))
+  const arriving = (Object.entries(data.arriving) as [EquipmentType, number][]).filter(([type]) => !extraTypes.has(type))
 
   return (
     <div className="bg-card rounded-xl border border-border overflow-hidden shadow-[var(--shadow-card)]">
@@ -54,7 +56,10 @@ export function EquipmentCheck({ siteId }: { siteId: string }) {
             <VehicleIcon type={e.type} className="w-14 h-9 shrink-0" fill={EQUIPMENT[e.type].color} />
             <div className="flex-1 min-w-0">
               <div className="font-semibold">{EQUIPMENT[e.type].name} — не по плану</div>
-              <div className="text-muted-foreground text-[14px]">{e.why}</div>
+              <div className="text-muted-foreground text-[14px]">
+                {(data.arriving[e.type] ?? 0) >= e.have ? 'на въезде или складе' : 'в рабочей зоне'}
+                {e.why && <> · {e.why}</>}
+              </div>
             </div>
             <StateChip state="extra" />
           </li>
