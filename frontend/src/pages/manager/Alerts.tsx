@@ -29,7 +29,7 @@ export function ManagerAlerts() {
   return (
     <div>
       <PageHeader
-        title="Отклонения" subtitle="Все замечания системы по вашим объектам"
+        title="Отклонения" info="Все замечания системы по вашим объектам. Откройте замечание, чтобы увидеть кадры-доказательства и ответить."
         action={
           <Link to={`${base}/check`} className="inline-flex items-center gap-2 min-h-[44px] px-4 rounded-lg border border-border-strong bg-card font-medium hover:bg-muted transition-colors">
             <ScanSearch className="w-5 h-5" /> Проверить своё фото

@@ -285,7 +285,7 @@ function AddBody({ onClose, defaultSiteId }: { onClose: () => void; defaultSiteI
       <div className="border-t border-border pt-5 space-y-4">
         <label className="flex items-start gap-3 cursor-pointer select-none">
           <input type="checkbox" checked={form.allowOffline} onChange={(e) => set({ allowOffline: e.target.checked })} className="w-5 h-5 mt-0.5 accent-[var(--color-primary)]" />
-          <span>Добавить, даже если камера сейчас не отвечает<span className="block text-[14px] text-muted-foreground">Например, её ещё не подключили к сети</span></span>
+          <span>Добавить, даже если камера сейчас не отвечает</span>
         </label>
         <FormError message={saveError} />
         <div className="flex flex-wrap gap-3">

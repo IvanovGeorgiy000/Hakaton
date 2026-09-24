@@ -39,7 +39,7 @@ export function VideoWall({ cameras, sections, empty = 'Камер пока не
     <div>
       <div className={cn('flex flex-wrap items-center justify-between gap-3 mb-4', !cameras.length && 'hidden')}>
         <p className="text-muted-foreground" role="status">
-          В эфире {onAir} из {cameras.length} {pluralWord(cameras.length, 'камеры', 'камер', 'камер')} · нажмите на видео, чтобы развернуть его на всю вкладку
+          В эфире {onAir} из {cameras.length} {pluralWord(cameras.length, 'камеры', 'камер', 'камер')}
         </p>
         <button
           type="button" onClick={() => setShowBoxes(!showBoxes)} aria-pressed={showBoxes}

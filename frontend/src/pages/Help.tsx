@@ -15,7 +15,7 @@ export function Help() {
   const { role } = useApp()
   return (
     <div className="max-w-3xl">
-      <PageHeader title="Справка" subtitle="Как работает система и что делать с сообщениями" />
+      <PageHeader title="Справка" />
 
       <Section title="Как это работает">
         <ol className="list-decimal pl-6 space-y-2">

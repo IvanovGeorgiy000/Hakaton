@@ -22,14 +22,13 @@ export function AdminUsers() {
   return (
     <div>
       <PageHeader
-        title="Сотрудники" subtitle="Кто и к каким объектам имеет доступ"
+        title="Сотрудники"
+        info={<>
+          Кто работает в системе, с какой ролью и к каким объектам у него доступ. Здесь же меняют пароли.
+          {authMode === 'keycloak' && <> Вход идёт через Keycloak: сотрудники, роли и пароли, которые вы меняете здесь, сразу меняются и в Keycloak.</>}
+        </>}
         action={<Button size="lg" onClick={() => setEditing('new')}><Plus className="w-5 h-5" /> Добавить сотрудника</Button>}
       />
-      {authMode === 'keycloak' && (
-        <p className="mb-4 rounded-xl bg-info-bg text-info-fg px-4 py-3 text-[15px]">
-          Вход идёт через Keycloak: сотрудники, роли и пароли, которые вы меняете здесь, сразу меняются и в Keycloak.
-        </p>
-      )}
       {users.isPending && <p className="text-muted-foreground">Загружаем список…</p>}
       {users.isError && <p role="alert" className="text-danger">Не удалось загрузить сотрудников.</p>}
       <ul className="space-y-3">

@@ -115,9 +115,6 @@ function Plan({ site }: { site: Site }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-muted-foreground text-[15px]">
-        Укрупнённые этапы делятся на работы. К работе привязано правило «этап → техника» — по нему система сверяет, какая техника должна быть на площадке.
-      </p>
       {phases.length === 0 && <p className="text-muted-foreground">План пуст — добавьте первый этап.</p>}
       {phases.map((phase) => {
         const works = stages.filter((s) => s.parentId === phase.id)
@@ -269,16 +266,13 @@ function Zones({ site }: { site: Site }) {
   }
   return (
     <div className="space-y-5">
-      <p className="text-muted-foreground text-[15px]">
-        Рабочая зона — там, где техника считается работающей. На въезде и складе техника считается подъезжающей: она видна, но нехватку в рабочей зоне не закрывает.
-      </p>
       <ul className="space-y-2">
         {siteZones.map((z) => <ZoneRow key={z.id} zone={z} used={cameras.some((c) => c.zoneId === z.id)} />)}
       </ul>
       <form onSubmit={add} noValidate className="grid sm:grid-cols-[1fr_180px_auto] gap-3 items-end border-t border-border pt-4">
         <Field label="Новая зона">{(id) => <input id={id} value={name} maxLength={200} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Въезд № 2" />}</Field>
-        <Field label="Вид">
-          {(id) => <select id={id} value={kind} onChange={(e) => setKind(e.target.value as ZoneKind)} className={inputCls}>{ZONE_KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}</select>}
+        <Field label="Вид" hint="Рабочая зона — там, где техника считается работающей. На въезде и складе техника считается подъезжающей: она видна, но нехватку в рабочей зоне не закрывает.">
+          {(id, d) => <select id={id} aria-describedby={d} value={kind} onChange={(e) => setKind(e.target.value as ZoneKind)} className={inputCls}>{ZONE_KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}</select>}
         </Field>
         <Button type="submit" size="lg"><Plus className="w-5 h-5" /> Добавить</Button>
       </form>

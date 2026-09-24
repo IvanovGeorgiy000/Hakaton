@@ -57,7 +57,6 @@ export function Login() {
             <LogIn className="w-5 h-5" /> Войти через Keycloak
           </Button>
           {error && <p role="alert" className="text-danger text-[15px] mt-3">{error}</p>}
-          <p className="text-[13px] text-muted-foreground mt-3">Вас перенаправит на страницу входа Keycloak и обратно.</p>
         </div>
       ) : (
         <div className="w-full max-w-[420px] bg-card border border-border rounded-2xl shadow-[var(--shadow-card)] p-6 sm:p-8">
@@ -125,7 +124,7 @@ export function Login() {
 
       <footer className="mt-auto pt-8 flex items-center gap-2.5 text-[13px] text-muted-foreground">
         <img src="/team-logo.jpg" alt="" className="w-7 h-7 rounded-md object-cover" />
-        Версия 0.9 · команда «Работяги» · ЛЦТ 2026
+        {meta.data && <>Версия {meta.data.version} · </>}команда «Работяги» · ЛЦТ 2026
       </footer>
     </div>
   )

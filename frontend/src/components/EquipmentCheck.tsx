@@ -5,6 +5,7 @@ import { EQUIPMENT, type EquipmentType } from '@/data'
 import { fmtTime } from '@/lib/utils'
 import { VehicleIcon } from './VehicleIcon'
 import { cn } from '@/lib/utils'
+import { InfoTip } from './ui/InfoTip'
 
 /**
  * «Что должно быть по плану» и «что видим на камерах» — сердце методики.
@@ -23,10 +24,14 @@ export function EquipmentCheck({ siteId }: { siteId: string }) {
   return (
     <div className="bg-card rounded-xl border border-border overflow-hidden shadow-[var(--shadow-card)]">
       <div className="px-4 sm:px-5 py-3.5 border-b border-border">
-        <div className="font-semibold text-[17px]">Техника на этапе «{data.stageName}»</div>
-        <div className="text-muted-foreground text-[14px]">
-          Сколько нужно по плану и сколько видят камеры в рабочей зоне{data.checkedAt && ` · данные на ${fmtTime(data.checkedAt)}`}
+        <div className="flex items-center gap-2">
+          <div className="font-semibold text-[17px]">Техника на этапе «{data.stageName}»</div>
+          <InfoTip label="Как считается техника">
+            Сколько техники нужно по правилу этапа и сколько её видят камеры рабочей зоны. Техника на въезде и складе
+            считается подъезжающей: её видно, но в норму рабочей зоны она пока не засчитывается.
+          </InfoTip>
         </div>
+        {data.checkedAt && <div className="text-muted-foreground text-[14px]">данные на {fmtTime(data.checkedAt)}</div>}
       </div>
       {!data.coverage && (
         <p className="px-4 sm:px-5 py-3 bg-warn-bg text-warn-fg text-[15px]">
@@ -59,7 +64,6 @@ export function EquipmentCheck({ siteId }: { siteId: string }) {
         <div className="px-4 sm:px-5 py-3 border-t border-border text-[15px] flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
           <Truck className="w-5 h-5 shrink-0" /> На въезде и складе:
           {arriving.map(([type, n]) => <span key={type} className="text-foreground font-medium">{EQUIPMENT[type].name} ×{n}</span>)}
-          <span>— подъезжает, в норму рабочей зоны пока не засчитывается.</span>
         </div>
       )}
     </div>

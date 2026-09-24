@@ -7,7 +7,7 @@ export function ForemanPlan() {
   if (!ownSiteId) return <p className="text-muted-foreground">За вами не закреплён ни один объект. Обратитесь к администратору.</p>
   return (
     <div>
-      <PageHeader title="План работ" subtitle="Что сделано, что идёт сейчас и что впереди. Отмечайте, сколько сделано по факту" />
+      <PageHeader title="План работ" info="Что сделано, что идёт сейчас и что впереди. У текущих работ отмечайте, сколько сделано по факту, — кнопка «Отметить выполнение»." />
       <StageTimeline siteId={ownSiteId} />
     </div>
   )

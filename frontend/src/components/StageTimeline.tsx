@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { CheckCircle2, Circle, Loader2, PencilLine } from 'lucide-react'
 import { api } from '@/api'
@@ -6,6 +6,7 @@ import { EQUIPMENT, PROGRESS_REPORTERS, type Stage } from '@/data'
 import { useApp } from '@/store/context'
 import { ago, cn, daysBetween, fmtDate, plural, todayISO } from '@/lib/utils'
 import { Button } from './ui/Button'
+import { InfoTip } from './ui/InfoTip'
 import { VehicleIcon } from './VehicleIcon'
 
 type Kind = 'done' | 'current' | 'future'
@@ -74,8 +75,10 @@ export function StageTimeline({ siteId }: { siteId: string }) {
       )}
 
       {of('current').length > 0 && (
-        <Section title="Текущие" count={of('current').length}>
-          <Legend />
+        <Section
+          title="Текущие" count={of('current').length}
+          info={<>Заливка полосы — сколько сделано <b>по факту</b>, тёмная черта — где работы должны быть <b>по графику</b> на сегодня. Заливка левее черты — отставание.</>}
+        >
           <div className="space-y-4">
             {of('current').map((p) => <CurrentPhase key={p.stage.id} phase={p} canReport={canReport} />)}
           </div>
@@ -104,26 +107,26 @@ export function StageTimeline({ siteId }: { siteId: string }) {
   )
 }
 
+/** Отметку выполнения не обновляли больше трёх дней, а работа уже идёт — цифрам «по факту» верить рано */
+const STALE_MS = 3 * 86_400_000
+function stale(work: Stage) {
+  return work.factUpdatedAt ? Date.now() - Date.parse(work.factUpdatedAt) > STALE_MS : work.planProgress >= 10 && work.factProgress === 0
+}
+
 function startsIn(stage: Stage) {
   const n = daysBetween(todayISO(), stage.start)
   return n <= 0 ? 'начинается сегодня' : n === 1 ? 'начнётся завтра' : `начнётся через ${plural(n, 'день', 'дня', 'дней')}`
 }
 
-function Section({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
+function Section({ title, count, info, children }: { title: string; count: number; info?: ReactNode; children: ReactNode }) {
   return (
     <section>
-      <h2 className="text-[18px] font-semibold mb-3">{title} <span className="text-muted-foreground font-normal">· {count}</span></h2>
+      <div className="flex items-center gap-2 mb-3">
+        <h2 className="text-[18px] font-semibold">{title} <span className="text-muted-foreground font-normal">· {count}</span></h2>
+        {info && <InfoTip label={`Как читать: ${title.toLowerCase()} этапы`}>{info}</InfoTip>}
+      </div>
       {children}
     </section>
-  )
-}
-
-function Legend() {
-  return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mb-3 text-[14px] text-muted-foreground">
-      <span className="inline-flex items-center gap-2"><span className="w-7 h-2.5 rounded-full bg-ok" aria-hidden /> сделано по факту</span>
-      <span className="inline-flex items-center gap-2"><span className="w-[3px] h-4 rounded-full bg-foreground" aria-hidden /> где должно быть по графику на сегодня</span>
-    </div>
   )
 }
 
@@ -170,15 +173,9 @@ function CurrentPhase({ phase, canReport }: { phase: Phase; canReport: boolean }
 
       {works.length > 0 && (
         <>
-          <dl className="mt-4 grid sm:grid-cols-2 gap-3 text-[15px]">
-            <div className="rounded-lg bg-muted/60 px-3 py-2">
-              <dt className="text-[13px] text-muted-foreground">Должно идти по графику</dt>
-              <dd className="font-semibold">{bySchedule.length ? bySchedule.map((w) => w.name).join(', ') : 'по графику перерыв между работами'}</dd>
-            </div>
-            <div className="rounded-lg bg-muted/60 px-3 py-2">
-              <dt className="text-[13px] text-muted-foreground">Идёт по факту</dt>
-              <dd className="font-semibold">{inWork.length ? inWork.map((w) => `${w.name} (${w.factProgress}%)`).join(', ') : 'работы ещё не начаты'}</dd>
-            </div>
+          <dl className="mt-3 space-y-0.5 text-[15px]">
+            <div><dt className="inline text-muted-foreground">По графику сейчас: </dt><dd className="inline font-semibold">{bySchedule.length ? bySchedule.map((w) => w.name).join(', ') : 'перерыв между работами'}</dd></div>
+            <div><dt className="inline text-muted-foreground">По факту идёт: </dt><dd className="inline font-semibold">{inWork.length ? inWork.map((w) => `${w.name} (${w.factProgress}%)`).join(', ') : 'работы ещё не начаты'}</dd></div>
           </dl>
           <ul className="mt-4 border-t border-border divide-y divide-border">
             {works.map((w) => <WorkRow key={w.id} work={w} canReport={canReport} />)}
@@ -213,7 +210,7 @@ function WorkRow({ work, canReport }: { work: Stage; canReport: boolean }) {
       </div>
       <div className="mt-2.5"><Track plan={work.planProgress} fact={work.factProgress} tone={pace(work.planProgress, work.factProgress, length(work)).tone} /></div>
       <Numbers plan={work.planProgress} fact={work.factProgress} days={length(work)} className="mt-2 text-[14px]" />
-      {work.factUpdatedAt && <p className="text-[13px] text-muted-foreground mt-0.5">Выполнение отмечено {ago(work.factUpdatedAt)}</p>}
+      {stale(work) && <p className="text-[14px] text-warn font-semibold mt-0.5">Выполнение давно не отмечали: {work.factUpdatedAt ? ago(work.factUpdatedAt) : 'ни разу'}</p>}
       {rule && rule.required.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[14px]">
           <span className="text-muted-foreground">Нужна техника:</span>

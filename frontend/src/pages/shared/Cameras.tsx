@@ -27,7 +27,11 @@ export function CamerasPage() {
   return (
     <div>
       <PageHeader
-        title="Камеры" subtitle="Видео со всех объектов в реальном времени. Нажмите на видео — развернётся на всю вкладку"
+        title="Камеры"
+        info={<>
+          <p>Видео со всех объектов в реальном времени. Нажмите на видео — оно развернётся на всю вкладку. Рамки — что система видит на последнем кадре.</p>
+          {canAdd && <p className="mt-2"><b>Как ставить камеру:</b> сверху под углом 30–45°, чтобы рабочая зона была видна целиком, и не против солнца. На объект — хотя бы две камеры: рабочая зона и въезд.</p>}
+        </>}
         action={canAdd && <Button size="lg" onClick={() => setAdding(site === 'all' ? true : site)}><Plus className="w-5 h-5" /> Добавить камеру</Button>}
       />
       {sites.length > 1 && (
@@ -40,16 +44,7 @@ export function CamerasPage() {
         cameras={sections.flatMap((s) => s.cameras)} sections={sections}
         actions={isAdmin ? (c) => <CameraAdminActions camera={c} /> : undefined}
       />
-      {canAdd && (
-        <>
-          <div className="mt-8 bg-card border border-border rounded-xl p-5 text-[15px] leading-relaxed">
-            <b>Как ставить камеры, чтобы система работала хорошо.</b> Камера смотрит на зону работ сверху под углом 30–45°,
-            охватывает рабочую зону целиком и не направлена против солнца. На объект — минимум две камеры: рабочая зона и въезд.
-            Кадр из видео уходит на анализ каждые 2 секунды, поэтому связь нужна постоянная.
-          </div>
-          <AddCameraDialog open={adding !== null} defaultSiteId={typeof adding === 'string' ? adding : undefined} onClose={() => setAdding(null)} />
-        </>
-      )}
+      {canAdd && <AddCameraDialog open={adding !== null} defaultSiteId={typeof adding === 'string' ? adding : undefined} onClose={() => setAdding(null)} />}
     </div>
   )
 }

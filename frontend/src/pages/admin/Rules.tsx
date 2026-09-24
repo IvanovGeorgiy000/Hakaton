@@ -3,6 +3,7 @@ import { Plus, Minus, Trash2, ChevronDown, Save, Loader2 } from 'lucide-react'
 import { EQUIPMENT, EQUIPMENT_LIST, type EquipmentType, type Rule } from '@/data'
 import { useApp } from '@/store/context'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { InfoTip } from '@/components/ui/InfoTip'
 import { Button } from '@/components/ui/Button'
 import { VehicleIcon } from '@/components/VehicleIcon'
 import { cn } from '@/lib/utils'
@@ -26,7 +27,7 @@ export function AdminRules() {
 
   return (
     <div>
-      <PageHeader title="Правила: этап → техника" subtitle="По этим правилам система решает, есть ли отклонение. Меняйте цифры кнопками и нажимайте «Сохранить»." />
+      <PageHeader title="Правила: этап → техника" info="По этим правилам система решает, есть ли отклонение: какая техника нужна на этапе, сколько её и какая лишняя. Меняйте цифры кнопками и нажимайте «Сохранить»." />
       <div className="space-y-3">
         {(Object.values(rules) as Rule[]).map((r) => (
           <div key={r.key} className="bg-card rounded-xl border border-border overflow-hidden">
@@ -76,8 +77,10 @@ function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => 
   return (
     <div className="border-t border-border p-4 sm:p-5 grid lg:grid-cols-2 gap-5">
       <section>
-        <h3 className="font-semibold mb-1">Нужная техника</h3>
-        <p className="text-muted-foreground text-[14px] mb-3">Если её нет или меньше, чем указано — система сообщит.</p>
+        <div className="flex items-center gap-2 mb-3">
+          <h3 className="font-semibold">Нужная техника</h3>
+          <InfoTip label="Что значит «нужная техника»">Если её нет на площадке или меньше, чем указано, — система сообщит.</InfoTip>
+        </div>
         <ul className="space-y-2">
           {draft.required.map((r) => (
             <li key={r.type} className="flex items-center gap-3 bg-muted/50 rounded-lg p-2 pr-3">
@@ -96,8 +99,10 @@ function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => 
       </section>
 
       <section>
-        <h3 className="font-semibold mb-1">Лишняя техника</h3>
-        <p className="text-muted-foreground text-[14px] mb-3">Если такая техника появится на этапе — система предупредит.</p>
+        <div className="flex items-center gap-2 mb-3">
+          <h3 className="font-semibold">Лишняя техника</h3>
+          <InfoTip label="Что значит «лишняя техника»">Если такая техника появится на площадке на этом этапе, — система предупредит.</InfoTip>
+        </div>
         <ul className="space-y-2">
           {draft.unexpected.map((u) => (
             <li key={u.type} className="flex items-center gap-3 bg-warn-bg/40 rounded-lg p-2 pr-3">

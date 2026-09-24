@@ -7,6 +7,8 @@ import { fmtDate, fmtDateShort, fmtWhen, plural } from '@/lib/utils'
 import { KIND, SEVERITY, STATUS } from '@/lib/labels'
 import { Modal } from './ui/Modal'
 import { Badge } from './ui/Badge'
+import { Disclosure } from './ui/Disclosure'
+import { InfoTip } from './ui/InfoTip'
 import { Button } from './ui/Button'
 import { CameraFrame } from './CameraFrame'
 import { FrameViewer } from './FrameViewer'
@@ -73,17 +75,15 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
         <span className="ml-auto text-[14px] text-muted-foreground font-mono">№ {alert.code} · {fmtDateShort(alert.startedAt)}</span>
       </div>
 
-      <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[15px]">
-        <Info label="Объект" value={site?.name ?? '—'} />
-        <Info label="Зона" value={zone?.name ?? '—'} />
-        <Info label="Этап по плану" value={stage?.name ?? '—'} />
-      </dl>
+      <p className="text-[15px] text-muted-foreground">
+        <b className="text-foreground font-semibold">{site?.name ?? 'Объект удалён'}</b> · {zone?.name ?? '—'}{stage && <> · этап «{stage.name}»</>}
+      </p>
 
       {/* Доказательства */}
       {cam && snap && (
         <section>
           <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <h3 className="font-semibold">Кадры с камеры: доказательства</h3>
+            <h3 className="font-semibold">Кадры-доказательства</h3>
             {liveCamera?.enabled && (
               <Button variant="outline" size="sm" onClick={() => setWatching(true)}><Video className="w-4 h-4" /> Смотреть камеру сейчас</Button>
             )}
@@ -113,14 +113,16 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
         </section>
       )}
 
-      <section className="grid sm:grid-cols-2 gap-4">
-        <Block title="Что случилось" text={alert.summary} />
-        <Block title="Чем это грозит" text={alert.consequence} tone="warn" />
+      <section>
+        <div className="flex items-center gap-2 mb-1">
+          <h3 className="font-semibold">Что случилось</h3>
+          {alert.consequence && <InfoTip label="Чем это грозит"><b>Чем это грозит.</b> {alert.consequence}</InfoTip>}
+        </div>
+        <p className="text-[16px] leading-relaxed">{alert.summary}</p>
       </section>
 
-      {/* Объяснение — ключевое требование ТЗ: явная и проверяемая связь */}
-      <section className="border border-border rounded-md p-4">
-        <h3 className="font-semibold mb-3">Почему система так решила</h3>
+      {/* Объяснение — ключевое требование ТЗ: явная и проверяемая связь. Свёрнуто, чтобы не шуметь, — раскрывается одним нажатием */}
+      <Disclosure title="Почему система так решила">
         <ol className="space-y-3">
           <Step n={1} title="Смотрим в план">
 {stage
@@ -157,9 +159,9 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
             <span className="font-semibold">{alert.title}.</span> Уверенность распознавания: {snap ? `${Math.round(avgConf(snap) * 100)}%` : '—'}.
           </Step>
         </ol>
-      </section>
+      </Disclosure>
 
-      <Block title="Что делать" text={alert.advice} tone="info" />
+      {alert.advice && <p className="rounded-xl bg-info-bg text-info-fg px-4 py-3 text-[16px] leading-relaxed"><b>Что делать:</b> {alert.advice}</p>}
 
       {/* Действия по роли */}
       {isOpen(alert.status) && role && locked && (
@@ -219,9 +221,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
         </section>
       )}
 
-      {/* История */}
-      <section>
-        <h3 className="font-semibold mb-2">История</h3>
+      <Disclosure title={<>История <span className="font-normal text-muted-foreground">· {alert.history.length + 1}</span></>}>
         <ul className="space-y-2">
           {[{ at: alert.startedAt, who: 'Система', text: 'Отклонение впервые замечено.' }, ...alert.history].map((h, i) => (
             <li key={i} className="flex gap-3 text-[15px]">
@@ -230,30 +230,12 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
             </li>
           ))}
         </ul>
-      </section>
+      </Disclosure>
       <LiveCameraViewer camera={watching && liveCamera ? liveCamera : null} onClose={() => setWatching(false)} />
       <FrameViewer
         snapshots={snaps} index={zoomed && snap ? snaps.indexOf(snap) : null} onIndex={(i) => setPicked(snaps[i].id)}
         onClose={() => setZoomed(false)} highlight={highlight} offline={alert.kind === 'camera_offline'}
       />
-    </div>
-  )
-}
-
-function Info({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-muted/60 rounded-lg px-3 py-2">
-      <dt className="text-muted-foreground text-[13px]">{label}</dt>
-      <dd className="font-semibold">{value}</dd>
-    </div>
-  )
-}
-
-function Block({ title, text, tone }: { title: string; text: string; tone?: 'warn' | 'info' }) {
-  return (
-    <div className={cn('rounded-md p-4 border', tone === 'warn' ? 'bg-warn-bg border-warn/40' : tone === 'info' ? 'bg-info-bg border-info/40' : 'bg-card border-border')}>
-      <h3 className="font-semibold mb-1">{title}</h3>
-      <p className="text-[16px] leading-relaxed">{text}</p>
     </div>
   )
 }

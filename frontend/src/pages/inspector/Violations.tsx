@@ -40,7 +40,7 @@ export function InspectorViolations() {
     <div>
       <PageHeader
         title="Журнал нарушений"
-        subtitle="Отклонения от графика, зафиксированные системой по видео с камер"
+        info="Отклонения от графика, которые система нашла по видео с камер. Откройте нарушение, чтобы посмотреть кадры-доказательства, выдать предписание или закрыть его."
         action={<Button variant="outline" onClick={exportCsv}><Download className="w-5 h-5" /> Выгрузить в Excel</Button>}
       />
       <div className="flex flex-wrap gap-2 mb-3">

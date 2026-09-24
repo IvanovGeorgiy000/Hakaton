@@ -44,7 +44,7 @@ export function AdminAudit() {
   return (
     <div>
       <PageHeader
-        title="Журнал действий" subtitle="Кто, когда и что сделал в системе: камеры, объекты, сотрудники, пароли, отклонения, входы"
+        title="Журнал действий" info="Кто, когда и что сделал в системе: камеры, объекты, план, сотрудники, пароли, ответы на отклонения, входы. Сами пароли в журнал не попадают."
         action={<Button variant="outline" onClick={() => void log.refetch()}><RefreshCw className="w-5 h-5" /> Обновить</Button>}
       />
       <div className="flex flex-wrap gap-2 mb-3" role="group" aria-label="Что показывать">

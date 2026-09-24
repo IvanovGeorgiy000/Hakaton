@@ -47,7 +47,7 @@ export function CheckSnapshot() {
 
   return (
     <div>
-      <PageHeader title="Проверить фото" subtitle="Загрузите фото со стройки — система найдёт технику и сверит её с планом объекта" />
+      <PageHeader title="Проверить фото" info="Загрузите фото со стройки — система найдёт на нём технику и сверит её с планом объекта на сегодня." />
       <div className="grid lg:grid-cols-[1fr_380px] gap-5">
         <div>
           {source ? (
