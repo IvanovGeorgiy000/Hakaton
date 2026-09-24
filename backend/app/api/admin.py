@@ -45,6 +45,7 @@ from app.services import audit
 from app.services.audit import ROLE_TITLES
 from app.services.engine import current_stage, local_day
 from app.services.pipeline import get_pipeline
+from app.services.plan import site_progress, stages_by_site
 
 settings = get_settings()
 router = APIRouter()
@@ -98,8 +99,6 @@ def _site_fields(site: Site) -> dict:
         "address": site.address,
         "contractor": site.contractor,
         "foreman": site.foreman_name,
-        "planProgress": site.plan_progress,
-        "factProgress": site.fact_progress,
     }
 
 
@@ -118,8 +117,6 @@ async def create_site(body: SiteIn, user: CurrentUser, session: Session, request
         name=body.name.strip(),
         address=body.address.strip(),
         contractor=body.contractor.strip(),
-        plan_progress=body.plan_progress,
-        fact_progress=body.fact_progress,
         position=position,
     )
     session.add(site)
@@ -130,7 +127,7 @@ async def create_site(body: SiteIn, user: CurrentUser, session: Session, request
         entity_type="site", entity_id=site.id, entity_name=site.name, details=_site_fields(site),
     )  # fmt: skip
     await session.commit()
-    return site_out(site, None)
+    return site_out(site, None, None)  # у нового объекта плана ещё нет
 
 
 @router.patch("/sites/{site_id}", response_model=SiteOut, dependencies=site_managers, tags=["Объекты"], summary="Изменить объект")
@@ -138,7 +135,6 @@ async def update_site(site_id: str, body: SiteIn, user: CurrentUser, session: Se
     site = await _site(session, site_id)
     before = _site_fields(site)
     site.name, site.address, site.contractor = body.name.strip(), body.address.strip(), body.contractor.strip()
-    site.plan_progress, site.fact_progress = body.plan_progress, body.fact_progress
     await _set_foreman(session, site, body.foreman_id)
     if changed := audit.changes(before, _site_fields(site)):
         audit.record(
@@ -146,8 +142,10 @@ async def update_site(site_id: str, body: SiteIn, user: CurrentUser, session: Se
             entity_type="site", entity_id=site.id, entity_name=site.name, details=changed,
         )  # fmt: skip
     await session.commit()
-    stage = await current_stage(session, site.id, local_day(utcnow()))
-    return site_out(site, stage.id if stage else None)
+    today = local_day(utcnow())
+    stage = await current_stage(session, site.id, today)
+    plans = await stages_by_site(session, [site.id])
+    return site_out(site, stage.id if stage else None, site_progress(plans[site.id], today))
 
 
 @router.delete(

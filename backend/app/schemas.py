@@ -82,11 +82,11 @@ class SiteOut(ApiModel):
     contractor: str
     foreman: str
     current_stage_id: str | None
-    plan_progress: int
-    fact_progress: int
+    plan_progress: int | None  # сколько должно быть сделано по графику, % — по всему плану; None — плана нет
+    fact_progress: int | None  # сколько сделано по факту, %
 
 
-def site_out(s: Site, current_stage_id: str | None) -> SiteOut:
+def site_out(s: Site, current_stage_id: str | None, progress: tuple[int, int] | None) -> SiteOut:
     return SiteOut(
         id=s.id,
         name=s.name,
@@ -94,8 +94,8 @@ def site_out(s: Site, current_stage_id: str | None) -> SiteOut:
         contractor=s.contractor,
         foreman=s.foreman_name,
         current_stage_id=current_stage_id,
-        plan_progress=s.plan_progress,
-        fact_progress=s.fact_progress,
+        plan_progress=progress[0] if progress else None,
+        fact_progress=progress[1] if progress else None,
     )
 
 
@@ -104,8 +104,6 @@ class SiteIn(ApiModel):
     address: str = Field(default="", max_length=200)
     contractor: str = Field(default="", max_length=200)
     foreman_id: str | None = None  # прораб объекта: получит к нему доступ
-    plan_progress: int = Field(default=0, ge=0, le=100)
-    fact_progress: int = Field(default=0, ge=0, le=100)
 
 
 class ZoneIn(ApiModel):

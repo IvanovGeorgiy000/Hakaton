@@ -52,9 +52,8 @@ class Site(Base):
     address: Mapped[str] = mapped_column(String(200), default="")
     contractor: Mapped[str] = mapped_column(String(200), default="")
     foreman_name: Mapped[str] = mapped_column(String(120), default="")
-    plan_progress: Mapped[int] = mapped_column(default=0)  # % по плану на сегодня
-    fact_progress: Mapped[int] = mapped_column(default=0)  # % фактически
     position: Mapped[int] = mapped_column(default=0)
+    # выполнение объекта не хранится: его считают по календарному плану (services/plan.py)
 
 
 class Zone(Base):

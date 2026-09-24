@@ -26,6 +26,7 @@ from app.security import CurrentUser, Session, require_roles
 from app.services import audit
 from app.services.engine import current_stage, local_day, site_state
 from app.services.pipeline import get_pipeline
+from app.services.plan import site_progress, stages_by_site
 
 router = APIRouter()
 
@@ -33,11 +34,12 @@ router = APIRouter()
 @router.get("/sites", response_model=list[SiteOut], tags=["Объекты"], summary="Объекты, доступные пользователю")
 async def list_sites(user: CurrentUser, session: Session) -> list[SiteOut]:
     today = local_day(utcnow())
-    sites = await session.scalars(scope(select(Site), Site.id, user).order_by(Site.position))
+    sites = list(await session.scalars(scope(select(Site), Site.id, user).order_by(Site.position)))
+    plans = await stages_by_site(session, [s.id for s in sites])
     out = []
     for site in sites:
         stage = await current_stage(session, site.id, today)
-        out.append(site_out(site, stage.id if stage else None))
+        out.append(site_out(site, stage.id if stage else None, site_progress(plans[site.id], today)))
     return out
 
 

@@ -253,3 +253,38 @@ async def test_keycloak_admin_renews_token_after_keycloak_restart(monkeypatch):
     admin = ka.KeycloakAdmin(transport=httpx.MockTransport(handler))
     assert await admin.find("prorab") is None
     assert issued == ["t0", "t1"]
+
+
+async def test_site_progress_comes_from_plan(client):
+    """Проценты объекта не вводят руками: по графику и по факту — по всем работам плана с весом по длительности."""
+    from datetime import timedelta
+
+    from app.db import utcnow
+    from app.services.engine import local_day
+
+    manager = await login_as(client, "manager")
+    site = (await client.post("/api/sites", headers=manager, json={"name": "Новый объект"})).json()
+    assert site["planProgress"] is None and site["factProgress"] is None  # плана ещё нет
+
+    today = local_day(utcnow())
+    phase = await client.post(
+        f"/api/sites/{site['id']}/stages",
+        headers=manager,
+        json={
+            "name": "Земляные работы",
+            "level": 1,
+            "start": str(today - timedelta(days=4)),
+            "end": str(today + timedelta(days=5)),
+        },
+    )
+    work = await client.post(
+        f"/api/sites/{site['id']}/stages",
+        headers=manager,
+        json={
+            "name": "Котлован", "level": 2, "parentId": phase.json()["id"],
+            "start": str(today - timedelta(days=4)), "end": str(today + timedelta(days=5)),
+        },
+    )  # fmt: skip
+    await client.patch(f"/api/stages/{work.json()['id']}/progress", headers=manager, json={"factProgress": 20})
+    listed = {s["id"]: s for s in (await client.get("/api/sites", headers=manager)).json()}[site["id"]]
+    assert listed["planProgress"] == 50 and listed["factProgress"] == 20  # 5-й из 10 дней — половина по графику

@@ -54,19 +54,17 @@ USERS = [  # id, логин, имя, роль, телефон, объекты
     ("u7", "admin", "Орлов Павел", "admin", "+7 903 789-01-23", []),
 ]
 
-SITES = [  # id, название, адрес, подрядчик, прораб, план %, факт %
-    ("s1", "ЖК «Северный парк», корпус 3", "ул. Дыбенко, вл. 7, САО", "ООО «МонолитСтрой»", "Кузнецов Андрей", 41, 34),
-    ("s2", "Школа на 550 мест", "ул. Лобачевского, 92, ЗАО", "АО «Стройтрест-11»", "Петров Сергей", 58, 57),
+SITES = [  # id, название, адрес, подрядчик, прораб (выполнение объекта считается по его плану)
+    ("s1", "ЖК «Северный парк», корпус 3", "ул. Дыбенко, вл. 7, САО", "ООО «МонолитСтрой»", "Кузнецов Андрей"),
+    ("s2", "Школа на 550 мест", "ул. Лобачевского, 92, ЗАО", "АО «Стройтрест-11»", "Петров Сергей"),
     (
         "s3",
         "Реконструкция Дмитровского шоссе, участок 2",
         "Дмитровское ш., км 12–14, САО",
         "ГБУ «Автомобильные дороги»",
         "Волков Игорь",
-        73,
-        66,
     ),
-    ("s4", "Детский сад на 250 мест", "ул. Рождественская, 21, Некрасовка", "ООО «ГорСтройКомплект»", "Смирнова Ольга", 12, 14),
+    ("s4", "Детский сад на 250 мест", "ул. Рождественская, 21, Некрасовка", "ООО «ГорСтройКомплект»", "Смирнова Ольга"),
 ]
 
 ZONES = [  # id, объект, название, вид
@@ -306,17 +304,8 @@ def _h(hours: float = 0, days: int = 0, minutes: int = 0) -> timedelta:
 async def _catalog(session: AsyncSession, today: date) -> None:
     password_hash = hash_password(settings.demo_password)
     sites = {}
-    for pos, (sid, name, address, contractor, foreman, plan, fact) in enumerate(SITES):
-        sites[sid] = Site(
-            id=sid,
-            name=name,
-            address=address,
-            contractor=contractor,
-            foreman_name=foreman,
-            plan_progress=plan,
-            fact_progress=fact,
-            position=pos,
-        )
+    for pos, (sid, name, address, contractor, foreman) in enumerate(SITES):
+        sites[sid] = Site(id=sid, name=name, address=address, contractor=contractor, foreman_name=foreman, position=pos)
     session.add_all(sites.values())
     await session.flush()  # объекты должны существовать до зон, камер и пользователей, которые на них ссылаются
     for uid, login, name, role, phone, site_ids in USERS:

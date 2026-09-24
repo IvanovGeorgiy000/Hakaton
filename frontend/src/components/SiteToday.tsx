@@ -26,7 +26,9 @@ export function SiteToday({ siteId, camerasLink, onShowCameras, showName = true 
   const status = siteStatus(siteId)
   const open = alertsForSite(siteId).filter((a) => isOpen(a.status)).sort(bySeverity)
   const closed = alertsForSite(siteId).filter((a) => !isOpen(a.status))
-  const lag = site.planProgress - site.factProgress
+  const { planProgress: plan, factProgress: fact } = site  // по всему плану объекта; null — плана нет
+  const hasPlan = plan !== null && fact !== null
+  const lag = plan !== null && fact !== null ? plan - fact : 0
 
   return (
     <div className="space-y-6">
@@ -44,7 +46,7 @@ export function SiteToday({ siteId, camerasLink, onShowCameras, showName = true 
         </div>
         <div className="grid sm:grid-cols-3 gap-3 mt-5">{/* показатели */}
           <StatTile label="Этап сейчас" value={<span className="text-xl">{stage?.name ?? 'Нет этапа по плану'}</span>} hint={stage ? `по графику до ${fmtDate(stage.end)}` : undefined} />
-          <StatTile label="Выполнено работ" value={`${site.factProgress}%`} hint={lag > 0 ? `отставание ${lag}% от плана (${site.planProgress}%)` : lag < 0 ? `с опережением плана (${site.planProgress}%)` : 'точно по плану'} tone={lag > 5 ? 'danger' : lag > 0 ? 'warn' : 'ok'} />
+          <StatTile label="Выполнено работ" value={hasPlan ? `${fact}%` : '—'} hint={!hasPlan ? 'план работ не задан' : lag > 0 ? `по графику ${plan}% — отставание ${lag}%` : lag < 0 ? `по графику ${plan}% — опережение` : 'точно по графику'} tone={!hasPlan ? undefined : lag > 5 ? 'danger' : lag > 0 ? 'warn' : 'ok'} />
           <StatTile label="Открытых замечаний" value={open.length} hint={!open.length ? 'всё спокойно' : open.some((a) => a.severity === 'high') ? `из них ${plural(open.filter((a) => a.severity === 'high').length, 'срочное', 'срочных', 'срочных')}` : 'срочных нет'} tone={open.some((a) => a.severity === 'high') ? 'danger' : open.length ? 'warn' : 'ok'} />
         </div>
       </div>

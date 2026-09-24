@@ -41,8 +41,8 @@ async def _legacy_database() -> None:
         await conn.execute(text("INSERT INTO app_meta (key, value) VALUES ('schema', '2')"))
         await conn.execute(
             text(
-                "INSERT INTO sites (id, name, address, contractor, foreman_name, plan_progress, fact_progress, position) "
-                "VALUES ('legacy', 'Старый объект', '', '', '', 0, 0, 0)"
+                "INSERT INTO sites (id, name, address, contractor, foreman_name, position) "
+                "VALUES ('legacy', 'Старый объект', '', '', '', 0)"
             )
         )
 

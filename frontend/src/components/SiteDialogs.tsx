@@ -39,7 +39,6 @@ function SiteForm({ site, onClose, onCreated }: { site: Site | null; onClose: ()
   const currentForeman = site ? foremen.find((u) => u.siteIds.includes(site.id))?.id ?? null : null
   const [form, setForm] = useState<SiteInput>({
     name: site?.name ?? '', address: site?.address ?? '', contractor: site?.contractor ?? '', foremanId: null,
-    planProgress: site?.planProgress ?? 0, factProgress: site?.factProgress ?? 0,
   })
   const foremanId = form.foremanId ?? currentForeman
   const [tried, setTried] = useState(false)
@@ -83,14 +82,6 @@ function SiteForm({ site, onClose, onCreated }: { site: Site | null; onClose: ()
           </select>
         )}
       </Field>
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="Выполнено по плану, %">
-          {(id) => <input id={id} type="number" min={0} max={100} value={form.planProgress} onChange={(e) => set({ planProgress: clampPercent(e.target.value) })} className={inputCls} />}
-        </Field>
-        <Field label="Выполнено фактически, %">
-          {(id) => <input id={id} type="number" min={0} max={100} value={form.factProgress} onChange={(e) => set({ factProgress: clampPercent(e.target.value) })} className={inputCls} />}
-        </Field>
-      </div>
       <div className="flex flex-wrap gap-3 pt-2">
         <Button type="submit" size="lg" disabled={busy}>{busy && <Loader2 className="w-5 h-5 animate-spin" />} {site ? 'Сохранить' : 'Создать объект'}</Button>
         <Button type="button" variant="outline" size="lg" onClick={onClose}>Отмена</Button>

@@ -40,7 +40,7 @@ export function ManagerOverview() {
         {[...visibleSites].sort((a, b) => rank(siteStatus(b.id)) - rank(siteStatus(a.id))).map((s) => {
           const status = siteStatus(s.id)
           const open = alertsForSite(s.id).filter((a) => isOpen(a.status))
-          const lag = s.planProgress - s.factProgress
+          const lag = s.planProgress !== null && s.factProgress !== null ? s.planProgress - s.factProgress : 0
           const stage = byStage(s.currentStageId)
           return (
             <div key={s.id}>
@@ -61,7 +61,7 @@ export function ManagerOverview() {
                 <div className="mt-3"><StatusPill status={status} /></div>
                 <dl className="grid grid-cols-3 gap-2 mt-4 text-[14px]">
                   <div><dt className="text-muted-foreground">Этап</dt><dd className="font-semibold leading-tight">{stage?.name ?? '—'}</dd></div>
-                  <div><dt className="text-muted-foreground">Выполнено</dt><dd className={cn('font-semibold', lag > 5 && 'text-danger')}>{s.factProgress}% <span className="text-muted-foreground font-normal">/ план {s.planProgress}%</span></dd></div>
+                  <div><dt className="text-muted-foreground">Выполнено</dt><dd className={cn('font-semibold', lag > 5 && 'text-danger')}>{s.factProgress === null ? <span className="text-muted-foreground font-normal">нет плана</span> : <>{s.factProgress}% <span className="text-muted-foreground font-normal">/ план {s.planProgress}%</span></>}</dd></div>
                   <div><dt className="text-muted-foreground">Замечания</dt><dd className="font-semibold">{open.length ? plural(open.length, 'открытое', 'открытых', 'открытых') : 'нет'}</dd></div>
                 </dl>
                 {open[0] && (

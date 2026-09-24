@@ -48,8 +48,9 @@ export interface Site {
   contractor: string
   foreman: string
   currentStageId: string | null
-  planProgress: number
-  factProgress: number
+  /** По всему плану объекта: сколько должно быть сделано по графику и сколько по факту, %. null — плана нет */
+  planProgress: number | null
+  factProgress: number | null
 }
 
 export type ZoneKind = 'work' | 'gate' | 'storage'
@@ -258,8 +259,6 @@ export interface SiteInput {
   address: string
   contractor: string
   foremanId: string | null
-  planProgress: number
-  factProgress: number
 }
 
 export interface ZoneInput { name: string; kind: ZoneKind }
