@@ -43,8 +43,9 @@ function pace(plan: number, fact: number, days: number): { tone: Tone; text: str
  * а черта на ней — где работы должны быть по графику на сегодня. Сколько сделано, отмечают прораб, руководитель и администратор.
  */
 export function StageTimeline({ siteId }: { siteId: string }) {
-  const { stagesOf, role } = useApp()
+  const { stagesOf, role, bySite } = useApp()
   const stages = stagesOf(siteId)
+  const site = bySite(siteId)
   const canReport = !!role && PROGRESS_REPORTERS.includes(role.id)
   const phases: Phase[] = stages
     .filter((s) => s.level === 1)
@@ -57,8 +58,26 @@ export function StageTimeline({ siteId }: { siteId: string }) {
   if (!phases.length) return <p className="text-muted-foreground">План работ пока пуст.</p>
   const of = (kind: Kind) => phases.filter((p) => p.kind === kind)
 
+  const whole = site && site.planProgress !== null && site.factProgress !== null
+    ? { plan: site.planProgress, fact: site.factProgress, ...pace(site.planProgress, site.factProgress, daysBetween(phases[0].stage.start, phases[phases.length - 1].stage.end) + 1) }
+    : null
+
   return (
     <div className="space-y-8">
+      {/* те же цифры, что в плитке «Готовность объекта» на главном экране, — чтобы проценты этапов не путали с общими */}
+      {whole && (
+        <div className="bg-card rounded-xl border border-border px-4 py-3.5">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-2">
+            <span className="font-semibold">Объект в целом</span>
+            <span className="text-[15px]">
+              По факту <b className="tabular">{whole.fact}%</b> <span className="text-muted-foreground">по графику {whole.plan}%</span>
+              {' · '}<span className={cn('font-medium', TEXT[whole.tone])}>{whole.text}</span>
+            </span>
+          </div>
+          <Track plan={whole.plan} fact={whole.fact} tone={whole.tone} />
+        </div>
+      )}
+
       {of('done').length > 0 && (
         <Section title="Завершённые" count={of('done').length}>
           <ul className="bg-card rounded-xl border border-border divide-y divide-border">

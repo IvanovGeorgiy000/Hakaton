@@ -17,7 +17,7 @@ export function SiteToday({ siteId, camerasLink, onShowCameras, showName = true 
   /** false — название объекта уже стоит над вкладками страницы объекта */
   showName?: boolean
 }) {
-  const { siteStatus, alertsForSite, bySite, byStage } = useApp()
+  const { siteStatus, alertsForSite, bySite, byStage, role } = useApp()
   const { alert: sel, open: setSel, close } = useOpenAlert()
   const site = bySite(siteId)
   if (!site) return <p className="text-muted-foreground">Объект не найден или у вас нет к нему доступа.</p>
@@ -28,9 +28,11 @@ export function SiteToday({ siteId, camerasLink, onShowCameras, showName = true 
   const { planProgress: plan, factProgress: fact } = site  // по всему плану объекта; null — плана нет
   const hasPlan = plan !== null && fact !== null
   const lag = plan !== null && fact !== null ? plan - fact : 0
+  const urgent = open.filter((a) => a.severity === 'high').length
 
+  // На телефоне первым идёт «что не так»: показатели уезжают ниже, иначе они занимают весь первый экран
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
@@ -38,19 +40,32 @@ export function SiteToday({ siteId, camerasLink, onShowCameras, showName = true 
             <div className={cn('flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground text-[15px]', showName && 'mt-2')}>
               <span className="inline-flex items-center gap-1.5"><MapPin className="w-4 h-4" />{site.address}</span>
               <span className="inline-flex items-center gap-1.5"><Building className="w-4 h-4" />{site.contractor}</span>
-              <span className="inline-flex items-center gap-1.5"><HardHat className="w-4 h-4" />Прораб: {site.foreman}</span>
+              {role?.id !== 'foreman' && <span className="inline-flex items-center gap-1.5"><HardHat className="w-4 h-4" />Прораб: {site.foreman}</span>}
             </div>
           </div>
           <StatusPill status={status} big />
         </div>
-        <div className="grid sm:grid-cols-3 gap-3 mt-5">{/* показатели */}
-          <StatTile label="Этап сейчас" value={<span className="text-xl">{stage?.name ?? 'Нет этапа по плану'}</span>} hint={stage ? `по графику до ${fmtDate(stage.end)}` : undefined} />
-          <StatTile label="Выполнено работ" value={hasPlan ? `${fact}%` : '—'} hint={!hasPlan ? 'план работ не задан' : lag > 0 ? `по графику ${plan}% — отставание ${lag}%` : lag < 0 ? `по графику ${plan}% — опережение` : 'точно по графику'} tone={!hasPlan ? undefined : lag > 5 ? 'danger' : lag > 0 ? 'warn' : 'ok'} />
-          <StatTile label="Открытых замечаний" value={open.length} hint={!open.length ? 'всё спокойно' : open.some((a) => a.severity === 'high') ? `из них ${plural(open.filter((a) => a.severity === 'high').length, 'срочное', 'срочных', 'срочных')}` : 'срочных нет'} tone={open.some((a) => a.severity === 'high') ? 'danger' : open.length ? 'warn' : 'ok'} />
-        </div>
       </div>
 
-      <section>
+      <div className="grid sm:grid-cols-3 gap-3 order-2 sm:order-none">{/* показатели */}
+        <StatTile
+          label="Этап сейчас" value={<span className="text-xl">{stage?.name ?? 'Нет этапа по плану'}</span>}
+          hint={stage ? `сделано ${stage.factProgress}% · по графику до ${fmtDate(stage.end)}` : undefined}
+        />
+        {/* весь объект, а не текущий этап: на странице плана те же цифры стоят в строке «Объект в целом» */}
+        <StatTile
+          label="Готовность объекта" value={hasPlan ? `${fact}%` : '—'}
+          hint={!hasPlan ? 'план работ не задан' : Math.abs(lag) <= 2 ? `по графику ${plan}% — идёт по графику` : lag > 0 ? `по графику ${plan}% — отстаёт на ${lag}%` : `по графику ${plan}% — опережает на ${-lag}%`}
+          tone={!hasPlan ? undefined : lag > 10 ? 'danger' : lag > 2 ? 'warn' : 'ok'}
+        />
+        <StatTile
+          label="Открытых замечаний" value={open.length}
+          hint={!open.length ? 'всё спокойно' : urgent ? `из них ${plural(urgent, 'срочное', 'срочных', 'срочных')}` : 'срочных нет'}
+          tone={urgent ? 'danger' : open.length ? 'warn' : 'ok'}
+        />
+      </div>
+
+      <section className="order-1 sm:order-none">
         <div className="flex items-baseline justify-between gap-3 mb-3">
           <h2 className="text-[18px] font-semibold">Что не так прямо сейчас</h2>
           {camerasLink && <Link to={camerasLink} className="text-primary font-semibold hover:underline min-h-[44px] inline-flex items-center">Смотреть камеры</Link>}
@@ -73,13 +88,13 @@ export function SiteToday({ siteId, camerasLink, onShowCameras, showName = true 
         )}
       </section>
 
-      <section>
+      <section className="order-3 sm:order-none">
         <h2 className="text-[18px] font-semibold mb-2">План и факт по технике</h2>
         <EquipmentCheck siteId={siteId} />
       </section>
 
       {closed.length > 0 && (
-        <section>
+        <section className="order-4 sm:order-none">
           <h2 className="text-[18px] font-semibold mb-2">Уже решено</h2>
           <div className="space-y-3">
             {closed.map((a) => <AlertCard key={a.id} alert={a} onOpen={setSel} compact />)}
