@@ -260,7 +260,8 @@ export interface SiteInput {
   name: string
   address: string
   contractor: string
-  foremanId: string | null
+  /** id прораба; null — снять прораба с объекта; поля нет — прораба не менять */
+  foremanId?: string | null
 }
 
 export interface ZoneInput { name: string; kind: ZoneKind }

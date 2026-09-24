@@ -79,6 +79,18 @@ async def test_who_manages_sites_and_staff(client):
     phase = {"name": "Земляные работы", "level": 1, "start": "2026-10-01", "end": "2026-10-31"}
     assert (await client.post(f"/api/sites/{site_id}/stages", headers=manager, json=phase)).status_code == 201
     assert (await client.get("/api/users", headers=manager)).status_code == 200  # список нужен, чтобы выбрать прораба
+
+    def foreman_of(users: list[dict]) -> list[str]:
+        return [u["id"] for u in users if site_id in u["siteIds"]]
+
+    # без поля foremanId прораб остаётся, с foremanId: null — снимается с объекта
+    await client.patch(f"/api/sites/{site_id}", headers=manager, json={"name": "Объект руководителя, корпус 2"})
+    assert foreman_of((await client.get("/api/users", headers=manager)).json()) == ["u4"]
+    cleared = await client.patch(
+        f"/api/sites/{site_id}", headers=manager, json={"name": "Объект руководителя", "foremanId": None}
+    )
+    assert cleared.status_code == 200 and cleared.json()["foreman"] == ""
+    assert foreman_of((await client.get("/api/users", headers=manager)).json()) == []
     # удалить объект и управлять сотрудниками — только администратор
     assert (await client.delete(f"/api/sites/{site_id}", headers=manager)).status_code == 403
     assert (await client.post("/api/users/u1/password", headers=manager, json={"password": "secret-1"})).status_code == 403

@@ -37,10 +37,12 @@ function SiteForm({ site, onClose, onCreated }: { site: Site | null; onClose: ()
   const users = useQuery({ queryKey: ['users'], queryFn: api.users })
   const foremen = (users.data ?? []).filter((u) => u.role === 'foreman' && u.isActive)
   const currentForeman = site ? foremen.find((u) => u.siteIds.includes(site.id))?.id ?? null : null
+  // foremanId: undefined — прораба не трогали (на сервер не отправляем: список сотрудников мог ещё не загрузиться),
+  // null — выбрали «не назначен» и прораба нужно снять
   const [form, setForm] = useState<SiteInput>({
-    name: site?.name ?? '', address: site?.address ?? '', contractor: site?.contractor ?? '', foremanId: null,
+    name: site?.name ?? '', address: site?.address ?? '', contractor: site?.contractor ?? '',
   })
-  const foremanId = form.foremanId ?? currentForeman
+  const foremanId = form.foremanId === undefined ? currentForeman : form.foremanId
   const [tried, setTried] = useState(false)
   const [busy, setBusy] = useState(false)
   const nameError = form.name.trim().length < 2 ? 'Введите название объекта' : undefined
@@ -51,7 +53,7 @@ function SiteForm({ site, onClose, onCreated }: { site: Site | null; onClose: ()
     setTried(true)
     if (nameError) return
     setBusy(true)
-    const body = { ...form, name: form.name.trim(), foremanId }
+    const body: SiteInput = { ...form, name: form.name.trim() }
     const result: { created?: Site } = {}
     const ok = await run(
       async () => { if (site) await api.updateSite(site.id, body); else result.created = await api.createSite(body) },

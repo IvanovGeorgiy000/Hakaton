@@ -103,7 +103,7 @@ class SiteIn(ApiModel):
     name: str = Field(min_length=2, max_length=200)
     address: str = Field(default="", max_length=200)
     contractor: str = Field(default="", max_length=200)
-    foreman_id: str | None = None  # прораб объекта: получит к нему доступ
+    foreman_id: str | None = None  # прораб объекта: получит к нему доступ; явный null — снять прораба, поля нет — не трогать
 
 
 class ZoneIn(ApiModel):

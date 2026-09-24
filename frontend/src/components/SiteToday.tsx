@@ -40,7 +40,7 @@ export function SiteToday({ siteId, camerasLink, onShowCameras, showName = true 
             <div className={cn('flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground text-[15px]', showName && 'mt-2')}>
               <span className="inline-flex items-center gap-1.5"><MapPin className="w-4 h-4" />{site.address}</span>
               <span className="inline-flex items-center gap-1.5"><Building className="w-4 h-4" />{site.contractor}</span>
-              {role?.id !== 'foreman' && <span className="inline-flex items-center gap-1.5"><HardHat className="w-4 h-4" />Прораб: {site.foreman}</span>}
+              {role?.id !== 'foreman' && <span className="inline-flex items-center gap-1.5"><HardHat className="w-4 h-4" />Прораб: {site.foreman || 'не назначен'}</span>}
             </div>
           </div>
           <StatusPill status={status} big />

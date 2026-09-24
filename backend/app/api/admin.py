@@ -79,18 +79,22 @@ async def _site(session, site_id: str) -> Site:  # noqa: ANN001
 # =====================================================================================
 #  Объекты
 # =====================================================================================
-async def _set_foreman(session, site: Site, foreman_id: str | None) -> None:  # noqa: ANN001
-    """Прораб объекта один: новому даём доступ к объекту, у прежних прорабов этого объекта — снимаем."""
-    if foreman_id is None:
+async def _set_foreman(session, site: Site, body: SiteIn) -> None:  # noqa: ANN001
+    """Прораб объекта один: новому даём доступ к объекту, у прежних прорабов этого объекта — снимаем.
+    Поля foremanId в запросе нет — прораба не трогаем; foremanId: null — снимаем прораба с объекта."""
+    if "foreman_id" not in body.model_fields_set:
         return
-    foreman = await session.get(User, foreman_id)
-    if foreman is None or foreman.role != "foreman":
-        raise _invalid("Прорабом объекта можно назначить только сотрудника с ролью «Прораб»")
-    for other in await session.scalars(select(User).where(User.role == "foreman", User.id != foreman.id)):
+    foreman = None
+    if body.foreman_id is not None:
+        foreman = await session.get(User, body.foreman_id)
+        if foreman is None or foreman.role != "foreman":
+            raise _invalid("Прорабом объекта можно назначить только сотрудника с ролью «Прораб»")
+    keep = foreman.id if foreman else None
+    for other in await session.scalars(select(User).where(User.role == "foreman", User.id != keep)):
         other.sites = [s for s in other.sites if s.id != site.id]
-    if site.id not in {s.id for s in foreman.sites}:
+    if foreman and site.id not in {s.id for s in foreman.sites}:
         foreman.sites = [*foreman.sites, site]
-    site.foreman_name = foreman.name
+    site.foreman_name = foreman.name if foreman else ""
 
 
 def _site_fields(site: Site) -> dict:
@@ -121,7 +125,7 @@ async def create_site(body: SiteIn, user: CurrentUser, session: Session, request
     )
     session.add(site)
     await session.flush()
-    await _set_foreman(session, site, body.foreman_id)
+    await _set_foreman(session, site, body)
     audit.record(
         session, request, user, "site.create", f"Создал объект «{site.name}»",
         entity_type="site", entity_id=site.id, entity_name=site.name, details=_site_fields(site),
@@ -135,7 +139,7 @@ async def update_site(site_id: str, body: SiteIn, user: CurrentUser, session: Se
     site = await _site(session, site_id)
     before = _site_fields(site)
     site.name, site.address, site.contractor = body.name.strip(), body.address.strip(), body.contractor.strip()
-    await _set_foreman(session, site, body.foreman_id)
+    await _set_foreman(session, site, body)
     if changed := audit.changes(before, _site_fields(site)):
         audit.record(
             session, request, user, "site.update", f"Изменил объект «{site.name}»",
