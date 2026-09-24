@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Truck, CheckCircle2, XCircle, FileWarning, Wrench, ClipboardCheck, Video } from 'lucide-react'
+import { Truck, CheckCircle2, XCircle, FileWarning, Wrench, ClipboardCheck, Video, Maximize2 } from 'lucide-react'
 import { EQUIPMENT, type Alert, type AlertStatus } from '@/data'
 import { useApp } from '@/store/context'
 import { isOpen } from '@/store/selectors'
@@ -9,6 +9,7 @@ import { Modal } from './ui/Modal'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import { CameraFrame } from './CameraFrame'
+import { FrameViewer } from './FrameViewer'
 import { LiveCameraViewer } from './video/LiveCameraViewer'
 import { cn } from '@/lib/utils'
 
@@ -34,6 +35,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
   const [comment, setComment] = useState('')
   const [saving, setSaving] = useState(false)
   const [watching, setWatching] = useState(false)
+  const [zoomed, setZoomed] = useState(false)  // кадр-доказательство на весь экран
   const snaps = alert.evidenceSnapshots
   const [picked, setPicked] = useState<string | null>(null)
   const snap = snaps.find((s) => s.id === picked) ?? snaps[snaps.length - 1]
@@ -45,6 +47,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
   // живое видео той камеры, что дала доказательства (если она ещё есть и включена)
   const liveCamera = byCamera(alert.cameraId ?? snap?.cameraId ?? null)
   const eq = alert.equipment ? EQUIPMENT[alert.equipment] : undefined
+  const highlight = alert.equipment && (alert.kind === 'unexpected' || alert.kind === 'idle') ? [alert.equipment] : undefined
   const sev = SEVERITY[alert.severity]
   const st = STATUS[alert.status]
   // по отклонению с предписанием решение принимает инспектор (и администратор — он может всё)
@@ -85,7 +88,12 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
               <Button variant="outline" size="sm" onClick={() => setWatching(true)}><Video className="w-4 h-4" /> Смотреть камеру сейчас</Button>
             )}
           </div>
-          <CameraFrame camera={cam} snapshot={snap} highlight={alert.equipment && (alert.kind === 'unexpected' || alert.kind === 'idle') ? [alert.equipment] : undefined} offline={alert.kind === 'camera_offline'} />
+          <button type="button" onClick={() => setZoomed(true)} aria-label="Открыть кадр на весь экран" className="relative block w-full rounded-lg cursor-zoom-in group">
+            <CameraFrame camera={cam} snapshot={snap} highlight={highlight} offline={alert.kind === 'camera_offline'} />
+            <span className="absolute left-2 bottom-2 w-9 h-9 rounded-md bg-black/60 text-white flex items-center justify-center transition-colors group-hover:bg-black/80" aria-hidden>
+              <Maximize2 className="w-4 h-4" />
+            </span>
+          </button>
           {snaps.length > 1 && (
             <div className="flex flex-wrap gap-2 mt-3">
               {snaps.map((s) => (
@@ -224,6 +232,10 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
         </ul>
       </section>
       <LiveCameraViewer camera={watching && liveCamera ? liveCamera : null} onClose={() => setWatching(false)} />
+      <FrameViewer
+        snapshots={snaps} index={zoomed && snap ? snaps.indexOf(snap) : null} onIndex={(i) => setPicked(snaps[i].id)}
+        onClose={() => setZoomed(false)} highlight={highlight} offline={alert.kind === 'camera_offline'}
+      />
     </div>
   )
 }

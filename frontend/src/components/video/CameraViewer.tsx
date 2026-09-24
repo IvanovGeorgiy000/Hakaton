@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight, ScanSearch, X } from 'lucide-react'
 import type { Camera, LiveCamera } from '@/data'
 import { useApp } from '@/store/context'
 import { tileStatus, usePageVisible, useWhep, whepUrl } from '@/lib/video'
 import { ago, cn } from '@/lib/utils'
-import { useDialog } from '@/components/ui/useDialog'
+import { FullscreenPanel } from '@/components/ui/FullscreenPanel'
 import { DetectionBoxes } from './DetectionBoxes'
 import { LiveBadge, SeenNow } from './VideoTile'
 
@@ -20,51 +19,27 @@ interface Props {
   onShowBoxes: (on: boolean) => void
 }
 
-/**
- * Камера на весь экран. Где браузер умеет полноэкранный режим — включаем его; на телефонах без него окно просто
- * занимает весь экран. Стрелки ← → листают камеры, Escape закрывает.
- */
+/** Камера на весь экран: стрелки ← → листают камеры, Escape закрывает */
 export function CameraViewer({ cameras, index, onIndex, onClose, live, showBoxes, onShowBoxes }: Props) {
-  const panel = useRef<HTMLDivElement>(null)
-  const open = index !== null && !!cameras[index]
+  const camera = index !== null ? cameras[index] : undefined
   const step = (d: number) => index !== null && cameras.length > 1 && onIndex((index + d + cameras.length) % cameras.length)
-  useDialog(open, panel, onClose, (e) => {
-    if (e.key === 'ArrowRight') step(1)
-    if (e.key === 'ArrowLeft') step(-1)
-  })
-
-  const onCloseRef = useRef(onClose)
-  useEffect(() => { onCloseRef.current = onClose })
-  // полноэкранный режим: вошли вместе с открытием, вышли (в том числе клавишей Escape браузера) — закрываем просмотр
-  useEffect(() => {
-    if (!open) return
-    panel.current?.requestFullscreen?.().catch(() => {})
-    const onChange = () => { if (!document.fullscreenElement) onCloseRef.current() }
-    document.addEventListener('fullscreenchange', onChange)
-    return () => {
-      document.removeEventListener('fullscreenchange', onChange)
-      if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
-    }
-  }, [open])
-
-  const camera = open ? cameras[index] : null
   return (
-    <AnimatePresence>
+    <FullscreenPanel
+      open={!!camera} label={camera ? `${camera.name} — на весь экран` : ''} onClose={onClose}
+      onKey={(e) => {
+        if (e.key === 'ArrowRight') step(1)
+        if (e.key === 'ArrowLeft') step(-1)
+      }}
+    >
       {camera && (
-        <motion.div
-          ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`${camera.name} — на весь экран`}
-          className="fixed inset-0 z-[70] bg-black text-white flex flex-col focus-visible:outline-none"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
-        >
-          <Viewer
-            key={camera.id} camera={camera} live={live.get(camera.id)} showBoxes={showBoxes} onShowBoxes={onShowBoxes}
-            position={cameras.length > 1 ? `${(index ?? 0) + 1} из ${cameras.length}` : null}
-            onPrev={cameras.length > 1 ? () => step(-1) : undefined} onNext={cameras.length > 1 ? () => step(1) : undefined}
-            onClose={onClose}
-          />
-        </motion.div>
+        <Viewer
+          key={camera.id} camera={camera} live={live.get(camera.id)} showBoxes={showBoxes} onShowBoxes={onShowBoxes}
+          position={cameras.length > 1 ? `${(index ?? 0) + 1} из ${cameras.length}` : null}
+          onPrev={cameras.length > 1 ? () => step(-1) : undefined} onNext={cameras.length > 1 ? () => step(1) : undefined}
+          onClose={onClose}
+        />
       )}
-    </AnimatePresence>
+    </FullscreenPanel>
   )
 }
 
