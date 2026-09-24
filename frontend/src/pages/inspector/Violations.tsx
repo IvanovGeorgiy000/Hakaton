@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { Download, FileWarning } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Download, FileWarning, Search } from 'lucide-react'
 import { useApp } from '@/store/context'
 import { isOpen } from '@/store/selectors'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -7,34 +7,63 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { AlertDetail } from '@/components/AlertDetail'
 import { Chip } from '@/components/ui/Chip'
-import { fmtDateShort, fmtTime, todayISO } from '@/lib/utils'
+import { inputCls } from '@/components/ui/Field'
+import { fmtDateShort, fmtTime, todayISO, plural } from '@/lib/utils'
 import { KIND, SEVERITY, STATUS } from '@/lib/labels'
 import { cn } from '@/lib/utils'
 import { useOpenAlert, useSearchParam } from '@/lib/useUrlState'
 
 const FILTERS = ['open', 'prescribed', 'closed', 'all'] as const
 type Filter = typeof FILTERS[number]
+const PERIODS = ['all', '7', '30', '90'] as const
+type Period = typeof PERIODS[number]
+const PERIOD_LABEL: Record<Period, string> = { all: 'За всё время', 7: 'За 7 дней', 30: 'За 30 дней', 90: 'За 90 дней' }
 
 /** Журнал нарушений: таблица с фильтрами, экспорт, выдача предписаний */
 export function InspectorViolations() {
   const { alerts, notify, sites, bySite, byZone } = useApp()
   const [filter, setFilter] = useSearchParam<Filter>('show', 'open', FILTERS)
   const [site, setSite] = useSearchParam<string>('site', 'all')
+  const [contractor, setContractor] = useSearchParam<string>('contractor', 'all')
+  const [period, setPeriod] = useSearchParam<Period>('period', 'all', PERIODS)
+  const [text, setText] = useSearchParam<string>('q', '')
   const { alert: sel, open: setSel, close } = useOpenAlert()
+  // инспектор проверяет подрядчиков — отбор по подрядчику сразу по всем его объектам
+  const contractors = useMemo(() => [...new Set(sites.map((s) => s.contractor).filter(Boolean))].sort(), [sites])
 
-  const list = useMemo(() => alerts
-    .filter((a) => a.kind !== 'camera_offline')
-    .filter((a) => site === 'all' || a.siteId === site)
-    .filter((a) => filter === 'all' ? true : filter === 'open' ? isOpen(a.status) && a.status !== 'prescribed' : filter === 'prescribed' ? a.status === 'prescribed' : !isOpen(a.status))
-    .sort((a, b) => b.startedAt.localeCompare(a.startedAt)), [alerts, filter, site])
+  const [openedAt] = useState(() => Date.now())  // от этого момента считаем «за 7 дней»: список не прыгает при обновлении данных
+  const list = useMemo(() => {
+    const since = period === 'all' ? 0 : openedAt - Number(period) * 86_400_000
+    const words = text.trim().toLowerCase().split(/\s+/).filter(Boolean)
+    return alerts
+      .filter((a) => a.kind !== 'camera_offline')
+      .filter((a) => site === 'all' || a.siteId === site)
+      .filter((a) => contractor === 'all' || bySite(a.siteId)?.contractor === contractor)
+      .filter((a) => !since || Date.parse(a.startedAt) >= since)
+      .filter((a) => filter === 'all' ? true : filter === 'open' ? isOpen(a.status) && a.status !== 'prescribed' : filter === 'prescribed' ? a.status === 'prescribed' : !isOpen(a.status))
+      .filter((a) => {
+        if (!words.length) return true
+        const hay = [a.code, a.prescriptionNo, a.title, bySite(a.siteId)?.name, bySite(a.siteId)?.contractor, byZone(a.zoneId)?.name].join(' ').toLowerCase()
+        return words.every((w) => hay.includes(w))
+      })
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+  }, [alerts, filter, site, contractor, period, text, bySite, byZone, openedAt])
+  const narrowed = site !== 'all' || contractor !== 'all' || period !== 'all' || !!text
 
   const exportCsv = () => {
-    const rows = [['№', 'Дата', 'Объект', 'Зона', 'Тип', 'Нарушение', 'Важность', 'Статус'],
-      ...list.map((a) => [a.code, fmtDateShort(a.startedAt), bySite(a.siteId)?.name ?? '', byZone(a.zoneId)?.name ?? '', KIND[a.kind], a.title, SEVERITY[a.severity].label, STATUS[a.status].label])]
-    const csv = '﻿' + rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(';')).join('\n')
+    const last = (a: typeof list[number]) => a.history[a.history.length - 1]
+    const rows = [['№', 'Дата', 'Время', 'Объект', 'Подрядчик', 'Зона', 'Тип', 'Нарушение', 'Важность', 'Статус', 'Предписание', 'Срок устранения', 'Последний ответ'],
+      ...list.map((a) => [
+        a.code, fmtDateShort(a.startedAt), fmtTime(a.startedAt), bySite(a.siteId)?.name ?? '', bySite(a.siteId)?.contractor ?? '',
+        byZone(a.zoneId)?.name ?? '', KIND[a.kind], a.title, SEVERITY[a.severity].label, STATUS[a.status].label,
+        a.prescriptionNo ?? '', a.prescriptionDue ? fmtDateShort(a.prescriptionDue) : '', last(a) ? `${last(a).who}: ${last(a).text}` : '',
+      ])]
+    const csv = '\ufeff' + rows.map((r) => r.map(csvCell).join(';')).join('\r\n')
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
-    const a = document.createElement('a'); a.href = url; a.download = 'нарушения.csv'; a.click(); URL.revokeObjectURL(url)
-    notify('Файл «нарушения.csv» сохранён')
+    const a = document.createElement('a'); a.href = url; a.download = `нарушения-${todayISO()}.csv`; a.click()
+    // сразу отзывать ссылку нельзя: Safari и Firefox начинают скачивание уже после click()
+    window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    notify(`Выгружено ${plural(list.length, 'нарушение', 'нарушения', 'нарушений')} в «нарушения-${todayISO()}.csv»`)
   }
 
   return (
@@ -49,9 +78,32 @@ export function InspectorViolations() {
           <Chip key={f} active={filter === f} onClick={() => setFilter(f)}>{l}</Chip>
         ))}
       </div>
-      <div className="flex flex-wrap gap-2 mb-5">
-        <Chip active={site === 'all'} onClick={() => setSite('all')} small>Все объекты</Chip>
-        {sites.map((s) => <Chip key={s.id} active={site === s.id} onClick={() => setSite(s.id)} small>{s.name}</Chip>)}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))] mb-5">
+        <label className="relative block">
+          <span className="sr-only">Поиск по журналу</span>
+          <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden />
+          <input type="search" value={text} onChange={(e) => setText(e.target.value)} placeholder="№, объект, нарушение, подрядчик…" className={cn(inputCls, 'pl-10')} />
+        </label>
+        <label>
+          <span className="sr-only">Объект</span>
+          <select value={site} onChange={(e) => setSite(e.target.value)} className={inputCls}>
+            <option value="all">Все объекты</option>
+            {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </label>
+        <label>
+          <span className="sr-only">Подрядчик</span>
+          <select value={contractor} onChange={(e) => setContractor(e.target.value)} className={inputCls}>
+            <option value="all">Все подрядчики</option>
+            {contractors.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
+        <label>
+          <span className="sr-only">Период</span>
+          <select value={period} onChange={(e) => setPeriod(e.target.value as Period)} className={inputCls}>
+            {PERIODS.map((p) => <option key={p} value={p}>{PERIOD_LABEL[p]}</option>)}
+          </select>
+        </label>
       </div>
 
       <div className="bg-card rounded-xl border border-border overflow-x-auto">
@@ -68,7 +120,12 @@ export function InspectorViolations() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {list.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">Ничего не найдено</td></tr>}
+            {list.length === 0 && (
+              <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
+                Ничего не найдено.
+                {narrowed && <> <button type="button" className="text-primary font-semibold hover:underline cursor-pointer" onClick={() => { setSite('all'); setContractor('all'); setPeriod('all'); setText('') }}>Сбросить отбор</button></>}
+              </td></tr>
+            )}
             {list.map((a) => (
               <tr key={a.id} className="hover:bg-muted/40 cursor-pointer" onClick={() => setSel(a)}>
                 <td className="px-4 py-3 whitespace-nowrap font-mono text-[13px] text-muted-foreground">{a.code}</td>
@@ -99,4 +156,10 @@ export function InspectorViolations() {
       <AlertDetail alert={sel} onClose={close} />
     </div>
   )
+}
+
+/** Ячейка CSV: кавычки удваиваем; текст, начинающийся с = + - @, Excel принял бы за формулу — ставим перед ним апостроф */
+function csvCell(value: string) {
+  const safe = /^[=+\-@]/.test(value) ? `'${value}` : value
+  return `"${safe.replace(/"/g, '""')}"`
 }
