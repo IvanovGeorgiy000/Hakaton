@@ -7,6 +7,8 @@ import { useApp, useToasts } from '@/store/context'
 import { ThemeMenuButton } from '@/components/ThemePicker'
 import { PageLoading } from '@/components/ui/PageLoading'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { useDismiss } from '@/lib/useDismiss'
 import { bySeverity, initials } from '@/store/selectors'
 import { SEVERITY } from '@/lib/labels'
@@ -61,6 +63,7 @@ const navCls = ({ isActive }: { isActive: boolean }) => cn(
 export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: string }) {
   const { role, user, logout, ownSiteId, bySite, lastDataAt } = useApp()
   const toasts = useToasts()
+  const [confirmExit, setConfirmExit] = useState(false)
   const ownSite = ownSiteId ? bySite(ownSiteId) : undefined
   const { pathname } = useLocation()
 
@@ -114,7 +117,8 @@ export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: stri
             <NotificationsBell alertsPath={alertsPath} />
             {/* на телефоне справка — здесь: нижняя панель занята разделами роли */}
             <NavLink to="/help" aria-label="Справка" className="lg:hidden w-11 h-11 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted"><CircleHelp className="w-5 h-5" /></NavLink>
-            <button onClick={logout} aria-label="Выйти" className="lg:hidden w-11 h-11 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted cursor-pointer"><LogOut className="w-5 h-5" /></button>
+            {/* на телефоне кнопка выхода — рядом со справкой и колокольчиком: промахнуться легко, поэтому переспрашиваем */}
+            <button onClick={() => setConfirmExit(true)} aria-label="Выйти" className="lg:hidden w-11 h-11 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted cursor-pointer"><LogOut className="w-5 h-5" /></button>
           </div>
         </div>
       </header>
@@ -138,6 +142,14 @@ export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: stri
           ))}
         </div>
       </nav>
+
+      <Modal open={confirmExit} onClose={() => setConfirmExit(false)} title="Выйти из системы?">
+        <p>Чтобы снова открыть приложение, нужно будет войти ещё раз.</p>
+        <div className="flex flex-wrap gap-3 mt-5">
+          <Button size="lg" onClick={() => { setConfirmExit(false); logout() }}><LogOut className="w-5 h-5" /> Выйти</Button>
+          <Button size="lg" variant="outline" onClick={() => setConfirmExit(false)}>Остаться</Button>
+        </div>
+      </Modal>
 
       <div className="fixed z-[60] bottom-24 lg:bottom-6 inset-x-4 flex flex-col items-center gap-2 pointer-events-none" role="status" aria-live="polite">
         <AnimatePresence>

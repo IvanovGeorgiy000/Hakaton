@@ -11,12 +11,18 @@ import { Button } from '@/components/ui/Button'
 import { SiteDialog } from '@/components/SiteDialogs'
 import { fmtWhen, plural, pluralWord, todayLabel } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import { useSearchParam } from '@/lib/useUrlState'
+
+const SHOW = ['all', 'critical', 'warning', 'ok'] as const
+type Show = typeof SHOW[number]
 
 /** Все объекты одним взглядом: светофор, этап, отставание, открытые замечания. Руководитель и администратор здесь же добавляют объекты. */
 export function ManagerOverview() {
   const { sites: visibleSites, siteStatus, alertsForSite, byStage, lastDataAt, base, role } = useApp()
   const navigate = useNavigate()
   const [creating, setCreating] = useState(false)
+  const [show, setShow] = useSearchParam<Show>('status', 'all', SHOW)
+  const toggle = (s: Show) => setShow(show === s ? 'all' : s)
   const isAdmin = role?.id === 'admin'
   const canAddSite = !!role && SITE_MANAGERS.includes(role.id)
   const counts = { ok: 0, warning: 0, critical: 0 }
@@ -30,14 +36,20 @@ export function ManagerOverview() {
         action={canAddSite && <Button size="lg" onClick={() => setCreating(true)}><Plus className="w-5 h-5" /> Добавить объект</Button>}
       />
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <StatTile label="Нужно вмешаться" value={counts.critical} hint={pluralWord(counts.critical, 'объект', 'объекта', 'объектов')} tone="danger" />
-        <StatTile label="Есть замечания" value={counts.warning} hint={pluralWord(counts.warning, 'объект', 'объекта', 'объектов')} tone="warn" />
-        <StatTile label="Всё по плану" value={counts.ok} hint={pluralWord(counts.ok, 'объект', 'объекта', 'объектов')} tone="ok" />
-        <StatTile label="Открытых замечаний" value={totalOpen} hint="по всем объектам" />
+        <StatTile label="Нужно вмешаться" value={counts.critical} hint={pluralWord(counts.critical, 'объект', 'объекта', 'объектов')} tone="danger" onClick={() => toggle('critical')} active={show === 'critical'} />
+        <StatTile label="Есть замечания" value={counts.warning} hint={pluralWord(counts.warning, 'объект', 'объекта', 'объектов')} tone="warn" onClick={() => toggle('warning')} active={show === 'warning'} />
+        <StatTile label="Всё по плану" value={counts.ok} hint={pluralWord(counts.ok, 'объект', 'объекта', 'объектов')} tone="ok" onClick={() => toggle('ok')} active={show === 'ok'} />
+        <StatTile label="Открытых замечаний" value={totalOpen} hint="по всем объектам →" onClick={() => navigate(`${base}/alerts`)} />
       </div>
+      {show !== 'all' && (
+        <p className="-mt-3 mb-4 text-[15px] text-muted-foreground">
+          Показаны только объекты «{{ critical: 'Нужно вмешаться', warning: 'Есть замечания', ok: 'Всё по плану' }[show]}».{' '}
+          <button type="button" onClick={() => setShow('all')} className="text-primary font-semibold hover:underline cursor-pointer min-h-[44px]">Показать все</button>
+        </p>
+      )}
 
       <div className="grid md:grid-cols-2 gap-4">
-        {[...visibleSites].sort((a, b) => rank(siteStatus(b.id)) - rank(siteStatus(a.id))).map((s) => {
+        {visibleSites.filter((s) => show === 'all' || siteStatus(s.id) === show).sort((a, b) => rank(siteStatus(b.id)) - rank(siteStatus(a.id))).map((s) => {
           const status = siteStatus(s.id)
           const open = alertsForSite(s.id).filter((a) => isOpen(a.status))
           const lag = s.planProgress !== null && s.factProgress !== null ? s.planProgress - s.factProgress : 0
