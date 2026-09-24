@@ -15,14 +15,15 @@ uv run uvicorn app.main:app --port 8100 --reload    # API: http://localhost:8100
 bash ../tools/video-gateway.sh                      # в соседнем терминале — шлюз видео (brew install mediamtx; нужен ffmpeg)
 ```
 
-При первом запуске пустая база наполняется демонстрационными данными. Время в них считается от момента запуска,
-поэтому стенд всегда выглядит «сегодняшним». Пересоздать базу: `uv run python -m app.seed --reset`. Если структура базы
-поменялась (новая версия), демо-база пересоздаётся при запуске сама; боевая (`SK_DEMO_MODE=false`) — нет, сервер просит перенести данные.
+При первом запуске сервер создаёт таблицы миграциями (см. [«Модель данных»](#модель-данных)) и наполняет пустую базу
+демонстрационными данными. Время в них считается от момента запуска, поэтому стенд всегда выглядит «сегодняшним».
+Пересоздать базу: `uv run python -m app.seed --reset`.
 
 Весь стенд в Docker (PostgreSQL + шлюз видео + API + интерфейс): из корня репозитория `docker compose up --build`,
 интерфейс — http://localhost:8080.
 
-Проверки: `uv run pytest` (59 тестов, сеть и шлюз не нужны; те же тесты на PostgreSQL — с переменной `SK_TEST_DATABASE_URL`),
+Проверки: `uv run pytest` (63 теста, сеть и шлюз не нужны; те же тесты на PostgreSQL — с переменной `SK_TEST_DATABASE_URL`
+и `uv run --extra postgres pytest`),
 `uv run ruff check . && uv run ruff format --check .`.
 
 ### Вход
@@ -163,11 +164,15 @@ Authorization: Bearer {SK_ANALYSIS_API_KEY}    — если ключ задан
 Запуск Keycloak для разработки (Docker), из каталога `backend/`:
 
 ```bash
-docker compose -f ../infra/keycloak/compose.yml up -d   # http://localhost:8080, admin/admin, realm импортируется
+docker compose -f ../infra/keycloak/compose.yml up -d   # http://localhost:8080, admin/admin
 SK_KEYCLOAK_ISSUER=http://localhost:8080/realms/stroykontrol \
 SK_KEYCLOAK_ADMIN_CLIENT_SECRET=stroykontrol-dev-backend-secret \
   uv run uvicorn app.main:app --port 8100 --reload
 ```
+
+У Keycloak своя база PostgreSQL (том `keycloak-db`): сотрудники, роли и пароли, в том числе заведённые в нашей админке,
+переживают перезапуск и пересоздание контейнеров. Realm импортируется из файла только при первом запуске; начать с чистого
+листа — `docker compose -f ../infra/keycloak/compose.yml down -v`.
 
 Realm `stroykontrol` ([infra/keycloak/realm-stroykontrol.json](../infra/keycloak/realm-stroykontrol.json)) уже содержит
 роли `foreman/manager/inspector/admin`, клиент `stroykontrol-web` (public + PKCE), служебный клиент `stroykontrol-backend`
@@ -189,9 +194,25 @@ Keycloak, а истёкший токен — нет (повторный вход
 | `check_runs` | журнал проверок объекта |
 | `alerts`, `alert_evidence`, `alert_events` | предупреждения, кадры-доказательства, история ответов |
 | `audit_events` | журнал действий: кто, когда, что сделал |
-| `app_meta` | версия структуры базы |
+| `alembic_version` | номер последней применённой миграции |
 
-Таблицы создаются при старте (`create_all`). Для промышленной установки нужны миграции (Alembic) — в прототип не входят.
+### Миграции
+
+Структура базы ведётся миграциями Alembic ([migrations/versions](migrations/versions)). Сервер при запуске сам применяет
+недостающие миграции — и на SQLite, и на PostgreSQL; данные при этом не трогаются. Поменяли модели в `app/models.py` —
+добавьте миграцию и проверьте сгенерированный файл:
+
+```bash
+uv run alembic revision --autogenerate -m "что поменялось"   # новый файл в migrations/versions
+uv run alembic upgrade head                                  # применить (сервер сделает это и сам при запуске)
+uv run alembic downgrade -1                                  # откатить последнюю
+```
+
+Тест `tests/test_migrations.py` следит, чтобы миграции и модели не расходились и откатывались в обе стороны.
+В Docker команды те же: `docker compose exec backend .venv/bin/alembic upgrade head`.
+
+Базы, созданные до появления миграций: демо-базу сервер пересоздаёт сам, боевую (`SK_DEMO_MODE=false`) не трогает —
+останавливается и подсказывает, как пометить её первой миграцией (`alembic stamp 0001`).
 
 ## Ограничения прототипа
 

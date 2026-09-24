@@ -13,16 +13,7 @@ def new_id(prefix: str) -> str:
     return f"{prefix}_{secrets.token_hex(5)}"
 
 
-# Версия структуры базы. Поменялась — демо-база пересоздаётся при запуске, боевая просит миграцию (см. main.py).
-SCHEMA_VERSION = "2"
-
-
-class AppMeta(Base):
-    __tablename__ = "app_meta"
-
-    key: Mapped[str] = mapped_column(String(40), primary_key=True)
-    value: Mapped[str] = mapped_column(String(200))
-
+# Структура таблиц меняется только вместе с миграцией: uv run alembic revision --autogenerate -m "…" (см. alembic.ini)
 
 user_sites = Table(
     "user_sites",

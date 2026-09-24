@@ -9,6 +9,8 @@ RUN pip install --no-cache-dir "uv>=0.9,<0.10"
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --extra postgres --no-install-project
+COPY alembic.ini ./
+COPY migrations ./migrations
 COPY app ./app
 
 EXPOSE 8100

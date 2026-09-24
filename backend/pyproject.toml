@@ -16,6 +16,7 @@ dependencies = [
     "pillow>=11.0",
     "cryptography>=44.0",
     "tzdata>=2024.2",
+    "alembic>=1.14",
 ]
 
 [project.optional-dependencies]

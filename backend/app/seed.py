@@ -13,16 +13,15 @@ import shutil
 import sys
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import dbschema
 from app.config import get_settings
 from app.db import Base, SessionLocal, engine, utcnow
 from app.models import (
-    SCHEMA_VERSION,
     Alert,
     AlertEvent,
-    AppMeta,
     Camera,
     Rule,
     RuleItem,
@@ -743,41 +742,46 @@ async def seed_if_empty() -> bool:
         return True
 
 
-async def _mark_schema() -> None:
-    async with SessionLocal() as session:
-        await session.merge(AppMeta(key="schema", value=SCHEMA_VERSION))
-        await session.commit()
+async def _drop_everything() -> None:
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        for table in dbschema.LEGACY_TABLES:
+            await conn.execute(text(f"DROP TABLE IF EXISTS {table}"))
+
+
+async def _migrate() -> None:
+    async with engine.begin() as conn:
+        await conn.run_sync(dbschema.upgrade)
 
 
 async def reset() -> None:
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+    """Пустая база по последней миграции + демонстрационные данные."""
+    await _drop_everything()
+    await _migrate()
     await seed_if_empty()
-    await _mark_schema()
 
 
 async def prepare_database() -> None:
-    """Создать таблицы. Демо-базу старой структуры — пересоздать, боевую — не трогать и попросить миграцию."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    async with SessionLocal() as session:
-        version = await session.scalar(select(AppMeta.value).where(AppMeta.key == "schema"))
-        populated = bool(await session.scalar(select(func.count()).select_from(User)))
-    if populated and version != SCHEMA_VERSION:
+    """Довести базу до последней миграции, пустую — наполнить демо-данными.
+
+    База, созданная версией без миграций: демо-базу пересоздаём, боевую не трогаем и объясняем, что сделать.
+    """
+    async with engine.connect() as conn:
+        legacy = await conn.run_sync(dbschema.created_before_migrations)
+    if legacy:
         if not settings.demo_mode:
             raise RuntimeError(
-                f"Структура базы устарела (версия {version or '1'}, нужна {SCHEMA_VERSION}). Перенесите данные в новую базу."
+                "База создана версией без миграций. Сделайте резервную копию; если это версия 0.10 (в таблице app_meta "
+                "записано schema = 2), удалите таблицу app_meta, выполните «uv run alembic stamp 0001» и перезапустите сервер. "
+                "Базу более старой версии перенесите в новую вручную."
             )
-        log.warning("Структура демо-базы устарела — пересоздаю её с демонстрационными данными")
+        log.warning("Демо-база создана версией без миграций — пересоздаю её с демонстрационными данными")
         shutil.rmtree(settings.frames_dir, ignore_errors=True)  # кадры старой базы больше ни на что не ссылаются
         settings.frames_dir.mkdir(parents=True, exist_ok=True)
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
-            await conn.run_sync(Base.metadata.create_all)
+        await _drop_everything()
+    await _migrate()
     if settings.seed_on_start and await seed_if_empty():
         log.info("Пустая база наполнена демонстрационными данными")
-    await _mark_schema()
 
 
 if __name__ == "__main__":
