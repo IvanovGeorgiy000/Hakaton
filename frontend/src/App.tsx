@@ -9,6 +9,7 @@ import { useApp } from '@/store/context'
 import { AppShell, type NavItem } from '@/components/layout/AppShell'
 import { PageLoading } from '@/components/ui/PageLoading'
 import { Login } from '@/pages/Login'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 /** Экраны грузятся, когда понадобятся: прорабу на телефоне не нужен код админки */
 function page<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) {
@@ -131,6 +132,7 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <MotionConfig reducedMotion="user">
+      <ErrorBoundary full>
       <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
@@ -140,6 +142,7 @@ export default function App() {
         </BrowserRouter>
       </QueryClientProvider>
       </ThemeProvider>
+      </ErrorBoundary>
     </MotionConfig>
   )
 }

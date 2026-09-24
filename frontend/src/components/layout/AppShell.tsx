@@ -1,11 +1,12 @@
 import { Suspense, useEffect, useRef, useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { AlertTriangle, Bell, CircleHelp, LogOut, CheckCircle2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useApp } from '@/store/context'
 import { ThemeMenuButton } from '@/components/ThemePicker'
 import { PageLoading } from '@/components/ui/PageLoading'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { useDismiss } from '@/lib/useDismiss'
 import { bySeverity, initials } from '@/store/selectors'
 import { SEVERITY } from '@/lib/labels'
@@ -60,6 +61,7 @@ const navCls = ({ isActive }: { isActive: boolean }) => cn(
 export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: string }) {
   const { role, user, logout, toasts, ownSiteId, bySite, lastDataAt } = useApp()
   const ownSite = ownSiteId ? bySite(ownSiteId) : undefined
+  const { pathname } = useLocation()
 
   return (
     <div className="min-h-dvh lg:pl-[260px]">
@@ -117,9 +119,12 @@ export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: stri
       </header>
 
       <main className="w-full max-w-[1120px] mx-auto px-4 lg:px-8 py-6 lg:py-8 pb-28 lg:pb-12">
-        <Suspense fallback={<PageLoading />}>
-          <Outlet />
-        </Suspense>
+        {/* ключ — адрес: ошибка в одном разделе не мешает перейти в другой */}
+        <ErrorBoundary key={pathname}>
+          <Suspense fallback={<PageLoading />}>
+            <Outlet />
+          </Suspense>
+        </ErrorBoundary>
       </main>
 
       <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-card border-t border-border z-30 pb-[env(safe-area-inset-bottom)]" aria-label="Разделы">

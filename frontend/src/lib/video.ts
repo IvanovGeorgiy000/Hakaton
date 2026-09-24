@@ -18,7 +18,8 @@ const RETRY_MS = 10_000 // видео прервалось — пробуем с
  */
 export function gatewayUrl(meta: Meta | undefined): string | null {
   if (!meta?.video.enabled) return null
-  const url = new URL(meta.video.webrtcUrl)
+  // относительный адрес (/webrtc за тем же nginx) считаем от адреса приложения; без второго аргумента new URL упал бы
+  const url = new URL(meta.video.webrtcUrl, window.location.origin)
   if (['localhost', '127.0.0.1'].includes(url.hostname) && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
     url.hostname = window.location.hostname
   }
