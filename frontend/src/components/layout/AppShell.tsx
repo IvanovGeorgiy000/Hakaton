@@ -186,7 +186,7 @@ function NotificationsBell({ alertsPath }: { alertsPath: string }) {
               <ul className="max-h-[60vh] overflow-y-auto pb-1.5">
                 {fresh.map((a) => (
                   <li key={a.id} className="px-1.5">
-                    <button onClick={() => { setOpen(false); nav(alertsPath) }} className="w-full text-left px-2.5 py-2.5 rounded-lg hover:bg-muted cursor-pointer transition-colors flex gap-3">
+                    <button onClick={() => { setOpen(false); nav(`${alertsPath}?alert=${a.id}`) }} className="w-full text-left px-2.5 py-2.5 rounded-lg hover:bg-muted cursor-pointer transition-colors flex gap-3">
                       <span className={cn('w-2 h-2 rounded-full mt-[7px] shrink-0', SEVERITY[a.severity].bar)} />
                       <span className="min-w-0">
                         <span className="block font-medium leading-snug text-[15px]">{a.title}</span>

@@ -1,7 +1,5 @@
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { MapPin, HardHat, Building } from 'lucide-react'
-import type { Alert } from '@/data'
 import { useApp } from '@/store/context'
 import { isOpen, bySeverity } from '@/store/selectors'
 import { cn, fmtDate, plural } from '@/lib/utils'
@@ -11,6 +9,7 @@ import { EmptyState } from './ui/EmptyState'
 import { AlertCard } from './AlertCard'
 import { AlertDetail } from './AlertDetail'
 import { EquipmentCheck } from './EquipmentCheck'
+import { useOpenAlert } from '@/lib/useUrlState'
 
 /** Главный экран объекта: светофор, этап, что не так, техника по плану и по факту */
 export function SiteToday({ siteId, camerasLink, onShowCameras, showName = true }: {
@@ -19,7 +18,7 @@ export function SiteToday({ siteId, camerasLink, onShowCameras, showName = true 
   showName?: boolean
 }) {
   const { siteStatus, alertsForSite, bySite, byStage } = useApp()
-  const [sel, setSel] = useState<Alert | null>(null)
+  const { alert: sel, open: setSel, close } = useOpenAlert()
   const site = bySite(siteId)
   if (!site) return <p className="text-muted-foreground">Объект не найден или у вас нет к нему доступа.</p>
   const stage = byStage(site.currentStageId)
@@ -88,7 +87,7 @@ export function SiteToday({ siteId, camerasLink, onShowCameras, showName = true 
         </section>
       )}
 
-      <AlertDetail alert={sel} onClose={() => setSel(null)} />
+      <AlertDetail alert={sel} onClose={close} />
     </div>
   )
 }

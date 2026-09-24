@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { ScanSearch } from 'lucide-react'
-import { type Alert, type Severity } from '@/data'
+import { type Severity } from '@/data'
 import { useApp } from '@/store/context'
 import { isOpen, bySeverity } from '@/store/selectors'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -9,15 +9,17 @@ import { Chip } from '@/components/ui/Chip'
 import { AlertCard } from '@/components/AlertCard'
 import { AlertDetail } from '@/components/AlertDetail'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { useOpenAlert, useSearchParam } from '@/lib/useUrlState'
 
-type Filter = 'open' | 'high' | 'closed' | 'all'
+const FILTERS = ['open', 'high', 'closed', 'all'] as const
+type Filter = typeof FILTERS[number]
 
 /** Лента отклонений по всем объектам с простыми фильтрами-кнопками */
 export function ManagerAlerts() {
   const { alerts, sites: visibleSites, base } = useApp()
-  const [filter, setFilter] = useState<Filter>('open')
-  const [site, setSite] = useState<string>('all')
-  const [sel, setSel] = useState<Alert | null>(null)
+  const [filter, setFilter] = useSearchParam<Filter>('show', 'open', FILTERS)
+  const [site, setSite] = useSearchParam<string>('site', 'all')
+  const { alert: sel, open: setSel, close } = useOpenAlert()
 
   const list = useMemo(() => alerts
     .filter((a) => site === 'all' || a.siteId === site)
@@ -50,7 +52,7 @@ export function ManagerAlerts() {
       ) : (
         <div className="space-y-3">{list.map((a) => <AlertCard key={a.id} alert={a} onOpen={setSel} showSite />)}</div>
       )}
-      <AlertDetail alert={sel} onClose={() => setSel(null)} />
+      <AlertDetail alert={sel} onClose={close} />
     </div>
   )
 }

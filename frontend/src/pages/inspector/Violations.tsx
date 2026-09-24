@@ -1,6 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Download, FileWarning } from 'lucide-react'
-import type { Alert } from '@/data'
 import { useApp } from '@/store/context'
 import { isOpen } from '@/store/selectors'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -11,15 +10,17 @@ import { Chip } from '@/components/ui/Chip'
 import { fmtDateShort, fmtTime, todayISO } from '@/lib/utils'
 import { KIND, SEVERITY, STATUS } from '@/lib/labels'
 import { cn } from '@/lib/utils'
+import { useOpenAlert, useSearchParam } from '@/lib/useUrlState'
 
-type Filter = 'open' | 'prescribed' | 'closed' | 'all'
+const FILTERS = ['open', 'prescribed', 'closed', 'all'] as const
+type Filter = typeof FILTERS[number]
 
 /** Журнал нарушений: таблица с фильтрами, экспорт, выдача предписаний */
 export function InspectorViolations() {
   const { alerts, notify, sites, bySite, byZone } = useApp()
-  const [filter, setFilter] = useState<Filter>('open')
-  const [site, setSite] = useState('all')
-  const [sel, setSel] = useState<Alert | null>(null)
+  const [filter, setFilter] = useSearchParam<Filter>('show', 'open', FILTERS)
+  const [site, setSite] = useSearchParam<string>('site', 'all')
+  const { alert: sel, open: setSel, close } = useOpenAlert()
 
   const list = useMemo(() => alerts
     .filter((a) => a.kind !== 'camera_offline')
@@ -95,7 +96,7 @@ export function InspectorViolations() {
           </tbody>
         </table>
       </div>
-      <AlertDetail alert={sel} onClose={() => setSel(null)} />
+      <AlertDetail alert={sel} onClose={close} />
     </div>
   )
 }
