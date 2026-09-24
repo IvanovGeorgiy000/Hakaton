@@ -101,7 +101,7 @@ function EventRow({ event: e }: { event: AuditEvent }) {
         </div>
         {changes.length > 0 && (
           <>
-            <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="mt-1 inline-flex items-center gap-1 text-[14px] text-primary font-medium min-h-[32px] cursor-pointer">
+            <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="mt-1 inline-flex items-center gap-1 text-[14px] text-primary font-medium min-h-[44px] cursor-pointer">
               <ChevronDown className={cn('w-4 h-4 transition-transform', open && 'rotate-180')} /> {open ? 'Скрыть подробности' : 'Что изменилось'}
             </button>
             {open && (

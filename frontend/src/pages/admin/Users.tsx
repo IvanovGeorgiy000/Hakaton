@@ -48,7 +48,7 @@ export function AdminUsers() {
                   {u.role !== 'foreman' ? 'все объекты' : u.siteIds.length === 0 ? 'объект не назначен' : u.siteIds.map((id) => bySite(id)?.name).join(', ')}
                 </div>
                 {u.phone && (
-                  <a href={`tel:${u.phone}`} className="inline-flex items-center gap-1.5 text-primary font-medium min-h-[36px] text-[15px]">
+                  <a href={`tel:${u.phone}`} className="inline-flex items-center gap-1.5 text-primary font-medium min-h-[44px] text-[15px]">
                     <Phone className="w-4 h-4" />{u.phone}
                   </a>
                 )}
@@ -172,7 +172,7 @@ function UserForm({ user, onClose }: { user: User | null; onClose: () => void })
           <legend className="block text-[15px] font-medium mb-1.5">Объекты прораба</legend>
           <div className="space-y-1.5">
             {sites.map((s) => (
-              <label key={s.id} className="flex items-center gap-3 min-h-[40px] cursor-pointer">
+              <label key={s.id} className="flex items-center gap-3 min-h-[44px] cursor-pointer">
                 <input type="checkbox" checked={siteIds.includes(s.id)} onChange={() => toggleSite(s.id)} className="w-5 h-5 accent-[var(--color-primary)]" />
                 {s.name}
               </label>

@@ -81,7 +81,7 @@ export function CheckSnapshot() {
               <div className="flex flex-wrap gap-2">
                 {samples.data.map((s) => (
                   <button key={s.id} type="button" onClick={() => pick({ sample: s.id, preview: s.imageUrl })}
-                    className={cn('min-h-[40px] px-3 rounded-lg text-[14px] font-medium border cursor-pointer transition-colors',
+                    className={cn('min-h-[44px] px-3 rounded-lg text-[14px] font-medium border cursor-pointer transition-colors',
                       source && 'sample' in source && source.sample === s.id ? 'border-primary bg-info-bg text-info-fg' : 'border-border-strong bg-card hover:bg-muted')}>
                     {s.label}
                   </button>

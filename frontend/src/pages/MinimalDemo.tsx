@@ -75,13 +75,13 @@ export function MinimalDemo() {
               <div className="flex flex-wrap gap-2 mt-3">
                 {samples.map((s) => (
                   <button key={s.id} type="button" onClick={() => pick({ sample: s.id, preview: s.imageUrl })}
-                    className={cn('min-h-[40px] px-3 rounded-lg text-[14px] font-medium border cursor-pointer transition-colors',
+                    className={cn('min-h-[44px] px-3 rounded-lg text-[14px] font-medium border cursor-pointer transition-colors',
                       'sample' in current && current.sample === s.id ? 'border-primary bg-info-bg text-info-fg' : 'border-border-strong bg-card hover:bg-muted')}>
                     {s.label}
                   </button>
                 ))}
                 <button type="button" onClick={() => inputRef.current?.click()}
-                  className={cn('min-h-[40px] px-3 rounded-lg text-[14px] font-medium border cursor-pointer inline-flex items-center gap-1.5 transition-colors',
+                  className={cn('min-h-[44px] px-3 rounded-lg text-[14px] font-medium border cursor-pointer inline-flex items-center gap-1.5 transition-colors',
                     'file' in current ? 'border-primary bg-info-bg text-info-fg' : 'border-dashed border-border-strong hover:bg-muted')}>
                   <Upload className="w-4 h-4" /> Своё фото
                 </button>

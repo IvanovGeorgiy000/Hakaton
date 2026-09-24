@@ -13,7 +13,7 @@ const variants: Record<Variant, string> = {
   success: 'bg-ok-solid text-white hover:bg-ok-solid/90',
 }
 const sizes: Record<Size, string> = {
-  sm: 'min-h-[40px] px-3 text-[14px] gap-1.5',
+  sm: 'min-h-[44px] px-3 text-[14px] gap-1.5',
   md: 'min-h-[44px] px-4 text-[15px] gap-2',
   lg: 'min-h-[50px] px-5 text-[16px] gap-2',
 }

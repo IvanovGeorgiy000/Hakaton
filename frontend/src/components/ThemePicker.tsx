@@ -20,7 +20,7 @@ export function ThemePicker({ className }: { className?: string }) {
         <button
           key={o.id} type="button" role="radio" aria-checked={mode === o.id} onClick={() => setMode(o.id)}
           className={cn(
-            'inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-md text-[14px] font-medium cursor-pointer transition-colors',
+            'inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-md text-[14px] font-medium cursor-pointer transition-colors',
             mode === o.id ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
           )}
         >

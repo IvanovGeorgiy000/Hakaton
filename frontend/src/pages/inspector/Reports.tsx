@@ -21,7 +21,7 @@ export function InspectorReports() {
       <PageHeader title="Отчёт за неделю" subtitle={`${fmtDate(report.dateFrom)} — ${fmtDate(report.dateTo)} · по всем объектам`} />
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <StatTile label="Всего нарушений" value={report.total} hint="за 7 дней" />
-        <StatTile label="Открытых сейчас" value={report.open} hint="требуют реакции" tone="danger" />
+        <StatTile label="Открытых нарушений" value={report.open} hint="сбои камер сюда не входят" tone="danger" />
         <StatTile label="Устранено" value={report.resolved} hint="закрыто" tone="ok" />
         <StatTile label="Ошибок системы" value={report.falsePositive} hint="ложных срабатываний" />
       </div>

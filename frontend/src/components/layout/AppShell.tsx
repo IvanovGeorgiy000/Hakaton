@@ -95,7 +95,7 @@ export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: stri
             <div className="font-semibold text-[15px] truncate" title={user?.name}>{user ? shortName(user.name) : ''}</div>
             <div className="text-[13px] text-muted-foreground truncate">{role?.title}</div>
           </div>
-          <button onClick={logout} aria-label="Выйти" title="Выйти" className="w-10 h-10 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer transition-colors shrink-0">
+          <button onClick={logout} aria-label="Выйти" title="Выйти" className="w-11 h-11 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer transition-colors shrink-0">
             <LogOut className="w-5 h-5" />
           </button>
         </div>
