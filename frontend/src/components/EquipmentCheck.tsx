@@ -30,7 +30,7 @@ export function EquipmentCheck({ siteId }: { siteId: string }) {
       </div>
       {!data.coverage && (
         <p className="px-4 sm:px-5 py-3 bg-warn-bg text-warn-fg text-[15px]">
-          Нет свежих снимков рабочей зоны — сверить технику сейчас нельзя. Проверьте камеры.
+          Нет свежих кадров с камер рабочей зоны — сверить технику сейчас нельзя. Проверьте камеры.
         </p>
       )}
       <ul className="divide-y divide-border">

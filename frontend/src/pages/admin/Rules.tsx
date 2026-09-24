@@ -114,9 +114,9 @@ function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => 
         {/* не <label>: иначе нажатие на подпись срабатывало как «−» и незаметно ослабляло правило */}
         <div role="group" aria-label="Сообщать после скольких проверок подряд" className="flex items-center gap-3">
           <span className="font-semibold">Сообщать после</span>
-          <Btn onClick={() => setDraft({ ...draft, confirmAfterSnapshots: clamp(draft.confirmAfterSnapshots - 1, 1, MAX_CONFIRM) })} disabled={draft.confirmAfterSnapshots <= 1} label="Меньше снимков"><Minus className="w-5 h-5" /></Btn>
+          <Btn onClick={() => setDraft({ ...draft, confirmAfterSnapshots: clamp(draft.confirmAfterSnapshots - 1, 1, MAX_CONFIRM) })} disabled={draft.confirmAfterSnapshots <= 1} label="Меньше проверок"><Minus className="w-5 h-5" /></Btn>
           <span className="w-8 text-center text-[18px] font-semibold">{draft.confirmAfterSnapshots}</span>
-          <Btn onClick={() => setDraft({ ...draft, confirmAfterSnapshots: clamp(draft.confirmAfterSnapshots + 1, 1, MAX_CONFIRM) })} disabled={draft.confirmAfterSnapshots >= MAX_CONFIRM} label="Больше снимков"><Plus className="w-5 h-5" /></Btn>
+          <Btn onClick={() => setDraft({ ...draft, confirmAfterSnapshots: clamp(draft.confirmAfterSnapshots + 1, 1, MAX_CONFIRM) })} disabled={draft.confirmAfterSnapshots >= MAX_CONFIRM} label="Больше проверок"><Plus className="w-5 h-5" /></Btn>
           <span className="text-muted-foreground">проверок подряд</span>
         </div>
         <div className="ml-auto flex items-center gap-3">

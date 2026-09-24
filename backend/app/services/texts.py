@@ -2,7 +2,7 @@
 
 Требование ТЗ: предупреждение должно быть содержательным, понятным и обоснованным.
 Каждое предупреждение отвечает на четыре вопроса: что случилось, чем это грозит, что делать
-и почему система так решила (последнее собирает интерфейс из правила, этапа и снимков).
+и почему система так решила (последнее собирает интерфейс из правила, этапа и кадров).
 """
 
 from dataclasses import dataclass
@@ -107,12 +107,13 @@ def unexpected(
     )
 
 
-def idle(*, equipment: str, camera_name: str, snapshots: int, start: datetime, end: datetime) -> AlertTexts:
+def idle(*, equipment: str, camera_name: str, start: datetime, end: datetime) -> AlertTexts:
     eq = EQUIPMENT[equipment]
     return AlertTexts(
         title=f"{eq.name} стоит без движения {duration(end - start)}",
         summary=(
-            f"{eq.name} на камере «{camera_name}» не менял положение на {snapshots} снимках подряд ({_period(start, end)})."
+            f"{eq.name} на камере «{camera_name}» стоит в одной точке {_period(start, end)}: на всех кадрах за это время "
+            "положение не меняется."
         ),
         consequence="Возможен простой или поломка. Оплаченные машино-часы уходят впустую.",
         advice="Свяжитесь с машинистом и выясните причину простоя.",

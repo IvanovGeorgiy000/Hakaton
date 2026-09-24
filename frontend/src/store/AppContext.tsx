@@ -8,7 +8,7 @@ import { Ctx, type AppState, type Toast } from './context'
 import { initKeycloak, keycloakLogin, keycloakLogout } from './keycloak'
 import { isOpen } from './selectors'
 
-const POLL_MS = 20_000 // как часто подтягиваем свежие снимки и предупреждения
+const POLL_MS = 20_000 // как часто подтягиваем свежие кадры и предупреждения
 const message = (error: unknown) => (error instanceof ApiError ? error.message : 'Что-то пошло не так. Попробуйте ещё раз.')
 
 export function AppProvider({ children }: { children: ReactNode }) {

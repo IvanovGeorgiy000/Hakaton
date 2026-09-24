@@ -81,9 +81,9 @@ export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: stri
             <span className="font-semibold">{todayLabel()}</span>
           </div>
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
-            <span className="hidden sm:inline-flex items-center gap-2 text-[14px] text-muted-foreground mr-2" title="Камеры присылают снимки раз в час">
+            <span className="hidden sm:inline-flex items-center gap-2 text-[14px] text-muted-foreground mr-2" title="Кадры с камер разбираются каждые 2 секунды, объекты сверяются с планом раз в минуту">
               <span className={cn('w-2 h-2 rounded-full', lastDataAt ? 'bg-ok' : 'bg-border-strong')} />
-              {lastDataAt ? `Данные на ${fmtWhen(lastDataAt)}` : 'Снимков пока нет'}
+              {lastDataAt ? `Данные на ${fmtWhen(lastDataAt)}` : 'Кадров пока нет'}
             </span>
             <ThemeMenuButton />
             <NotificationsBell alertsPath={alertsPath} />

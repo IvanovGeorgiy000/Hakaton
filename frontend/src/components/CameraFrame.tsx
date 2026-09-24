@@ -1,7 +1,7 @@
 import { useId } from 'react'
 import { EQUIPMENT, type Camera, type Detection, type Snapshot } from '@/data'
 import { mediaUrl } from '@/api'
-import { fmtTime, fmtTimeSec, fmtDateShort } from '@/lib/utils'
+import { fmtTimeSec, fmtDateShort, fmtWhen } from '@/lib/utils'
 import { VehicleIcon } from './VehicleIcon'
 import { cn, inkOn } from '@/lib/utils'
 
@@ -20,8 +20,8 @@ interface Props {
 }
 
 /**
- * Мок-кадр с камеры видеонаблюдения: стилизованная сцена + рамки распознанной техники.
- * В боевой версии здесь будет реальный снимок и рамки от детектора.
+ * Кадр с камеры (доказательство в отклонении) с рамками распознанной техники.
+ * Если картинки кадра нет — рисуем стилизованную сцену, чтобы карточка не была пустой.
  */
 export function CameraFrame({ camera, snapshot, highlight, showLabels = true, showBoxes = true, offline, thumb, className }: Props) {
   const gid = useId()
@@ -68,7 +68,7 @@ export function CameraFrame({ camera, snapshot, highlight, showLabels = true, sh
       {offline && (
         <div className="absolute inset-0 bg-slate-950/85 flex flex-col items-center justify-center text-white">
           <span className={thumb ? 'text-sm font-semibold' : 'text-2xl font-semibold'}>Нет сигнала</span>
-          {!thumb && <span className="text-sm opacity-80">последний снимок {snapshot ? fmtTime(snapshot.takenAt) : '—'}</span>}
+          {!thumb && <span className="text-sm opacity-80">последний кадр {snapshot ? fmtWhen(snapshot.takenAt) : '—'}</span>}
         </div>
       )}
 

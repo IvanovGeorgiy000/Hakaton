@@ -29,7 +29,7 @@ export interface AppState {
   rules: Record<string, Rule>
   snapshots: Snapshot[]
   alerts: Alert[]
-  /** Время самого свежего снимка — «данные на 12:30» */
+  /** Время самого свежего кадра — «данные на 12:30» */
   lastDataAt: string | null
   refresh: () => Promise<void>
 

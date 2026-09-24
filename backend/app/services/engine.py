@@ -506,10 +506,10 @@ async def _sync_alerts(
         elif kind == "idle":
             chain = idle_chains[(camera.id, equipment)]
             started = alert.started_at if alert else chain[0].taken_at
-            words = texts.idle(equipment=equipment, camera_name=camera.name, snapshots=len(chain), start=started, end=at)
+            words = texts.idle(equipment=equipment, camera_name=camera.name, start=started, end=at)
             severity = "medium"
             evidence = chain[:1] + chain[1:][-(EVIDENCE_LIMIT - 1) :] if len(chain) > EVIDENCE_LIMIT else chain
-            created_note = f"Положение техники не менялось на {len(chain)} снимках подряд."
+            created_note = f"Техника стоит на одном месте {texts.duration(chain[-1].taken_at - chain[0].taken_at)}."
         else:  # camera_offline
             started = alert.started_at if alert else (camera.last_snapshot_at or camera.created_at)
             words = texts.camera_offline(

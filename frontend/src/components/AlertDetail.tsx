@@ -131,18 +131,18 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
             </Step>
           )}
           {alert.kind === 'idle' && (
-            <Step n={2} title="Берём правило">Если техника не меняет положение на 3 снимках подряд (2 часа), считаем это простоем.</Step>
+            <Step n={2} title="Берём правило">Если техника стоит на одном месте 2 часа и дольше (сравниваем её положение на кадрах), считаем это простоем.</Step>
           )}
           {alert.kind === 'camera_offline' && (
-            <Step n={2} title="Берём правило">Если снимков нет больше 2 часов, зона считается «слепой».</Step>
+            <Step n={2} title="Берём правило">Если видео с камеры нет дольше 10 минут, зона считается «слепой».</Step>
           )}
-          <Step n={3} title="Смотрим на снимки">
+          <Step n={3} title="Смотрим на кадры">
             {alert.kind === 'camera_offline'
-              ? <>Последний снимок: {snap ? fmtWhen(snap.takenAt) : '—'}. С тех пор данных нет.</>
+              ? <>Последний кадр: {snap ? fmtWhen(snap.takenAt) : '—'}. С тех пор видео нет.</>
               : alert.kind === 'idle' && eq
-                ? <>{eq.name} стоит в одном и том же месте на {plural(snaps.length, 'снимке', 'снимках', 'снимках')} подряд ({snaps.map((s) => fmtWhen(s.takenAt)).join('; ')}).</>
+                ? <>{eq.name} стоит в одном и том же месте на всех кадрах {snaps.length > 1 ? `с ${fmtWhen(snaps[0].takenAt)} по ${fmtWhen(snaps[snaps.length - 1].takenAt)}` : fmtWhen(snaps[0]?.takenAt ?? alert.startedAt)}.</>
                 : eq && (
-                  <>На {plural(snaps.length, 'снимке', 'снимках', 'снимках')} ({snaps.map((s) => fmtWhen(s.takenAt)).join('; ')}) видим: <b>{eq.genitivePlural} — {alert.observed ?? 0}</b>{alert.expected != null && alert.kind !== 'unexpected' && <>, а нужно не меньше {alert.expected}</>}.</>
+                  <>На {plural(snaps.length, 'кадре', 'кадрах', 'кадрах')} ({snaps.map((s) => fmtWhen(s.takenAt)).join('; ')}) видим: <b>{eq.genitivePlural} — {alert.observed ?? 0}</b>{alert.expected != null && alert.kind !== 'unexpected' && <>, а нужно не меньше {alert.expected}</>}.</>
                 )}
           </Step>
           <Step n={4} title="Вывод">
@@ -199,6 +199,9 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
             {role.id === 'admin' && (
               <>
                 {alert.status === 'new' && <Button size="lg" onClick={() => act('confirmed', 'Проблема подтверждена администратором.')}><ClipboardCheck className="w-5 h-5" /> Подтвердить</Button>}
+                {alert.status === 'new' && alert.kind !== 'camera_offline' && (
+                  <Button size="lg" variant="outline" onClick={() => act('acknowledged', 'Техника уже едет, проблема будет решена.')}><Truck className="w-5 h-5" /> Техника едет</Button>
+                )}
                 {alert.status !== 'prescribed' && <Button size="lg" variant="danger" onClick={() => act('prescribed', 'Выдано предписание подрядчику.')}><FileWarning className="w-5 h-5" /> Выдать предписание</Button>}
                 <Button size="lg" variant="success" onClick={() => act('resolved', 'Проблема устранена, закрыто администратором.')}><CheckCircle2 className="w-5 h-5" /> {alert.status === 'prescribed' ? 'Закрыть' : 'Устранено'}</Button>
                 <Button size="lg" variant="ghost" onClick={() => act('false_positive', 'Ложное срабатывание.')}><XCircle className="w-5 h-5" /> Ошибка системы</Button>

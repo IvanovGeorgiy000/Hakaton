@@ -449,7 +449,7 @@ async def _past_alert(
             risk=item.risk if item else "",
         )
     else:
-        words = texts.idle(equipment=equipment, camera_name=camera.name, snapshots=len(frames), start=start, end=end)
+        words = texts.idle(equipment=equipment, camera_name=camera.name, start=start, end=end)
     alert = Alert(
         id=new_id("a"),
         number=number,
@@ -545,7 +545,7 @@ async def _history(session: AsyncSession, t0: datetime) -> None:
         frames=[("yard-bulldozer", d - _h(3)), ("yard-bulldozer", d - _h(2)), ("yard-bulldozer", d - _h(1))],
         status="false_positive",
         events=[
-            (d - _h(1), SYSTEM, "Положение техники не менялось на 3 снимках подряд.", "new"),
+            (d - _h(1), SYSTEM, "Техника стоит на одном месте 2 часа.", "new"),
             (
                 d - _h(0, minutes=30),
                 "Смирнова Ольга (прораб)",
@@ -625,7 +625,7 @@ async def _history(session: AsyncSession, t0: datetime) -> None:
         frames=[("road-dumptruck", d - _h(4)), ("road-dumptruck", d - _h(3)), ("road-dumptruck", d - _h(2))],
         status="resolved",
         events=[
-            (d - _h(2), SYSTEM, "Положение техники не менялось на 3 снимках подряд.", "new"),
+            (d - _h(2), SYSTEM, "Техника стоит на одном месте 2 часа.", "new"),
             (
                 d - _h(1, minutes=50),
                 "Волков Игорь (прораб)",
