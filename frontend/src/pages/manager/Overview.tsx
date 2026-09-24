@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 
 /** Все объекты одним взглядом: светофор, этап, отставание, открытые замечания */
 export function ManagerOverview() {
-  const { sites: visibleSites, siteStatus, alertsForSite, byStage, lastDataAt } = useApp()
+  const { sites: visibleSites, siteStatus, alertsForSite, byStage, lastDataAt, base } = useApp()
   const counts = { ok: 0, warning: 0, critical: 0 }
   visibleSites.forEach((s) => { counts[siteStatus(s.id)]++ })
   const totalOpen = visibleSites.reduce((n, s) => n + alertsForSite(s.id).filter((a) => isOpen(a.status)).length, 0)
@@ -34,7 +34,7 @@ export function ManagerOverview() {
           return (
             <div key={s.id}>
               <Link
-                to={`/manager/site/${s.id}`}
+                to={`${base}/site/${s.id}`}
                 className={cn(
                   'block bg-card rounded-xl border p-5 shadow-[var(--shadow-card)] hover:shadow-md transition-all',
                   'border-border hover:border-primary/60',

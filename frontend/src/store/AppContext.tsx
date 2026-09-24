@@ -151,20 +151,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await refresh()
     }
   }, [refresh])
-  const captureSite = useCallback(async (siteId: string) => {
-    try {
-      return await api.captureSite(siteId)
-    } catch (error) {
-      notify(message(error), 'error')
-      return null
-    } finally {
-      await refresh()
-    }
-  }, [notify, refresh])
 
   const value: AppState = {
-    user, role, ownSiteId: user?.role === 'foreman' ? user.siteIds[0] ?? null : null, authMode, login, demoLogin, keycloakLogin, logout,
-    ...data, refresh, updateAlert, saveRule, setCameraEnabled, addCamera, deleteCamera, captureSite, notify, toasts,
+    user, role, ownSiteId: user?.role === 'foreman' ? user.siteIds[0] ?? null : null, base: role ? `/${role.id}` : '', authMode, meta: metaQ.data,
+    login, demoLogin, keycloakLogin, logout,
+    ...data, refresh, updateAlert, saveRule, setCameraEnabled, addCamera, deleteCamera, run, notify, toasts,
   }
 
   // ---------- состояния загрузки ----------
@@ -185,8 +176,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 /** Подпись и фон для кадра удалённой камеры */
 function removedCamera(id: string): Camera {
   return {
-    id, siteId: '', zoneId: '', name: 'Камера удалена', online: false, enabled: false, status: 'unknown', sourceType: 'http',
-    address: null, hasCredentials: false, lastError: null, lastSnapshotAt: null, scene: 'yard',
+    id, siteId: '', zoneId: '', name: 'Камера удалена', online: false, enabled: false, status: 'unknown', sourceType: 'rtsp',
+    address: null, hasCredentials: false, demo: false, streamPath: '', lastError: null, lastSnapshotAt: null, scene: 'yard',
   }
 }
 

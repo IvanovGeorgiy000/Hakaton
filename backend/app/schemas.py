@@ -39,6 +39,7 @@ class UserOut(ApiModel):
     role: RoleId
     phone: str
     site_ids: list[str]
+    is_active: bool = True
 
 
 class TokenOut(ApiModel):
@@ -47,7 +48,30 @@ class TokenOut(ApiModel):
 
 
 def user_out(u: User) -> UserOut:
-    return UserOut(id=u.id, login=u.login, name=u.name, role=u.role, phone=u.phone, site_ids=[s.id for s in u.sites])
+    return UserOut(
+        id=u.id, login=u.login, name=u.name, role=u.role, phone=u.phone, site_ids=[s.id for s in u.sites], is_active=u.is_active
+    )
+
+
+class UserIn(ApiModel):
+    login: str = Field(min_length=2, max_length=64, pattern=r"^[A-Za-z0-9._-]+$")
+    name: str = Field(min_length=2, max_length=120)
+    role: RoleId
+    phone: str = Field(default="", max_length=32)
+    site_ids: list[str] = []
+    password: str = Field(min_length=6, max_length=200)
+
+
+class UserPatch(ApiModel):
+    name: str | None = Field(default=None, min_length=2, max_length=120)
+    role: RoleId | None = None
+    phone: str | None = Field(default=None, max_length=32)
+    site_ids: list[str] | None = None
+    is_active: bool | None = None
+
+
+class PasswordIn(ApiModel):
+    password: str = Field(min_length=6, max_length=200)
 
 
 # ---------- объекты ----------
@@ -73,6 +97,29 @@ def site_out(s: Site, current_stage_id: str | None) -> SiteOut:
         plan_progress=s.plan_progress,
         fact_progress=s.fact_progress,
     )
+
+
+class SiteIn(ApiModel):
+    name: str = Field(min_length=2, max_length=200)
+    address: str = Field(default="", max_length=200)
+    contractor: str = Field(default="", max_length=200)
+    foreman_id: str | None = None  # прораб объекта: получит к нему доступ
+    plan_progress: int = Field(default=0, ge=0, le=100)
+    fact_progress: int = Field(default=0, ge=0, le=100)
+
+
+class ZoneIn(ApiModel):
+    name: str = Field(min_length=2, max_length=200)
+    kind: Literal["work", "gate", "storage"] = "work"
+
+
+class StageIn(ApiModel):
+    name: str = Field(min_length=2, max_length=200)
+    level: Literal[1, 2] = 2  # 1 — укрупнённый этап, 2 — работы с правилом «этап → техника»
+    parent_id: str | None = None
+    start: date
+    end: date
+    rule_key: str | None = None
 
 
 class ZoneOut(ApiModel):
@@ -164,18 +211,20 @@ class CameraOut(ApiModel):
     online: bool  # включена и на связи
     enabled: bool
     status: Literal["online", "offline", "unknown"]
-    source_type: Literal["mock", "http", "rtsp"]
+    source_type: Literal["rtsp"]
     address: str | None  # без логина и пароля
     has_credentials: bool
+    demo: bool  # смотрит на демо-ролик шлюза
+    stream_path: str  # поток в шлюзе видео: WebRTC по адресу {videoUrl}/{streamPath}/whep
     last_error: str | None
     last_snapshot_at: datetime | None
     scene: str
 
 
 def camera_out(c: Camera) -> CameraOut:
-    address = None
-    if c.source_type != "mock" and c.host:
-        address = CameraAddress(c.scheme or "http", c.host, c.port or 80, c.path or "/").display
+    from app.services.video import camera_path, demo_clip_of
+
+    address = CameraAddress(c.scheme or "rtsp", c.host, c.port or 554, c.path or "/").display if c.host else None
     return CameraOut(
         id=c.id,
         site_id=c.site_id,
@@ -184,9 +233,11 @@ def camera_out(c: Camera) -> CameraOut:
         enabled=c.enabled,
         status=c.status,
         online=c.enabled and c.status != "offline",
-        source_type=c.source_type,
+        source_type="rtsp",
         address=address,
         has_credentials=bool(c.username),
+        demo=demo_clip_of(c.path) is not None,
+        stream_path=camera_path(c.id),
         last_error=c.last_error,
         last_snapshot_at=c.last_snapshot_at,
         scene=c.scene,
@@ -194,7 +245,7 @@ def camera_out(c: Camera) -> CameraOut:
 
 
 class ConnectionIn(ApiModel):
-    protocol: Literal["http", "https", "rtsp"] = "http"
+    protocol: Literal["rtsp"] = "rtsp"
     host: str = Field(min_length=1, max_length=255)
     port: int | None = Field(default=None, ge=1, le=65535)
     path: str = Field(default="/", max_length=500)
@@ -216,6 +267,7 @@ class CameraPatch(ApiModel):
     name: str | None = Field(default=None, min_length=2, max_length=200)
     enabled: bool | None = None
     zone_id: str | None = None
+    connection: ConnectionIn | None = None  # новый адрес; пароль пустой — оставить прежний
 
 
 class ProbeOut(ApiModel):
@@ -223,7 +275,21 @@ class ProbeOut(ApiModel):
     code: str
     message: str
     elapsed_ms: int
-    preview: str | None = None  # data:image/jpeg;base64,… — кадр для предпросмотра
+    preview_path: str | None = None  # временный поток в шлюзе: видео для предпросмотра в форме (живёт 10 минут)
+
+
+class LiveCameraOut(ApiModel):
+    """Что видит анализ на камере прямо сейчас (обновляется каждые 2 секунды)."""
+
+    camera_id: str
+    online: bool
+    error: str | None
+    received_at: datetime | None  # последний кадр из видео
+    analyzed_at: datetime | None  # последний разобранный кадр
+    analyzed: bool | None  # False — сервис анализа не смог разобрать кадр
+    note: str | None
+    detections: list["DetectionOut"]
+    counts: dict[str, int]
 
 
 # ---------- снимки ----------
@@ -403,10 +469,33 @@ def check_out(c: CheckRun) -> CheckRunOut:
     )
 
 
-class CaptureOut(ApiModel):
-    check: CheckRunOut
-    snapshots: list[SnapshotOut]
-    errors: dict[str, str]
+class AuditOut(ApiModel):
+    id: int
+    at: datetime
+    actor_login: str
+    actor_name: str
+    actor_role: str
+    action: str
+    entity_type: str
+    entity_id: str | None
+    entity_name: str
+    summary: str
+    details: dict
+    ip: str
+
+
+def audit_out(e) -> AuditOut:  # noqa: ANN001
+    return AuditOut(
+        id=e.id, at=e.at, actor_login=e.actor_login, actor_name=e.actor_name, actor_role=e.actor_role, action=e.action,
+        entity_type=e.entity_type, entity_id=e.entity_id, entity_name=e.entity_name, summary=e.summary,
+        details=e.details or {}, ip=e.ip,
+    )  # fmt: skip
+
+
+class IngestOut(ApiModel):
+    accepted: bool  # False — кадр старее уже полученного с этой камеры: картину он не меняет
+    detections: int
+    note: str
 
 
 class DeviationOut(ApiModel):

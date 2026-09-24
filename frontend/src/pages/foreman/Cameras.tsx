@@ -1,14 +1,14 @@
 import { useApp } from '@/store/context'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { CamerasGrid } from '@/components/CamerasGrid'
+import { VideoWall } from '@/components/video/VideoWall'
 
 export function ForemanCameras() {
-  const { ownSiteId } = useApp()
+  const { ownSiteId, cameras } = useApp()
   if (!ownSiteId) return <p className="text-muted-foreground">За вами не закреплён ни один объект. Обратитесь к администратору.</p>
   return (
     <div>
-      <PageHeader title="Камеры на объекте" subtitle="Нажмите на камеру, чтобы посмотреть снимки за день" />
-      <CamerasGrid siteId={ownSiteId} />
+      <PageHeader title="Камеры на объекте" subtitle="Видео в реальном времени. Система смотрит на него и ищет технику каждые 2 секунды" />
+      <VideoWall cameras={cameras.filter((c) => c.siteId === ownSiteId)} empty="На объекте пока нет камер." />
     </div>
   )
 }

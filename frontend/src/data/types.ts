@@ -36,6 +36,7 @@ export interface User {
   role: RoleId
   phone: string
   siteIds: string[]
+  isActive: boolean
 }
 
 export type SiteStatus = 'ok' | 'warning' | 'critical'
@@ -60,6 +61,7 @@ export interface Zone {
   kind: ZoneKind
 }
 
+/** Камера — всегда видеопоток RTSP. Видео отдаёт шлюз по WebRTC: {meta.video.webrtcUrl}/{streamPath}/whep */
 export interface Camera {
   id: string
   siteId: string
@@ -69,13 +71,29 @@ export interface Camera {
   online: boolean
   enabled: boolean
   status: 'online' | 'offline' | 'unknown'
-  sourceType: 'mock' | 'http' | 'rtsp'
-  /** Адрес без логина и пароля; у демонстрационных камер — null */
+  sourceType: 'rtsp'
+  /** Адрес видеопотока без логина и пароля */
   address: string | null
   hasCredentials: boolean
+  /** Смотрит на демо-ролик шлюза */
+  demo: boolean
+  streamPath: string
   lastError: string | null
   lastSnapshotAt: string | null
   scene: 'pit' | 'foundation' | 'road' | 'entrance' | 'yard'
+}
+
+/** Что видит анализ на камере прямо сейчас (кадр из видео разбирается каждые 2 секунды) */
+export interface LiveCamera {
+  cameraId: string
+  online: boolean
+  error: string | null
+  receivedAt: string | null
+  analyzedAt: string | null
+  analyzed: boolean | null
+  note: string | null
+  detections: Detection[]
+  counts: Partial<Record<EquipmentType, number>>
 }
 
 export interface Stage {
@@ -191,14 +209,8 @@ export interface AnalyzeResult {
 
 export interface Sample { id: string; label: string; imageUrl: string }
 
-export interface CaptureResult {
-  check: { id: string; at: string; violations: { kind: AlertKind; equipment: EquipmentType | null }[] }
-  snapshots: Snapshot[]
-  errors: Record<string, string>
-}
-
 export interface Connection {
-  protocol: 'http' | 'https' | 'rtsp'
+  protocol: 'rtsp'
   host: string
   port: number | null
   path: string
@@ -206,7 +218,10 @@ export interface Connection {
   password: string | null
 }
 
-export interface ProbeResult { ok: boolean; code: string; message: string; elapsedMs: number; preview: string | null }
+/** previewPath — временный поток в шлюзе: форма показывает по нему видео камеры до сохранения */
+export interface ProbeResult { ok: boolean; code: string; message: string; elapsedMs: number; previewPath: string | null }
+
+export interface CameraPatch { name?: string; enabled?: boolean; zoneId?: string; connection?: Connection }
 
 export interface NewCamera {
   siteId: string
@@ -218,17 +233,52 @@ export interface NewCamera {
   allowOffline: boolean
 }
 
-export interface DemoCamera { title: string; host: string; port: number; path: string }
+/** Демо-ролик шлюза как обычный RTSP-адрес — для быстрой настройки в форме камеры */
+export interface DemoFeed { clip: string; title: string; host: string; port: number; path: string }
 
 export interface Meta {
   version: string
   demoMode: boolean
   analysisProvider: string
-  captureIntervalS: number
   timezone: string
-  demoCameras: DemoCamera[]
   authMode: 'local' | 'keycloak'
   keycloak: { url: string; realm: string; clientId: string } | null
+  video: { enabled: boolean; webrtcUrl: string; frameIntervalS: number; checkIntervalS: number }
+  demoFeeds: DemoFeed[]
+}
+
+// ---------- администрирование ----------
+export interface SiteInput {
+  name: string
+  address: string
+  contractor: string
+  foremanId: string | null
+  planProgress: number
+  factProgress: number
+}
+
+export interface ZoneInput { name: string; kind: ZoneKind }
+
+export interface StageInput { name: string; level: 1 | 2; parentId: string | null; start: string; end: string; ruleKey: string | null }
+
+export interface UserInput { login: string; name: string; role: RoleId; phone: string; siteIds: string[]; password: string }
+
+export interface UserPatch { name?: string; role?: RoleId; phone?: string; siteIds?: string[]; isActive?: boolean }
+
+/** Запись журнала действий: кто, когда, что сделал */
+export interface AuditEvent {
+  id: number
+  at: string
+  actorLogin: string
+  actorName: string
+  actorRole: RoleId | ''
+  action: string
+  entityType: string
+  entityId: string | null
+  entityName: string
+  summary: string
+  details: Record<string, unknown>
+  ip: string
 }
 
 export interface WeeklyReport {

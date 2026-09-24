@@ -1,6 +1,8 @@
 # Весь стенд одной командой:  docker compose up --build
-#   интерфейс — http://localhost:8080, API и Swagger — http://localhost:8100/docs
-# Порты можно сменить: WEB_PORT=8081 API_PORT=8101 docker compose up --build
+#   интерфейс — http://localhost:8080, API и Swagger — http://localhost:8100/docs, видео (WebRTC) — :8889
+# Порты можно сменить: WEB_PORT=8081 API_PORT=8101 VIDEO_PORT=8890 docker compose up --build
+# Открываете стенд с другого устройства (телефон в той же сети) — укажите адрес этого компьютера:
+#   VIDEO_PUBLIC_HOST=192.168.1.10 docker compose up
 
 services:
   db:
@@ -17,6 +19,19 @@ services:
       timeout: 3s
       retries: 10
 
+  # шлюз видео: забирает RTSP с камер и отдаёт браузеру WebRTC; потоки камер заводит сам бэкенд через API
+  video:
+    image: bluenviron/mediamtx:1.21.1
+    volumes:
+      - ./infra/mediamtx/mediamtx.yml:/mediamtx.yml:ro
+    environment:
+      MTX_APIADDRESS: :9997  # API — только внутри сети стенда (порт наружу не открыт)
+      MTX_AUTHHTTPADDRESS: http://backend:8100/api/video/auth
+      MTX_WEBRTCADDITIONALHOSTS: ${VIDEO_PUBLIC_HOST:-127.0.0.1}  # адрес, по которому браузер достучится до видео
+    ports:
+      - "${VIDEO_PORT:-8889}:8889"
+      - "8189:8189/udp"
+
   backend:
     build: ./backend
     environment:
@@ -25,16 +40,22 @@ services:
       SK_DEMO_MODE: ${SK_DEMO_MODE:-true}
       SK_DEMO_PASSWORD: ${SK_DEMO_PASSWORD:-demo}
       SK_CORS_ORIGINS: http://localhost:${WEB_PORT:-8080}
+      SK_VIDEO_API_URL: http://video:9997
+      SK_VIDEO_RTSP_URL: rtsp://video:8554
+      SK_VIDEO_WEBRTC_URL: http://${VIDEO_PUBLIC_HOST:-localhost}:${VIDEO_PORT:-8889}
+      SK_FRAME_INTERVAL_S: ${SK_FRAME_INTERVAL_S:-2}
+      SK_CHECK_INTERVAL_S: ${SK_CHECK_INTERVAL_S:-60}
       SK_ANALYSIS_PROVIDER: ${SK_ANALYSIS_PROVIDER:-mock}
       SK_ANALYSIS_API_URL: ${SK_ANALYSIS_API_URL:-}
       SK_ANALYSIS_API_KEY: ${SK_ANALYSIS_API_KEY:-}
       SK_INGEST_API_KEY: ${SK_INGEST_API_KEY:-}
-      SK_CAPTURE_INTERVAL_S: ${SK_CAPTURE_INTERVAL_S:-300}
     volumes:
       - media:/app/data
     depends_on:
       db:
         condition: service_healthy
+      video:
+        condition: service_started
     ports:
       - "${API_PORT:-8100}:8100"
 

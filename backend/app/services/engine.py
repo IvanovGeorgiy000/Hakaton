@@ -1,14 +1,16 @@
-"""Конвейер обработки: кадр → анализ → сверка с правилом этапа → отклонения.
+"""Сверка объекта с планом: кадры камер → техника → правило этапа → отклонения.
 
+Кадры приходят из конвейера живого видео (services/pipeline.py): анализ каждые 2 секунды, сверка раз в минуту.
 Методика сверки:
   • Этап объекта берётся из календарного плана по дате проверки.
   • «Нужная» техника считается только в рабочих зонах. Техника на въезде и складе считается подъезжающей:
     она показывается в интерфейсе, но нехватку не закрывает.
   • «Лишняя» техника ищется во всех зонах.
   • Нехватка и лишняя техника подтверждаются, только если повторяются N проверок подряд (N задаётся в правиле) —
-    так отсекаются случайные кадры: самосвал уехал на разгрузку, машина проехала мимо.
+    так отсекаются случайные кадры: самосвал уехал на разгрузку, машина проехала мимо. Проверки, сделанные
+    почти одновременно (правку правила сверяем сразу), считаются за одну: подтверждение не ускоряется.
   • Простой: техника из списка нужной не сдвинулась (IoU рамок ≥ 0.9) на 3+ кадрах за 2+ часа.
-  • Камера без снимков дольше 2 часов — отдельное предупреждение: зона стала «слепой».
+  • Камера без видео дольше 10 минут — отдельное предупреждение: зона стала «слепой».
   • Если условие перестало наблюдаться, предупреждение снимается автоматически (кроме тех, по которым выдано
     предписание: их закрывает инспектор).
 """
@@ -16,15 +18,15 @@
 import asyncio
 import logging
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from typing import Protocol
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.db import utcnow
 from app.models import (
     OPEN_STATUSES,
     Alert,
@@ -41,25 +43,29 @@ from app.models import (
 )
 from app.security import decrypt_secret
 from app.services import texts
-from app.services.analysis import AnalysisError, get_analyzer
-from app.services.camera_client import CameraAddress, CameraError, grab_address, mock_frame
+from app.services.analysis import AnalysisError, AnalysisResult, get_analyzer
+from app.services.camera_client import CameraAddress
 from app.services.texts import plural
 
 log = logging.getLogger("stroykontrol.engine")
 settings = get_settings()
 TZ = ZoneInfo(settings.timezone)
 
-FRESHNESS = timedelta(hours=3)  # снимок старше — считаем, что камера зону сейчас не видит
+# кадр старше — считаем, что камера зону сейчас не видит (не меньше пяти минут и двух с половиной интервалов сверки)
+FRESHNESS = max(timedelta(minutes=5), timedelta(seconds=settings.check_interval_s * 2.5))
+# проверки ближе друг к другу считаются за одну: «3 проверки подряд» не должны пролетать за секунды
+STREAK_MIN_GAP = timedelta(seconds=max(settings.check_interval_s * 0.8, 20))
 IDLE_MIN_SNAPSHOTS = 3
 IDLE_MIN_SPAN = timedelta(hours=2)
 IDLE_WINDOW = timedelta(hours=8)
 IDLE_IOU = 0.9
-OFFLINE_AFTER = timedelta(hours=2)
+OFFLINE_AFTER = timedelta(minutes=10)
 EVIDENCE_LIMIT = 6
 FIRST_ALERT_NUMBER = 131
 SYSTEM = "Система"
 
 _site_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+_numbering = asyncio.Lock()  # сквозной номер отклонения берём по одному: max+1 из двух мест дал бы одинаковые номера
 
 
 def local_day(moment: datetime) -> date:
@@ -79,23 +85,13 @@ def iou(a: Detection, b: Detection) -> float:
 # =====================================================================================
 def camera_address(camera: Camera) -> CameraAddress:
     return CameraAddress(
-        scheme=camera.scheme or "http",
+        scheme=camera.scheme or "rtsp",
         host=camera.host or "",
-        port=camera.port or 80,
+        port=camera.port or 554,
         path=camera.path or "/",
         username=camera.username,
         password=decrypt_secret(camera.password_enc),
     )
-
-
-async def fetch_frame(camera: Camera) -> tuple[bytes, str | None]:
-    """Получить кадр. Возвращает JPEG и готовый адрес картинки (для демо-камер файл уже лежит в assets)."""
-    if camera.source_type == "mock":
-        if camera.mock_fail or not camera.mock_playlist:
-            raise CameraError("Камера не отвечает: нет сигнала", "unreachable")
-        name = camera.mock_playlist[camera.mock_cursor % len(camera.mock_playlist)]
-        return mock_frame(name), f"/media/seed/{name}.jpg"
-    return await grab_address(camera_address(camera)), None
 
 
 def _store_frame(camera_id: str, jpeg: bytes, at: datetime) -> str:
@@ -114,19 +110,22 @@ async def process_frame(
     at: datetime,
     source: str,
     image_url: str | None = None,
-    detections: list | None = None,
-    provider: str | None = None,
+    result: AnalysisResult | None = None,
 ) -> Snapshot:
-    """Сохранить кадр и детекции. detections заданы, если их прислал внешний сервис (push-режим)."""
-    analyzed, note, elapsed = True, None, None
-    if detections is None:
+    """Сохранить кадр и технику на нём. result — готовый разбор (конвейер видео уже отправлял кадр на анализ)."""
+    if result is None:
         try:
             result = await get_analyzer().analyze(jpeg, camera_id=camera.id, taken_at=at)
-            detections, provider, note, elapsed = result.detections, result.provider, result.note, result.elapsed_ms
-            analyzed = result.supported
         except AnalysisError as exc:
             log.warning("Анализ кадра камеры %s не удался: %s", camera.id, exc)
-            detections, analyzed, note, provider = [], False, str(exc), get_analyzer().name
+            result = AnalysisResult(provider=get_analyzer().name, supported=False, note=str(exc))
+    detections, provider, note, elapsed, analyzed = (
+        result.detections,
+        result.provider,
+        result.note,
+        result.elapsed_ms,
+        result.supported,
+    )
 
     previous = await session.scalar(
         select(Snapshot)
@@ -155,64 +154,36 @@ async def process_frame(
     session.add(snapshot)
 
     camera.status, camera.last_error = "online", None
-    camera.last_seen_at = at
+    camera.last_seen_at = max(at, camera.last_seen_at) if camera.last_seen_at else at
     camera.last_snapshot_at = max(at, camera.last_snapshot_at) if camera.last_snapshot_at else at
     return snapshot
 
 
-async def capture_camera(
-    session: AsyncSession, camera: Camera, *, at: datetime | None = None, source: str = "capture"
-) -> Snapshot:
-    at = at or utcnow()
-    try:
-        jpeg, image_url = await fetch_frame(camera)
-    except CameraError as exc:
-        camera.status, camera.last_error = "offline", exc.message
-        raise
-    if camera.source_type == "mock":
-        camera.mock_cursor += 1
-    return await process_frame(session, camera, jpeg, at=at, source=source, image_url=image_url)
+class _Frame(Protocol):
+    at: datetime
+    jpeg: bytes
+    result: AnalysisResult
 
 
-@dataclass
-class CaptureReport:
-    check: CheckRun
-    snapshots: list[Snapshot] = field(default_factory=list)
-    errors: dict[str, str] = field(default_factory=dict)  # camera_id → понятная причина
+async def check_site(session: AsyncSession, site_id: str, *, at: datetime, trigger: str, frames: dict[str, _Frame]) -> CheckRun:
+    """Сверка объекта по кадрам из живого видео: сохранить по кадру на камеру, сверить с правилом. Сам коммитит.
 
-
-async def capture_site(
-    session: AsyncSession, site_id: str, *, trigger: str, at: datetime | None = None, only_camera: str | None = None
-) -> CaptureReport:
-    """Одна проверка объекта: опросить камеры, разобрать кадры, сверить с правилом. Сам коммитит."""
-    at = at or utcnow()
+    frames — камера → кадр, уже разобранный сервисом анализа. Камеры без свежего кадра в сверке не участвуют.
+    """
     async with _site_locks[site_id]:
-        query = select(Camera).where(Camera.site_id == site_id, Camera.enabled, Camera.deleted_at.is_(None))
-        if only_camera:
-            query = query.where(Camera.id == only_camera)
-        cameras = list(await session.scalars(query.order_by(Camera.position)))
-
-        # сеть опрашиваем параллельно, в базу пишем последовательно (одна сессия — один поток работы)
-        frames = await asyncio.gather(*(fetch_frame(c) for c in cameras), return_exceptions=True)
-        snapshots, errors = [], {}
-        for camera, frame in zip(cameras, frames, strict=True):
-            if isinstance(frame, CameraError):
-                camera.status, camera.last_error = "offline", frame.message
-                errors[camera.id] = frame.message
-                continue
-            if isinstance(frame, BaseException):
-                raise frame
-            jpeg, image_url = frame
-            if camera.source_type == "mock":
-                camera.mock_cursor += 1
-            snapshots.append(await process_frame(session, camera, jpeg, at=at, source="capture", image_url=image_url))
-
+        cameras = {c.id: c for c in await site_cameras(session, site_id)}
+        snapshots = []
+        for camera_id, frame in frames.items():
+            if camera := cameras.get(camera_id):
+                snapshots.append(
+                    await process_frame(session, camera, frame.jpeg, at=frame.at, source="live", result=frame.result)
+                )
         await session.flush()
         check = await run_check(session, site_id, at=at, trigger=trigger)
         for snapshot in snapshots:
             snapshot.check_id = check.id
         await session.commit()
-        return CaptureReport(check=check, snapshots=snapshots, errors=errors)
+        return check
 
 
 # =====================================================================================
@@ -386,7 +357,8 @@ async def run_check(session: AsyncSession, site_id: str, *, at: datetime, trigge
     )
     session.add(check)
     await session.flush()
-    await _sync_alerts(session, check, state, idle_chains)
+    async with _numbering:
+        await _sync_alerts(session, check, state, idle_chains)
     return check
 
 
@@ -413,14 +385,21 @@ def _alert_key(a: Alert) -> Key:
 
 
 def _streak(runs: list[CheckRun], key: Key) -> tuple[int, datetime | None]:
-    """Сколько последних проверок подряд содержат отклонение и когда серия началась."""
-    length, started = 0, None
+    """Сколько последних проверок подряд содержат отклонение и когда серия началась.
+
+    Проверка, сделанная ближе STREAK_MIN_GAP к уже засчитанной, отдельной не считается: иначе внеочередные
+    сверки (правка правила, приём кадров извне) подтверждали бы отклонение за секунды по одной и той же картине.
+    """
+    length, started, last = 0, None, None
     for run in runs:  # от новых к старым
         if key[0] == "shortage" and not run.coverage:
             continue  # рабочую зону не было видно — проверка ничего не говорит о нехватке
         if key not in {_violation_key(v) for v in run.violations}:
             break
-        length, started = length + 1, run.at
+        started = run.at
+        if last is not None and last - run.at < STREAK_MIN_GAP:
+            continue
+        length, last = length + 1, run.at
     return length, started
 
 
@@ -541,7 +520,7 @@ async def _sync_alerts(
                 select(Snapshot).where(Snapshot.camera_id == camera.id).order_by(Snapshot.taken_at.desc()).limit(1)
             )
             evidence = [last] if last else []
-            created_note = "Снимков нет дольше 2 часов — зона не просматривается."
+            created_note = "Видео с камеры нет дольше 10 минут — зона не просматривается."
 
         if alert is None:
             alert = Alert(
@@ -582,17 +561,34 @@ async def _sync_alerts(
         alert.evidence, alert.updated_at = list(evidence), at
 
     # ---- условие больше не наблюдается ----
+    def judged(alert: Alert) -> bool:
+        """Можно ли по этой проверке сказать, что условия больше нет: зону видно, камера на связи."""
+        if alert.kind in ("missing", "count_below"):
+            return bool(state.coverage and rule)
+        if alert.kind in ("unexpected", "idle"):
+            return alert.camera_id in state.latest
+        return True  # «камера не отвечает»: видео снова пришло
+
     for alert in closed_by_people:
-        if _alert_key(alert) not in current:
-            alert.cleared_at = at  # картина изменилась — если отклонение повторится, это будет новое предупреждение
+        # картина изменилась — если отклонение повторится, это будет новое предупреждение. Но «не видно» — не «изменилась»:
+        # иначе закрытое человеком возвращалось после любой паузы в видео
+        if _alert_key(alert) not in current and judged(alert):
+            alert.cleared_at = at
     for key, alert in open_alerts.items():
         if key in current:
             continue
-        camera = cameras.get(alert.camera_id or "")
-        if alert.kind in ("missing", "count_below") and not (state.coverage and rule):
-            continue  # рабочую зону не видно — судить рано
-        if alert.kind in ("unexpected", "idle") and camera and camera.id not in state.latest:
-            continue  # камера молчит — судить рано
+        if alert.camera_id and alert.camera_id not in cameras:
+            # камеру выключили или удалили — следить нечем. Это не «отклонение больше не наблюдается»
+            note = "Камера выключена или удалена — отслеживать это отклонение больше нечем."
+            alert.cleared_at, alert.updated_at = at, at
+            if alert.status == "prescribed":
+                _add_event(alert, at, f"{note} Предписание закрывает инспектор.")
+            else:
+                alert.status, alert.resolved_at = "resolved", at
+                _add_event(alert, at, f"{note} Снято автоматически.", status="resolved")
+            continue
+        if not judged(alert):
+            continue  # зону не видно или камера молчит — судить рано
         alert.cleared_at = at
         if alert.status == "prescribed":
             _add_event(alert, at, "Отклонение больше не наблюдается. Предписание закрывает инспектор.")

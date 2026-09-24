@@ -1,18 +1,20 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { ScanSearch } from 'lucide-react'
 import { type Alert, type Severity } from '@/data'
 import { useApp } from '@/store/context'
 import { isOpen, bySeverity } from '@/store/selectors'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { Chip } from '@/components/ui/Chip'
 import { AlertCard } from '@/components/AlertCard'
 import { AlertDetail } from '@/components/AlertDetail'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { cn } from '@/lib/utils'
 
 type Filter = 'open' | 'high' | 'closed' | 'all'
 
 /** Лента отклонений по всем объектам с простыми фильтрами-кнопками */
 export function ManagerAlerts() {
-  const { alerts, sites: visibleSites } = useApp()
+  const { alerts, sites: visibleSites, base } = useApp()
   const [filter, setFilter] = useState<Filter>('open')
   const [site, setSite] = useState<string>('all')
   const [sel, setSel] = useState<Alert | null>(null)
@@ -26,7 +28,14 @@ export function ManagerAlerts() {
 
   return (
     <div>
-      <PageHeader title="Отклонения" subtitle="Все замечания системы по вашим объектам" />
+      <PageHeader
+        title="Отклонения" subtitle="Все замечания системы по вашим объектам"
+        action={
+          <Link to={`${base}/check`} className="inline-flex items-center gap-2 min-h-[44px] px-4 rounded-lg border border-border-strong bg-card font-medium hover:bg-muted transition-colors">
+            <ScanSearch className="w-5 h-5" /> Проверить своё фото
+          </Link>
+        }
+      />
       <div className="flex flex-wrap gap-2 mb-3">
         {([['open', 'Открытые'], ['high', 'Срочные'], ['closed', 'Закрытые'], ['all', 'Все']] as [Filter, string][]).map(([f, l]) => (
           <Chip key={f} active={filter === f} onClick={() => setFilter(f)}>{l} <span className="opacity-70">{count(f)}</span></Chip>
@@ -43,20 +52,5 @@ export function ManagerAlerts() {
       )}
       <AlertDetail alert={sel} onClose={() => setSel(null)} />
     </div>
-  )
-}
-
-export function Chip({ active, onClick, children, small }: { active: boolean; onClick: () => void; children: React.ReactNode; small?: boolean }) {
-  return (
-    <button
-      type="button" onClick={onClick} aria-pressed={active}
-      className={cn(
-        'rounded-sm font-semibold border cursor-pointer transition-colors',
-        small ? 'min-h-[40px] px-3 text-[14px]' : 'min-h-[44px] px-4',
-        active ? 'bg-primary text-on-primary border-primary' : 'bg-card border-border hover:border-primary/60',
-      )}
-    >
-      {children}
-    </button>
   )
 }

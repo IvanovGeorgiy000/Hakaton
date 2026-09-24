@@ -1,4 +1,4 @@
-"""Модель данных: пользователи, объекты, камеры, календарный план, правила, снимки, проверки, отклонения."""
+"""Модель данных: пользователи, объекты, камеры, календарный план, правила, кадры, проверки, отклонения, журнал действий."""
 
 import secrets
 from datetime import date, datetime
@@ -11,6 +11,17 @@ from app.db import Base, UTCDateTime, utcnow
 
 def new_id(prefix: str) -> str:
     return f"{prefix}_{secrets.token_hex(5)}"
+
+
+# Версия структуры базы. Поменялась — демо-база пересоздаётся при запуске, боевая просит миграцию (см. main.py).
+SCHEMA_VERSION = "2"
+
+
+class AppMeta(Base):
+    __tablename__ = "app_meta"
+
+    key: Mapped[str] = mapped_column(String(40), primary_key=True)
+    value: Mapped[str] = mapped_column(String(200))
 
 
 user_sites = Table(
@@ -74,19 +85,15 @@ class Camera(Base):
     zone_id: Mapped[str] = mapped_column(ForeignKey("zones.id"))
     name: Mapped[str] = mapped_column(String(200))
 
-    # Источник кадров: mock — демонстрационная камера с «плейлистом» фото, http — снимок по HTTP(S), rtsp — видеопоток
-    source_type: Mapped[str] = mapped_column(String(8), default="mock")
-    scheme: Mapped[str | None] = mapped_column(String(8))
+    # Источник — всегда видеопоток RTSP: его забирает шлюз видео. Демо-камеры смотрят на демо-ролики в том же шлюзе.
+    source_type: Mapped[str] = mapped_column(String(8), default="rtsp")
+    scheme: Mapped[str | None] = mapped_column(String(8), default="rtsp")
     host: Mapped[str | None] = mapped_column(String(255))
     port: Mapped[int | None]
     path: Mapped[str | None] = mapped_column(String(500))
     username: Mapped[str | None] = mapped_column(String(120))
     password_enc: Mapped[str | None] = mapped_column(Text)  # зашифрован, наружу не отдаётся
-
-    mock_playlist: Mapped[list[str] | None] = mapped_column(JSON)  # имена кадров из assets/seed
-    mock_cursor: Mapped[int] = mapped_column(default=0)
-    mock_fail: Mapped[bool] = mapped_column(default=False)  # имитация «нет сигнала»
-    scene: Mapped[str] = mapped_column(String(16), default="yard")
+    scene: Mapped[str] = mapped_column(String(16), default="yard")  # фон-заглушка, пока видео не пришло
 
     enabled: Mapped[bool] = mapped_column(default=True)
     status: Mapped[str] = mapped_column(String(10), default="unknown")  # online | offline | unknown
@@ -254,6 +261,27 @@ class AlertEvent(Base):
     who: Mapped[str] = mapped_column(String(160))
     text: Mapped[str] = mapped_column(Text)
     status: Mapped[str | None] = mapped_column(String(16))  # статус, установленный этим событием
+
+
+class AuditEvent(Base):
+    """Журнал действий: кто, когда и что сделал в системе (добавил камеру, сменил пароль, закрыл отклонение…)."""
+
+    __tablename__ = "audit_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
+    # кто — копией, а не ссылкой: запись должна пережить удаление пользователя
+    actor_id: Mapped[str | None] = mapped_column(String(40))
+    actor_login: Mapped[str] = mapped_column(String(120), default="")
+    actor_name: Mapped[str] = mapped_column(String(160), default="")
+    actor_role: Mapped[str] = mapped_column(String(20), default="")
+    action: Mapped[str] = mapped_column(String(40), index=True)  # camera.delete, user.password, login.failed…
+    entity_type: Mapped[str] = mapped_column(String(20), default="")  # camera | site | user | rule | alert | stage | zone
+    entity_id: Mapped[str | None] = mapped_column(String(40))
+    entity_name: Mapped[str] = mapped_column(String(300), default="")
+    summary: Mapped[str] = mapped_column(Text)  # по-человечески: «Удалил камеру «Камера 2 — въезд» (Школа на 550 мест)»
+    details: Mapped[dict] = mapped_column(JSON, default=dict)  # что именно поменялось: {"поле": [было, стало]}
+    ip: Mapped[str] = mapped_column(String(64), default="")
 
 
 OPEN_STATUSES = ("new", "acknowledged", "confirmed", "prescribed")

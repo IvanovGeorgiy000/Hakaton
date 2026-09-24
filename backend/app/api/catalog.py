@@ -1,13 +1,12 @@
-"""Объекты, зоны, календарный план, правила, сотрудники, сверка «план / факт» и запуск проверки."""
+"""Объекты, зоны, календарный план, правила, сотрудники, сверка «план / факт»."""
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import select
 
 from app.api.deps import SiteIdQuery, get_site, scope
 from app.db import utcnow
-from app.models import CheckRun, Rule, RuleItem, Site, Stage, User, Zone
+from app.models import CheckRun, Rule, RuleItem, Site, Stage, Zone
 from app.schemas import (
-    CaptureOut,
     CheckRow,
     CheckRunOut,
     EquipmentCheckOut,
@@ -16,18 +15,17 @@ from app.schemas import (
     RuleOut,
     SiteOut,
     StageOut,
-    UserOut,
     ZoneOut,
     check_out,
     rule_out,
     site_out,
-    snapshot_out,
     stage_out,
-    user_out,
     zone_out,
 )
 from app.security import CurrentUser, Session, require_roles
-from app.services.engine import capture_site, current_stage, local_day, run_check, site_state
+from app.services import audit
+from app.services.engine import current_stage, local_day, site_state
+from app.services.pipeline import get_pipeline
 
 router = APIRouter()
 
@@ -68,10 +66,11 @@ async def list_rules(_: CurrentUser, session: Session) -> list[RuleOut]:
     summary="Изменить правило (администратор)",
     dependencies=[require_roles("admin")],
 )
-async def update_rule(key: str, body: RuleIn, session: Session) -> RuleOut:
+async def update_rule(key: str, body: RuleIn, user: CurrentUser, session: Session, request: Request) -> RuleOut:
     rule = await session.get(Rule, key)
     if rule is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Правило не найдено")
+    before = rule_out(rule).model_dump(by_alias=True)
     required, unexpected = {r.type for r in body.required}, {u.type for u in body.unexpected}
     if len(required) != len(body.required) or len(unexpected) != len(body.unexpected):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Техника в списке повторяется")
@@ -110,27 +109,23 @@ async def update_rule(key: str, body: RuleIn, session: Session) -> RuleOut:
         )
     rule.items, rule.confirm_after = items, body.confirm_after_snapshots
     await session.flush()
+    await session.refresh(rule)
+    after = rule_out(rule).model_dump(by_alias=True)
+    audit.record(
+        session, request, user, "rule.update", f"Изменил правило «{rule.stage_name}»",
+        entity_type="rule", entity_id=key, entity_name=rule.stage_name, details=audit.changes(before, after),
+    )  # fmt: skip
+    await session.commit()
 
-    # правило изменилось — сразу пересверяем объекты, где сейчас идёт этап с этим правилом
-    now, today = utcnow(), local_day(utcnow())
+    # правило изменилось — объекты, где сейчас идёт этап с этим правилом, сверяем вне очереди (не дожидаясь минуты)
+    today = local_day(utcnow())
+    affected = set()
     for site_id in await session.scalars(select(Site.id)):
         stage = await current_stage(session, site_id, today)
         if stage and stage.rule_key == key:
-            await run_check(session, site_id, at=now, trigger="rule_change")
-    await session.commit()
-    await session.refresh(rule)
+            affected.add(site_id)
+    get_pipeline().request_check(affected)
     return rule_out(rule)
-
-
-@router.get(
-    "/users",
-    response_model=list[UserOut],
-    tags=["Сотрудники"],
-    summary="Сотрудники (администратор)",
-    dependencies=[require_roles("admin")],
-)
-async def list_users(session: Session) -> list[UserOut]:
-    return [user_out(u) for u in await session.scalars(select(User).order_by(User.id))]
 
 
 @router.get(
@@ -172,18 +167,6 @@ async def equipment_check(site_id: str, user: CurrentUser, session: Session) -> 
         extra=extra,
         arriving=dict(state.arriving),
     )
-
-
-@router.post(
-    "/sites/{site_id}/capture",
-    response_model=CaptureOut,
-    tags=["Сверка"],
-    summary="Проверить сейчас: снять кадры со всех камер объекта и сверить с планом",
-)
-async def capture_now(site_id: str, user: CurrentUser, session: Session) -> CaptureOut:
-    await get_site(session, user, site_id)
-    report = await capture_site(session, site_id, trigger="manual")
-    return CaptureOut(check=check_out(report.check), snapshots=[snapshot_out(s) for s in report.snapshots], errors=report.errors)
 
 
 @router.get("/sites/{site_id}/checks", response_model=list[CheckRunOut], tags=["Сверка"], summary="Журнал проверок объекта")

@@ -1,7 +1,8 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useDialog } from './useDialog'
 
 interface ModalProps {
   open: boolean
@@ -11,10 +12,6 @@ interface ModalProps {
   wide?: boolean
 }
 
-/** Открытые окна, верхнее — последнее. Escape и Tab обслуживает только оно: видео поверх истории камеры закрывается одно. */
-const stack: object[] = []
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-
 /**
  * Диалог: на телефоне выезжает снизу, на десктопе — по центру.
  * Фокус переходит в окно, по Tab не уходит из него и возвращается туда, откуда окно открыли.
@@ -22,30 +19,7 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), selec
 export function Modal({ open, onClose, title, children, wide }: ModalProps) {
   const reduce = useReducedMotion()
   const panel = useRef<HTMLDivElement>(null)
-  const close = useRef(onClose)
-  useEffect(() => { close.current = onClose })
-
-  // зависимость только open: иначе при каждом рендере фокус прыгал бы из поля ввода на окно
-  useEffect(() => {
-    if (!open) return
-    const self = {}
-    stack.push(self)
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    panel.current?.focus()
-    const onKey = (e: KeyboardEvent) => {
-      if (stack[stack.length - 1] !== self || !panel.current) return
-      if (e.key === 'Escape') close.current()
-      else if (e.key === 'Tab') keepFocusInside(e, panel.current)
-    }
-    window.addEventListener('keydown', onKey)
-    document.body.style.overflow = 'hidden'
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      stack.splice(stack.indexOf(self), 1)
-      if (!stack.length) document.body.style.overflow = ''
-      opener?.focus()
-    }
-  }, [open])
+  useDialog(open, panel, onClose)
 
   return (
     <AnimatePresence>
@@ -75,22 +49,4 @@ export function Modal({ open, onClose, title, children, wide }: ModalProps) {
       )}
     </AnimatePresence>
   )
-}
-
-/** Tab с последнего элемента окна ведёт на первый, Shift+Tab с первого — на последний */
-function keepFocusInside(e: KeyboardEvent, root: HTMLElement) {
-  const items = [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.getClientRects().length > 0)
-  if (!items.length) {
-    e.preventDefault()
-    return
-  }
-  const first = items[0], last = items[items.length - 1], active = document.activeElement
-  const target = !root.contains(active) ? (e.shiftKey ? last : first)
-    : e.shiftKey && (active === first || active === root) ? last
-    : !e.shiftKey && active === last ? first
-    : null
-  if (target) {
-    e.preventDefault()
-    target.focus()
-  }
 }

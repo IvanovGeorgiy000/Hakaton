@@ -1,7 +1,7 @@
 import { request } from './client'
 import type {
-  Alert, AlertStatus, AnalyzeResult, Camera, CaptureResult, Connection, EquipmentCheckResult, Meta, NewCamera, ProbeResult,
-  RoleId, Rule, Sample, Site, Snapshot, Stage, User, WeeklyReport, Zone,
+  Alert, AlertStatus, AnalyzeResult, AuditEvent, Camera, CameraPatch, Connection, EquipmentCheckResult, LiveCamera, Meta, NewCamera,
+  ProbeResult, RoleId, Rule, Sample, Site, SiteInput, Snapshot, Stage, StageInput, User, UserInput, UserPatch, WeeklyReport, Zone, ZoneInput,
 } from '@/data'
 
 export { ApiError, getToken, mediaUrl, setToken, setTokenRefresher, UNAUTHORIZED_EVENT } from './client'
@@ -17,6 +17,11 @@ function analyzeForm(fields: { image?: File; sample?: string; siteId?: string; r
   return form
 }
 
+const query = (params: Record<string, string | number | null | undefined>) => {
+  const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== '').map(([k, v]) => [k, String(v)])).toString()
+  return q ? `?${q}` : ''
+}
+
 export const api = {
   meta: () => request<Meta>('GET', '/meta'),
 
@@ -29,14 +34,16 @@ export const api = {
   stages: () => request<Stage[]>('GET', '/stages'),
   rules: () => request<Rule[]>('GET', '/rules'),
   saveRule: (rule: Rule) => request<Rule>('PUT', `/rules/${rule.key}`, rule),
-  users: () => request<User[]>('GET', '/users'),
 
   cameras: () => request<Camera[]>('GET', '/cameras'),
   probeCamera: (connection: Connection) => request<ProbeResult>('POST', '/cameras/probe', connection),
+  closeProbe: (path: string) => request<void>('DELETE', `/cameras/probe/${path}`),
   addCamera: (camera: NewCamera) => request<Camera>('POST', '/cameras', camera),
-  patchCamera: (id: string, patch: { enabled?: boolean; name?: string }) => request<Camera>('PATCH', `/cameras/${id}`, patch),
+  patchCamera: (id: string, patch: CameraPatch) => request<Camera>('PATCH', `/cameras/${id}`, patch),
   deleteCamera: (id: string) => request<void>('DELETE', `/cameras/${id}`),
   testCamera: (id: string) => request<ProbeResult>('POST', `/cameras/${id}/test`),
+  /** Что видит анализ на камерах прямо сейчас */
+  live: (siteId?: string) => request<LiveCamera[]>('GET', `/live${query({ siteId })}`),
 
   snapshots: () => request<Snapshot[]>('GET', '/snapshots?perCamera=8'),
   alerts: () => request<Alert[]>('GET', '/alerts'),
@@ -44,7 +51,6 @@ export const api = {
     request<Alert>('POST', `/alerts/${id}/actions`, { status, comment }),
 
   equipmentCheck: (siteId: string) => request<EquipmentCheckResult>('GET', `/sites/${siteId}/equipment-check`),
-  captureSite: (siteId: string) => request<CaptureResult>('POST', `/sites/${siteId}/capture`),
   weeklyReport: () => request<WeeklyReport>('GET', '/reports/weekly'),
 
   samples: () => request<Sample[]>('GET', '/analyze/samples'),
@@ -53,4 +59,24 @@ export const api = {
   publicDemo: () => request<{ rules: Rule[]; samples: Sample[]; provider: string }>('GET', '/public/demo'),
   publicAnalyze: (fields: { image?: File; sample?: string; ruleKey: string }) =>
     request<AnalyzeResult>('POST', '/public/analyze', analyzeForm(fields)),
+
+  // ---------- администрирование ----------
+  createSite: (site: SiteInput) => request<Site>('POST', '/sites', site),
+  updateSite: (id: string, site: SiteInput) => request<Site>('PATCH', `/sites/${id}`, site),
+  deleteSite: (id: string) => request<void>('DELETE', `/sites/${id}`),
+  createZone: (siteId: string, zone: ZoneInput) => request<Zone>('POST', `/sites/${siteId}/zones`, zone),
+  updateZone: (id: string, zone: ZoneInput) => request<Zone>('PATCH', `/zones/${id}`, zone),
+  deleteZone: (id: string) => request<void>('DELETE', `/zones/${id}`),
+  createStage: (siteId: string, stage: StageInput) => request<Stage>('POST', `/sites/${siteId}/stages`, stage),
+  updateStage: (id: string, stage: StageInput) => request<Stage>('PATCH', `/stages/${id}`, stage),
+  deleteStage: (id: string) => request<void>('DELETE', `/stages/${id}`),
+
+  users: () => request<User[]>('GET', '/users'),
+  createUser: (user: UserInput) => request<User>('POST', '/users', user),
+  updateUser: (id: string, patch: UserPatch) => request<User>('PATCH', `/users/${id}`, patch),
+  setPassword: (id: string, password: string) => request<void>('POST', `/users/${id}/password`, { password }),
+  deleteUser: (id: string) => request<void>('DELETE', `/users/${id}`),
+
+  audit: (filters: { action?: string; actor?: string; q?: string; beforeId?: number; limit?: number }) =>
+    request<AuditEvent[]>('GET', `/audit${query(filters)}`),
 }

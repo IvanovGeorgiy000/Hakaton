@@ -2,18 +2,26 @@
 
 import re
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import select
 
 from app.api.deps import SiteIdQuery, scope
 from app.db import utcnow
 from app.models import OPEN_STATUSES, Alert, AlertEvent, User
-from app.schemas import AlertActionIn, AlertOut, alert_out
+from app.schemas import AlertActionIn, AlertOut, alert_code, alert_out
 from app.security import CurrentUser, Session, ensure_site_access
+from app.services import audit
+from app.services.audit import ROLE_TITLES
 
 router = APIRouter(prefix="/alerts", tags=["Отклонения"])
 
-ROLE_TITLES = {"foreman": "прораб", "manager": "руководитель проекта", "inspector": "инспектор", "admin": "администратор"}
+STATUS_VERBS = {
+    "acknowledged": "Ответил «техника едет» на",
+    "confirmed": "Подтвердил",
+    "resolved": "Закрыл как устранённое",
+    "false_positive": "Отметил как ошибку системы",
+    "prescribed": "Выдал предписание по",
+}
 
 # Кто и из какого статуса может перевести предупреждение в новый статус
 TRANSITIONS: dict[str, dict[str, set[str]]] = {
@@ -33,7 +41,16 @@ TRANSITIONS: dict[str, dict[str, set[str]]] = {
         "resolved": set(OPEN_STATUSES),
         "false_positive": set(OPEN_STATUSES),
     },
+    # администратор может всё, что могут остальные роли вместе
+    "admin": {
+        "acknowledged": {"new"},
+        "confirmed": {"new"},
+        "prescribed": {"new", "acknowledged", "confirmed"},
+        "resolved": set(OPEN_STATUSES),
+        "false_positive": set(OPEN_STATUSES),
+    },
 }
+CLOSES_PRESCRIPTIONS = ("inspector", "admin")
 DEFAULT_COMMENTS = {
     "acknowledged": "Техника уже едет, проблема будет решена.",
     "confirmed": "Подтверждаю: проблема есть, разбираемся.",
@@ -79,14 +96,14 @@ async def get_alert(alert_id: str, user: CurrentUser, session: Session) -> Alert
 
 
 @router.post("/{alert_id}/actions", response_model=AlertOut, summary="Ответить на предупреждение (сменить статус)")
-async def act(alert_id: str, body: AlertActionIn, user: CurrentUser, session: Session) -> AlertOut:
+async def act(alert_id: str, body: AlertActionIn, user: CurrentUser, session: Session, request: Request) -> AlertOut:
     alert = await _get(session, user, alert_id)
     allowed_from = TRANSITIONS.get(user.role, {}).get(body.status)
     if allowed_from is None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Для вашей роли это действие недоступно")
-    if alert.status == "prescribed" and user.role != "inspector":
+    if alert.status == "prescribed" and user.role not in CLOSES_PRESCRIPTIONS:
         raise HTTPException(
-            status.HTTP_409_CONFLICT, "По этому отклонению выдано предписание — закрыть его может только инспектор"
+            status.HTTP_409_CONFLICT, "По этому отклонению выдано предписание — закрыть его может инспектор или администратор"
         )
     if alert.status not in allowed_from:
         raise HTTPException(status.HTTP_409_CONFLICT, "Статус предупреждения уже изменился. Обновите страницу.")
@@ -106,6 +123,11 @@ async def act(alert_id: str, body: AlertActionIn, user: CurrentUser, session: Se
             text=comment or DEFAULT_COMMENTS[body.status],
         )
     )
+    code = alert_code(alert)
+    audit.record(
+        session, request, user, f"alert.{body.status}", f"{STATUS_VERBS[body.status]} отклонение № {code} «{alert.title}»",
+        entity_type="alert", entity_id=alert.id, entity_name=code, details={"comment": comment} if comment else None,
+    )  # fmt: skip
     await session.commit()
     await session.refresh(alert)
     return alert_out(alert)

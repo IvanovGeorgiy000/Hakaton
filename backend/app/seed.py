@@ -8,6 +8,8 @@
 """
 
 import asyncio
+import logging
+import shutil
 import sys
 from datetime import date, datetime, timedelta
 
@@ -16,13 +18,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db import Base, SessionLocal, engine, utcnow
-from app.models import Alert, AlertEvent, Camera, Rule, RuleItem, Site, Snapshot, Stage, User, Zone, new_id
+from app.models import (
+    SCHEMA_VERSION,
+    Alert,
+    AlertEvent,
+    AppMeta,
+    Camera,
+    Rule,
+    RuleItem,
+    Site,
+    Snapshot,
+    Stage,
+    User,
+    Zone,
+    new_id,
+)
 from app.security import hash_password
 from app.services import texts
+from app.services.analysis import get_mock
 from app.services.camera_client import mock_frame
 from app.services.engine import FIRST_ALERT_NUMBER, SYSTEM, current_stage, local_day, process_frame, run_check
+from app.services.video import demo_feed_address
 
 settings = get_settings()
+log = logging.getLogger("stroykontrol.seed")
 _PLAN_ANCHOR = date(2026, 9, 15)  # день, под который составлен демонстрационный календарный план
 
 # ---------- справочники ----------
@@ -62,15 +81,15 @@ ZONES = [  # id, объект, название, вид
     ("z4-yard", "s4", "Стройплощадка, общий вид", "work"),
 ]
 
-CAMERAS = [  # id, объект, зона, название, сцена, «плейлист» демо-кадров
-    ("c1", "s1", "z1-pit", "Камера 1 — котлован", "pit", ["pit-excavator"]),
-    ("c2", "s1", "z1-gate", "Камера 2 — въезд", "entrance", ["gate-crane"]),
-    ("c3", "s1", "z1-yard", "Камера 3 — склад", "yard", ["yard-bulldozer"]),
-    ("c4", "s2", "z2-found", "Камера 1 — фундамент", "foundation", ["foundation-pump"]),
-    ("c5", "s2", "z2-gate", "Камера 2 — въезд", "entrance", ["gate-mixer"]),
-    ("c6", "s3", "z3-road", "Камера 1 — ПК 12", "road", ["road-roller-a", "road-roller-b", "road-roller-b"]),
-    ("c7", "s3", "z3-road2", "Камера 2 — ПК 13", "road", ["road-dumptruck"]),
-    ("c8", "s4", "z4-yard", "Камера 1 — общий вид", "yard", ["yard-bulldozer"]),
+CAMERAS = [  # id, объект, зона, название, сцена, демо-ролик (None — камера «без сигнала»: её поток никто не публикует)
+    ("c1", "s1", "z1-pit", "Камера 1 — котлован", "pit", "pit-excavator"),
+    ("c2", "s1", "z1-gate", "Камера 2 — въезд", "entrance", "gate-crane"),
+    ("c3", "s1", "z1-yard", "Камера 3 — склад", "yard", None),
+    ("c4", "s2", "z2-found", "Камера 1 — фундамент", "foundation", "foundation-mixer"),
+    ("c5", "s2", "z2-gate", "Камера 2 — въезд", "entrance", "gate-mixer"),
+    ("c6", "s3", "z3-road", "Камера 1 — ПК 12", "road", "road-roller"),
+    ("c7", "s3", "z3-road2", "Камера 2 — ПК 13", "road", "road-dumptruck"),
+    ("c8", "s4", "z4-yard", "Камера 1 — общий вид", "yard", "yard-bulldozer"),
 ]
 
 # Методика «этап → техника». required: (тип, минимум, зачем нужна, чем грозит нехватка[, важность])
@@ -310,10 +329,23 @@ async def _catalog(session: AsyncSession, today: date) -> None:
         )
     session.add_all(Zone(id=z, site_id=s, name=n, kind=k, position=p) for p, (z, s, n, k) in enumerate(ZONES))
     await session.flush()
-    session.add_all(
-        Camera(id=c, site_id=s, zone_id=z, name=n, scene=scene, source_type="mock", mock_playlist=frames, position=p)
-        for p, (c, s, z, n, scene, frames) in enumerate(CAMERAS)
-    )
+    for p, (c, s, z, n, scene, clip) in enumerate(CAMERAS):
+        feed = demo_feed_address(clip or "offline")  # обычный RTSP-адрес — как если бы камеру добавили через форму
+        session.add(
+            Camera(
+                id=c,
+                site_id=s,
+                zone_id=z,
+                name=n,
+                scene=scene,
+                position=p,
+                source_type="rtsp",
+                scheme=feed.scheme,
+                host=feed.host,
+                port=feed.port,
+                path=feed.path,
+            )  # fmt: skip
+        )
     for pos, (key, stage_name, description, confirm, required, allowed, unexpected) in enumerate(RULES):
         rule = Rule(key=key, stage_name=stage_name, description=description, confirm_after=confirm, position=pos)
         n = 0
@@ -363,8 +395,11 @@ async def _catalog(session: AsyncSession, today: date) -> None:
 
 
 async def _frame(session: AsyncSession, camera_id: str, name: str, at: datetime) -> Snapshot:
+    """Кадр из прошлого — демонстрационное фото. Разбираем именно фото, а не ролик, который камера показывает сейчас."""
     camera = await session.get(Camera, camera_id)
-    return await process_frame(session, camera, mock_frame(name), at=at, source="seed", image_url=f"/media/seed/{name}.jpg")
+    jpeg = mock_frame(name)
+    result = await get_mock().analyze_photo(jpeg, key=camera_id)
+    return await process_frame(session, camera, jpeg, at=at, source="seed", image_url=f"/media/seed/{name}.jpg", result=result)
 
 
 async def _past_alert(
@@ -667,9 +702,9 @@ async def _today(session: AsyncSession, t0: datetime) -> None:
         at = t0 - back
         for site_id, frames in sites.items():
             snapshots = [await _frame(session, camera_id, name, at) for camera_id, name in frames.items()]
-            if "c3" in frames:  # склад: после этого кадра камера «пропадает»
+            if "c3" in frames:  # склад: после этого кадра камера «пропадает» (её демо-поток никто не публикует)
                 camera = await session.get(Camera, "c3")
-                camera.mock_fail, camera.status, camera.last_error = True, "offline", "Камера не отвечает: нет сигнала"
+                camera.status, camera.last_error = "offline", "Видео с камеры не приходит: нет сигнала"
             await session.flush()
             check = await run_check(session, site_id, at=at, trigger="seed")
             for snapshot in snapshots:
@@ -689,9 +724,6 @@ async def _today(session: AsyncSession, t0: datetime) -> None:
                         text="Техника едет. Второй миксер выехал с завода, будет в течение часа.",
                     )
                 )
-    # демо-камеры с одним кадром продолжают показывать его же; у камеры 6 следующий кадр — первый в плейлисте
-    for camera in await session.scalars(select(Camera)):
-        camera.mock_cursor = 0
 
 
 async def seed(session: AsyncSession) -> None:
@@ -711,11 +743,41 @@ async def seed_if_empty() -> bool:
         return True
 
 
+async def _mark_schema() -> None:
+    async with SessionLocal() as session:
+        await session.merge(AppMeta(key="schema", value=SCHEMA_VERSION))
+        await session.commit()
+
+
 async def reset() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     await seed_if_empty()
+    await _mark_schema()
+
+
+async def prepare_database() -> None:
+    """Создать таблицы. Демо-базу старой структуры — пересоздать, боевую — не трогать и попросить миграцию."""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async with SessionLocal() as session:
+        version = await session.scalar(select(AppMeta.value).where(AppMeta.key == "schema"))
+        populated = bool(await session.scalar(select(func.count()).select_from(User)))
+    if populated and version != SCHEMA_VERSION:
+        if not settings.demo_mode:
+            raise RuntimeError(
+                f"Структура базы устарела (версия {version or '1'}, нужна {SCHEMA_VERSION}). Перенесите данные в новую базу."
+            )
+        log.warning("Структура демо-базы устарела — пересоздаю её с демонстрационными данными")
+        shutil.rmtree(settings.frames_dir, ignore_errors=True)  # кадры старой базы больше ни на что не ссылаются
+        settings.frames_dir.mkdir(parents=True, exist_ok=True)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+            await conn.run_sync(Base.metadata.create_all)
+    if settings.seed_on_start and await seed_if_empty():
+        log.info("Пустая база наполнена демонстрационными данными")
+    await _mark_schema()
 
 
 if __name__ == "__main__":

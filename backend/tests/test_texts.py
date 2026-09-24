@@ -20,6 +20,6 @@ def test_period_over_several_days_names_the_days():
 
 def test_offline_camera_names_the_day_of_the_last_snapshot():
     today = camera_offline(camera_name="Камера 3", zone_name="Склад", last_snapshot=END - timedelta(hours=3), now=END)
-    assert "получен в 14:14." in today.summary
+    assert "не приходит с 14:14." in today.summary
     earlier = camera_offline(camera_name="Камера 3", zone_name="Склад", last_snapshot=END - timedelta(days=2, hours=23), now=END)
-    assert "получен 21 сентября в 18:14." in earlier.summary
+    assert "не приходит с 21 сентября 18:14." in earlier.summary

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Truck, CheckCircle2, XCircle, FileWarning, Wrench, ClipboardCheck } from 'lucide-react'
+import { Truck, CheckCircle2, XCircle, FileWarning, Wrench, ClipboardCheck, Video } from 'lucide-react'
 import { EQUIPMENT, type Alert, type AlertStatus } from '@/data'
 import { useApp } from '@/store/context'
 import { isOpen } from '@/store/selectors'
@@ -9,6 +9,7 @@ import { Modal } from './ui/Modal'
 import { Badge } from './ui/Badge'
 import { Button } from './ui/Button'
 import { CameraFrame } from './CameraFrame'
+import { LiveCameraViewer } from './video/LiveCameraViewer'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -29,9 +30,10 @@ export function AlertDetail({ alert, onClose }: Props) {
 }
 
 function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
-  const { role, rules, updateAlert, notify, bySite, byZone, byStage, cameraOf } = useApp()
+  const { role, rules, updateAlert, notify, bySite, byZone, byStage, byCamera, cameraOf } = useApp()
   const [comment, setComment] = useState('')
   const [saving, setSaving] = useState(false)
+  const [watching, setWatching] = useState(false)
   const snaps = alert.evidenceSnapshots
   const [picked, setPicked] = useState<string | null>(null)
   const snap = snaps.find((s) => s.id === picked) ?? snaps[snaps.length - 1]
@@ -40,11 +42,13 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
   const stage = byStage(alert.stageId)
   const rule = stage?.ruleKey ? rules[stage.ruleKey] : undefined
   const cam = snap ? cameraOf(snap) : undefined
+  // живое видео той камеры, что дала доказательства (если она ещё есть и включена)
+  const liveCamera = byCamera(alert.cameraId ?? snap?.cameraId ?? null)
   const eq = alert.equipment ? EQUIPMENT[alert.equipment] : undefined
   const sev = SEVERITY[alert.severity]
   const st = STATUS[alert.status]
-  // по отклонению с предписанием решение принимает только инспектор
-  const locked = alert.status === 'prescribed' && role?.id !== 'inspector'
+  // по отклонению с предписанием решение принимает инспектор (и администратор — он может всё)
+  const locked = alert.status === 'prescribed' && role?.id !== 'inspector' && role?.id !== 'admin'
 
   const act = async (status: AlertStatus, defaultText: string) => {
     setSaving(true)
@@ -75,7 +79,12 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
       {/* Доказательства */}
       {cam && snap && (
         <section>
-          <h3 className="font-semibold mb-2">Снимки с камеры: доказательства</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <h3 className="font-semibold">Кадры с камеры: доказательства</h3>
+            {liveCamera?.enabled && (
+              <Button variant="outline" size="sm" onClick={() => setWatching(true)}><Video className="w-4 h-4" /> Смотреть камеру сейчас</Button>
+            )}
+          </div>
           <CameraFrame camera={cam} snapshot={snap} highlight={alert.equipment && (alert.kind === 'unexpected' || alert.kind === 'idle') ? [alert.equipment] : undefined} offline={alert.kind === 'camera_offline'} />
           {snaps.length > 1 && (
             <div className="flex flex-wrap gap-2 mt-3">
@@ -147,7 +156,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
       {/* Действия по роли */}
       {isOpen(alert.status) && role && locked && (
         <p className="border-t border-border pt-5 text-muted-foreground">
-          По этому отклонению выдано предписание{alert.prescriptionNo ? ` № ${alert.prescriptionNo}` : ''}. Закрыть его может только инспектор.
+          По этому отклонению выдано предписание{alert.prescriptionNo ? ` № ${alert.prescriptionNo}` : ''}. Закрыть его может инспектор.
         </p>
       )}
       {isOpen(alert.status) && role && !locked && (
@@ -187,7 +196,14 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
                 <Button size="lg" variant="ghost" onClick={() => act('false_positive', 'Ложное срабатывание.')}><XCircle className="w-5 h-5" /> Ошибка системы</Button>
               </>
             )}
-            {role.id === 'admin' && <p className="text-muted-foreground">Администратор не отвечает на отклонения — только настраивает правила.</p>}
+            {role.id === 'admin' && (
+              <>
+                {alert.status === 'new' && <Button size="lg" onClick={() => act('confirmed', 'Проблема подтверждена администратором.')}><ClipboardCheck className="w-5 h-5" /> Подтвердить</Button>}
+                {alert.status !== 'prescribed' && <Button size="lg" variant="danger" onClick={() => act('prescribed', 'Выдано предписание подрядчику.')}><FileWarning className="w-5 h-5" /> Выдать предписание</Button>}
+                <Button size="lg" variant="success" onClick={() => act('resolved', 'Проблема устранена, закрыто администратором.')}><CheckCircle2 className="w-5 h-5" /> {alert.status === 'prescribed' ? 'Закрыть' : 'Устранено'}</Button>
+                <Button size="lg" variant="ghost" onClick={() => act('false_positive', 'Ложное срабатывание.')}><XCircle className="w-5 h-5" /> Ошибка системы</Button>
+              </>
+            )}
           </fieldset>
         </section>
       )}
@@ -204,6 +220,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
           ))}
         </ul>
       </section>
+      <LiveCameraViewer camera={watching && liveCamera ? liveCamera : null} onClose={() => setWatching(false)} />
     </div>
   )
 }

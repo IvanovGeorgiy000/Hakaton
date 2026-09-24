@@ -118,10 +118,14 @@ async def current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> User:
-    unauthorized = HTTPException(status.HTTP_401_UNAUTHORIZED, "Нужно войти в систему")
     if credentials is None:
-        raise unauthorized
-    token = credentials.credentials
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Нужно войти в систему")
+    return await authenticate(session, credentials.credentials)
+
+
+async def authenticate(session: AsyncSession, token: str) -> User:
+    """Пользователь по токену — своему (HS256) или Keycloak (RS256). Нужен и API, и шлюзу видео («кому показывать поток»)."""
+    unauthorized = HTTPException(status.HTTP_401_UNAUTHORIZED, "Нужно войти в систему")
     try:
         alg = jwt.get_unverified_header(token).get("alg", "")
     except jwt.PyJWTError:

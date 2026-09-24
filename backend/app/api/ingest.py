@@ -1,12 +1,13 @@
 """Приём готовых детекций от внешнего сервиса анализа (push-режим).
 
-Если сервис анализа сам забирает видео с камер, он присылает сюда кадр и найденную технику.
-Дальше всё идёт по общему конвейеру: снимок сохраняется, объект сверяется с правилом этапа, обновляются предупреждения.
+Если сервис анализа сам забирает видео (например, из шлюза), он присылает сюда кадр и найденную технику.
+Кадр попадает туда же, куда и результаты собственного конвейера, — в ближайшую сверку объекта (раз в минуту).
+Чтобы сервер при этом не разбирал кадры сам, задайте SK_ANALYSIS_PROVIDER=push.
 """
 
 import hmac
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile, status
@@ -15,12 +16,12 @@ from app.config import get_settings
 from app.db import utcnow
 from app.equipment import EQUIPMENT_TYPES
 from app.models import Camera
-from app.schemas import CaptureOut, check_out, snapshot_out
+from app.schemas import IngestOut
 from app.security import Session
-from app.services.analysis import DetectedObject
+from app.services.analysis import AnalysisResult, DetectedObject
 from app.services.analysis.base import clamp_box
 from app.services.camera_client import CameraError, normalize_frame_async
-from app.services.engine import process_frame, run_check
+from app.services.pipeline import CameraLive, LiveFrame, get_pipeline
 
 settings = get_settings()
 router = APIRouter(prefix="/ingest", tags=["Приём данных от сервиса анализа"])
@@ -34,7 +35,7 @@ def _confidence(value: object) -> float:
     return number
 
 
-@router.post("/snapshots", response_model=CaptureOut, summary="Принять кадр с детекциями")
+@router.post("/snapshots", response_model=IngestOut, status_code=status.HTTP_202_ACCEPTED, summary="Принять кадр с детекциями")
 async def ingest_snapshot(
     session: Session,
     camera_id: Annotated[str, Form()],
@@ -45,7 +46,7 @@ async def ingest_snapshot(
     taken_at: Annotated[datetime | None, Form()] = None,
     model: Annotated[str | None, Form()] = None,
     x_api_key: Annotated[str | None, Header()] = None,
-) -> CaptureOut:
+) -> IngestOut:
     if not settings.ingest_api_key:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Приём выключен: задайте SK_INGEST_API_KEY")
     # сравниваем байты: строка с не-ASCII символами роняла compare_digest в 500
@@ -66,13 +67,18 @@ async def ingest_snapshot(
     except CameraError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.message) from None
 
-    at = taken_at or utcnow()
+    now = utcnow()
+    at = taken_at or now
     if at.tzinfo is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "taken_at должен содержать часовой пояс")
+    if at > now + timedelta(minutes=1):  # местное время, присланное как UTC, сдвигало бы картину на часы вперёд
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Время кадра в будущем — проверьте часовой пояс")
+
+    live = get_pipeline().live.setdefault(camera.id, CameraLive(camera.id))
+    if live.frame and at <= live.frame.at:  # опоздавший кадр не должен менять текущую картину
+        return IngestOut(accepted=False, detections=len(items), note="Кадр старее уже полученного с этой камеры — пропущен")
     provider = (model or "external")[:40]  # столбец provider — 40 символов
-    snapshot = await process_frame(session, camera, jpeg, at=at, source="ingest", detections=items, provider=provider)
-    await session.flush()
-    check = await run_check(session, camera.site_id, at=at, trigger="ingest")
-    snapshot.check_id = check.id
-    await session.commit()
-    return CaptureOut(check=check_out(check), snapshots=[snapshot_out(snapshot)], errors={})
+    frame = LiveFrame(at=at, jpeg=jpeg, result=AnalysisResult(provider=provider, detections=items, model=model))
+    live.frame, live.online, live.error, live.received_at = frame, True, None, at
+    live.history.append(frame)
+    return IngestOut(accepted=True, detections=len(items), note="Кадр принят: попадёт в ближайшую сверку объекта")

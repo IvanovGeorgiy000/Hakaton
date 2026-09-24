@@ -1,10 +1,7 @@
 """СтройКонтроль API: точка входа."""
 
-import asyncio
 import logging
-import time
-from contextlib import asynccontextmanager, suppress
-from urllib.parse import urlsplit
+from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,53 +9,20 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api import alerts, analyze, auth, cameras, catalog, ingest, mock_camera, reports, snapshots
+from app.api import admin, alerts, analyze, audit, auth, cameras, catalog, ingest, reports, snapshots
+from app.api import video as video_api
 from app.config import ASSETS_DIR, get_settings
-from app.db import Base, SessionLocal, engine, utcnow
+from app.db import SessionLocal, engine, utcnow
 from app.schemas import ApiModel
-from app.seed import seed_if_empty
+from app.seed import prepare_database
+from app.services import video
 from app.services.analysis import get_analyzer
-from app.services.engine import all_site_ids, capture_site, cleanup_frames
+from app.services.pipeline import get_pipeline
 
-VERSION = "0.9.0"
+VERSION = "0.10.0"
 settings = get_settings()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("stroykontrol")
-
-
-async def _scheduler() -> None:
-    """Фоновый опрос камер. Один процесс — один опросчик: запускайте uvicorn с одним воркером."""
-    interval, cycle = settings.capture_interval_s, 0
-    await asyncio.sleep(min(interval, 20))
-    while True:
-        started = time.monotonic()
-        try:
-            async with SessionLocal() as session:
-                site_ids = await all_site_ids(session)
-        except Exception:
-            log.exception("Сбой фоновой проверки — повторим в следующем цикле")
-            site_ids = []
-        # каждый объект отдельно: сбой одной камеры или сервиса анализа не должен оставлять без проверки остальные
-        for site_id in site_ids:
-            try:
-                async with SessionLocal() as session:
-                    report = await capture_site(session, site_id, trigger="schedule")
-                    log.info(
-                        "Проверка %s: кадров %d, ошибок камер %d, отклонений %d",
-                        site_id,
-                        len(report.snapshots),
-                        len(report.errors),
-                        len(report.check.violations),
-                    )
-            except Exception:
-                log.exception("Сбой проверки объекта %s — остальные объекты проверяем дальше", site_id)
-        if (cycle := cycle + 1) % 12 == 0:
-            try:
-                async with SessionLocal() as session:
-                    log.info("Удалено старых кадров: %d", await cleanup_frames(session))
-            except Exception:
-                log.exception("Не удалось удалить старые кадры")
-        await asyncio.sleep(max(5.0, interval - (time.monotonic() - started)))
 
 
 @asynccontextmanager
@@ -66,31 +30,44 @@ async def lifespan(_: FastAPI):
     if problems := settings.insecure_defaults():
         raise RuntimeError("Боевой запуск (SK_DEMO_MODE=false) с небезопасными настройками:\n- " + "\n- ".join(problems))
     settings.frames_dir.mkdir(parents=True, exist_ok=True)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    if settings.seed_on_start and await seed_if_empty():
-        log.info("Пустая база наполнена демонстрационными данными")
-    log.info("Анализ кадров: %s", get_analyzer().name)
-    task = asyncio.create_task(_scheduler()) if settings.capture_interval_s > 0 else None
+    await prepare_database()
+    log.info(
+        "Анализ кадров: %s, кадр с камеры раз в %.0f с, сверка раз в %d с",
+        get_analyzer().name,
+        settings.frame_interval_s,
+        settings.check_interval_s,
+    )
+    feeds, pipeline = video.DemoFeeds(), get_pipeline()
+    if settings.video_enabled:
+        feeds.start()  # демо-ролики → шлюз
+        pipeline.start()  # потоки камер в шлюзе, кадры на анализ, сверка объектов
     yield
-    if task:
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
+    await pipeline.stop()
+    await feeds.stop()
     await engine.dispose()
 
 
 app = FastAPI(
     title="СтройКонтроль API",
     version=VERSION,
-    description="Мониторинг строительных площадок по камерам: кадры → техника → сверка с графиком → отклонения.",
+    description="Мониторинг строительных площадок по видео с камер: кадры → техника → сверка с графиком → отклонения.",
     lifespan=lifespan,
 )
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_list, allow_methods=["*"], allow_headers=["*"])
 
 
-class DemoCameraOut(ApiModel):
+class VideoOut(ApiModel):
+    enabled: bool
+    webrtc_url: str  # браузер смотрит поток камеры по адресу {webrtcUrl}/{streamPath}/whep
+    frame_interval_s: float
+    check_interval_s: int
+
+
+class DemoFeedOut(ApiModel):
+    """Демо-ролик как RTSP-адрес — для быстрой настройки в форме «Добавить камеру»."""
+
+    clip: str
     title: str
     host: str
     port: int
@@ -101,13 +78,13 @@ class MetaOut(ApiModel):
     version: str
     demo_mode: bool
     analysis_provider: str
-    capture_interval_s: int
     timezone: str
     server_time: str
     database: str
-    demo_cameras: list[DemoCameraOut]  # готовые адреса встроенной демо-камеры для формы «Добавить камеру»
     auth_mode: str  # local | keycloak
     keycloak: dict | None  # {url, realm, clientId} — когда включён Keycloak
+    video: VideoOut
+    demo_feeds: list[DemoFeedOut]
 
 
 api = APIRouter(prefix="/api")
@@ -117,41 +94,38 @@ api = APIRouter(prefix="/api")
 async def meta() -> MetaOut:
     async with SessionLocal() as session:
         await session.execute(text("SELECT 1"))
-    self_url = urlsplit(settings.self_url)
-    demo_cameras = (
-        [
-            DemoCameraOut(
-                title=title,
-                host=self_url.hostname or "127.0.0.1",
-                port=self_url.port or 80,
-                path=f"/mock-camera/{scene}/snapshot.jpg",
-            )
-            for scene, (title, _) in mock_camera.SCENES.items()
-        ]
-        if settings.demo_mode
-        else []
-    )
     keycloak = None
     if settings.keycloak_issuer:
         keycloak = {"url": settings.keycloak_url, "realm": settings.keycloak_realm, "clientId": settings.keycloak_client_id}
+    feeds = []
+    if settings.demo_mode:
+        for clip in video.available_clips():
+            addr = video.demo_feed_address(clip)
+            feeds.append(
+                DemoFeedOut(clip=clip, title=video.CLIP_TITLES.get(clip, clip), host=addr.host, port=addr.port, path=addr.path)
+            )
     return MetaOut(
-        demo_cameras=demo_cameras,
-        auth_mode=settings.auth_mode,
-        keycloak=keycloak,
         version=VERSION,
         demo_mode=settings.demo_mode,
-        analysis_provider=get_analyzer().name,
-        capture_interval_s=settings.capture_interval_s,
+        analysis_provider=settings.analysis_provider,
         timezone=settings.timezone,
         server_time=utcnow().isoformat(),
         database="sqlite" if settings.is_sqlite else "postgresql",
+        auth_mode=settings.auth_mode,
+        keycloak=keycloak,
+        video=VideoOut(
+            enabled=settings.video_enabled,
+            webrtc_url=settings.video_webrtc_url.rstrip("/"),
+            frame_interval_s=settings.frame_interval_s,
+            check_interval_s=settings.check_interval_s,
+        ),
+        demo_feeds=feeds,
     )
 
 
-for module in (auth, catalog, cameras, snapshots, alerts, analyze, reports, ingest):
+for module in (auth, catalog, cameras, snapshots, alerts, analyze, reports, ingest, video_api, audit, admin):
     api.include_router(module.router)
 app.include_router(api)
-app.include_router(mock_camera.router)
 
 app.mount("/media/seed", StaticFiles(directory=ASSETS_DIR / "seed"), name="seed-media")
 app.mount("/media/frames", StaticFiles(directory=settings.frames_dir, check_dir=False), name="frames")

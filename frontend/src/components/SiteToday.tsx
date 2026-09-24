@@ -13,7 +13,7 @@ import { AlertDetail } from './AlertDetail'
 import { EquipmentCheck } from './EquipmentCheck'
 
 /** Главный экран объекта: светофор, этап, что не так, техника по плану и по факту */
-export function SiteToday({ siteId, camerasLink }: { siteId: string; camerasLink: string }) {
+export function SiteToday({ siteId, camerasLink, onShowCameras }: { siteId: string; camerasLink?: string; onShowCameras?: () => void }) {
   const { siteStatus, alertsForSite, bySite, byStage } = useApp()
   const [sel, setSel] = useState<Alert | null>(null)
   const site = bySite(siteId)
@@ -48,7 +48,12 @@ export function SiteToday({ siteId, camerasLink }: { siteId: string; camerasLink
       <section>
         <div className="flex items-baseline justify-between gap-3 mb-3">
           <h2 className="text-[18px] font-semibold">Что не так прямо сейчас</h2>
-          <Link to={camerasLink} className="text-primary font-semibold hover:underline min-h-[44px] inline-flex items-center">Смотреть камеры</Link>
+          {camerasLink && <Link to={camerasLink} className="text-primary font-semibold hover:underline min-h-[44px] inline-flex items-center">Смотреть камеры</Link>}
+          {onShowCameras && (
+            <button type="button" onClick={onShowCameras} className="text-primary font-semibold hover:underline min-h-[44px] inline-flex items-center cursor-pointer">
+              Смотреть камеры
+            </button>
+          )}
         </div>
         {open.length === 0 ? (
           <div className="bg-card rounded-xl border border-border"><EmptyState title="Всё по плану" text="Система не нашла отклонений. Отдыхайте спокойно." /></div>

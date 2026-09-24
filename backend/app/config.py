@@ -30,23 +30,32 @@ class Settings(BaseSettings):
     keycloak_issuer: str | None = None  # напр. http://localhost:8080/realms/stroykontrol
     keycloak_client_id: str = "stroykontrol-web"  # клиент, чьи токены принимаем (проверяется azp/aud)
     keycloak_auto_provision: bool = True  # пускать пользователя Keycloak, которого нет в базе (без привязки к объектам)
+    # служебный клиент, от имени которого наша админка меняет в Keycloak пользователей, роли и пароли
+    keycloak_admin_client_id: str = "stroykontrol-backend"
+    keycloak_admin_client_secret: str | None = None
 
     # --- анализ кадров ---
-    analysis_provider: Literal["mock", "http"] = "mock"
+    # mock — встроенная заглушка; http — каждый кадр (раз в frame_interval_s) уходит во внешний сервис;
+    # push — внешний сервис сам присылает детекции в /api/ingest, сервер кадры не разбирает
+    analysis_provider: Literal["mock", "http", "push"] = "mock"
     analysis_api_url: str | None = None  # полный адрес метода, например http://ml:8200/analyze
     analysis_api_key: str | None = None
     analysis_timeout_s: float = 20.0
     ingest_api_key: str | None = None  # ключ для приёма готовых детекций от внешнего сервиса (push-режим)
 
-    # --- камеры ---
-    capture_interval_s: int = 300  # период автоматического опроса камер, 0 — выключить
+    # --- камеры и видео ---
+    # Видео идёт через шлюз mediamtx: он забирает RTSP с камер и отдаёт браузеру WebRTC. Сервер сам заводит в шлюзе
+    # по потоку на камеру (через его API), берёт из потоков кадры на анализ и отвечает шлюзу, кому можно смотреть.
+    video_enabled: bool = True  # False — без шлюза (тесты): потоки не заводятся, кадры не берутся
+    video_api_url: str = "http://127.0.0.1:9997"  # API шлюза
+    video_rtsp_url: str = "rtsp://127.0.0.1:8554"  # RTSP шлюза: отсюда сервер берёт кадры и сюда публикует демо-ролики
+    video_webrtc_url: str = "http://localhost:8889"  # WebRTC шлюза — этот адрес получает браузер
+    frame_interval_s: float = 2.0  # раз во сколько секунд кадр с каждой камеры уходит на анализ
+    check_interval_s: int = 60  # раз во сколько секунд объект сверяется с планом; 0 — не сверять в фоне
     camera_timeout_s: float = 6.0
-    allow_loopback_cameras: bool = True  # разрешить 127.0.0.1 (нужно для встроенной демо-камеры)
+    allow_loopback_cameras: bool = True  # разрешить 127.0.0.1 (демо-ролики крутит шлюз на этом же компьютере)
     max_frame_bytes: int = 12 * 1024 * 1024
     keep_frames_per_camera: int = 200  # сколько сохранённых кадров держать на камеру (доказательства не удаляются)
-    self_url: str = "http://127.0.0.1:8100"  # адрес, по которому сервер виден сам себе — для встроенной демо-камеры
-    mock_camera_user: str = "demo"
-    mock_camera_password: str = "demo"
 
     def insecure_defaults(self) -> list[str]:
         """Что нельзя оставлять по умолчанию в боевом запуске (демо-режим выключен)."""
@@ -81,6 +90,11 @@ class Settings(BaseSettings):
     @property
     def frames_dir(self) -> Path:
         return self.data_dir / "media" / "frames"
+
+    @property
+    def clips_dir(self) -> Path:
+        """Ролики демо-камер (H.264, крутятся по кругу)."""
+        return ASSETS_DIR / "clips"
 
     @property
     def is_sqlite(self) -> bool:

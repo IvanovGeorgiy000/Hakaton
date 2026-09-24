@@ -26,8 +26,8 @@ async def test_foreman_sees_only_own_site(client):
     snapshots = (await client.get("/api/snapshots", headers=foreman)).json()
     assert {s["cameraId"] for s in snapshots} <= cameras
     assert (await client.get("/api/sites/s2/equipment-check", headers=foreman)).status_code == 404
-    assert (await client.post("/api/sites/s2/capture", headers=foreman)).status_code == 404
     assert (await client.get("/api/users", headers=foreman)).status_code == 403
+    assert (await client.get("/api/audit", headers=foreman)).status_code == 403  # журнал действий — только администратору
 
 
 async def test_alert_transitions_by_role(client):
@@ -36,7 +36,6 @@ async def test_alert_transitions_by_role(client):
     shortage = next(a for a in alerts if a["kind"] == "missing")
     url = f"/api/alerts/{shortage['id']}/actions"
 
-    assert (await client.post(url, headers=admin, json={"status": "resolved"})).status_code == 403
     assert (await client.post(url, headers=foreman, json={"status": "prescribed"})).status_code == 403
     assert (await client.post(url, headers=foreman, json={"status": "resolved"})).status_code == 409  # сначала нужно ответить
 
@@ -51,6 +50,16 @@ async def test_alert_transitions_by_role(client):
     assert (await client.post(url, headers=foreman, json={"status": "false_positive"})).status_code == 409
     closed = await client.post(url, headers=inspector, json={"status": "resolved"})
     assert closed.json()["status"] == "resolved" and closed.json()["isOpen"] is False
+
+    # администратор может всё, что и остальные роли: в том числе выдать и закрыть предписание
+    crane = next(a for a in alerts if a["kind"] == "unexpected")
+    crane_url = f"/api/alerts/{crane['id']}/actions"
+    assert (await client.post(crane_url, headers=admin, json={"status": "prescribed", "comment": ""})).json()[
+        "status"
+    ] == "prescribed"
+    assert (await client.post(crane_url, headers=admin, json={"status": "resolved"})).json()["status"] == "resolved"
+    log = (await client.get("/api/audit?action=alert", headers=admin)).json()
+    assert log[0]["actorLogin"] == "admin" and log[0]["entityName"] == crane["code"] and "Закрыл" in log[0]["summary"]
 
 
 async def test_weekly_report_and_meta(client):

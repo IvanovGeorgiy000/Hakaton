@@ -121,12 +121,10 @@ def idle(*, equipment: str, camera_name: str, snapshots: int, start: datetime, e
 
 def camera_offline(*, camera_name: str, zone_name: str, last_snapshot: datetime | None, now: datetime) -> AlertTexts:
     if last_snapshot:
-        at = (
-            f"в {hhmm(last_snapshot)}" if _same_day(last_snapshot, now) else f"{day_month(last_snapshot)} в {hhmm(last_snapshot)}"
-        )
-        summary = f"Последний снимок получен {at}. Уже {duration(now - last_snapshot)} нет данных."
+        at = hhmm(last_snapshot) if _same_day(last_snapshot, now) else f"{day_month(last_snapshot)} {hhmm(last_snapshot)}"
+        summary = f"Видео с камеры не приходит с {at}. Уже {duration(now - last_snapshot)} нет данных."
     else:
-        summary = "С момента подключения от камеры не получено ни одного снимка."
+        summary = "С момента подключения от камеры не пришло видео."
     return AlertTexts(
         title=f"{camera_name} не отвечает",
         summary=summary,

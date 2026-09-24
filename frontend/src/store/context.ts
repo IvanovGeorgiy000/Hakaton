@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 import type {
-  Alert, AlertStatus, Camera, CaptureResult, NewCamera, Role, RoleId, Rule, Site, SiteStatus, Snapshot, Stage, User, Zone,
+  Alert, AlertStatus, Camera, Meta, NewCamera, Role, RoleId, Rule, Site, SiteStatus, Snapshot, Stage, User, Zone,
 } from '@/data'
 
 export interface Toast { id: number; text: string; tone: 'ok' | 'error' }
@@ -11,7 +11,11 @@ export interface AppState {
   role: Role | null
   /** Объект прораба (у остальных ролей — null) */
   ownSiteId: string | null
+  /** Начало адресов роли: «/manager», «/admin»… — у администратора те же экраны, что у руководителя */
+  base: string
   authMode: 'local' | 'keycloak'
+  /** Настройки сервера: адрес шлюза видео, демо-режим, демо-ролики */
+  meta: Meta | undefined
   login: (login: string, password: string) => Promise<void>
   demoLogin: (role: RoleId) => Promise<void>
   keycloakLogin: () => Promise<void>
@@ -49,7 +53,8 @@ export interface AppState {
   setCameraEnabled: (camera: Camera, enabled: boolean) => Promise<boolean>
   addCamera: (camera: NewCamera) => Promise<Camera>
   deleteCamera: (camera: Camera) => Promise<boolean>
-  captureSite: (siteId: string) => Promise<CaptureResult | null>
+  /** Выполнить действие администратора: показать итог, обновить данные. true — получилось */
+  run: (action: () => Promise<unknown>, done?: string) => Promise<boolean>
 
   notify: (text: string, tone?: Toast['tone']) => void
   toasts: Toast[]

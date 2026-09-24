@@ -10,7 +10,7 @@ from PIL import Image
 from app.config import ASSETS_DIR
 from app.services.analysis import AnalysisError, get_mock
 from app.services.analysis.http import HttpAnalyzer
-from tests.conftest import login_as
+from tests.conftest import check, login_as
 
 pytestmark = pytest.mark.anyio
 SEED = ASSETS_DIR / "seed"
@@ -94,6 +94,10 @@ async def test_analyze_sample_and_upload(client):
 
 async def test_push_mode_ingest(client):
     """Внешний сервис сам разобрал кадр и прислал детекции: два самосвала приехали на котлован."""
+    from datetime import timedelta
+
+    from app.db import utcnow
+
     manager = await login_as(client, "manager")
     detections = json.dumps(
         [
@@ -104,11 +108,19 @@ async def test_push_mode_ingest(client):
     )
     files = {"image": ("frame.jpg", (SEED / "pit-loading.jpg").read_bytes(), "image/jpeg")}
     form = {"camera_id": "c1", "detections": detections, "model": "yolo-test"}
+    key = {"X-API-Key": "ingest-test-key"}
     assert (await client.post("/api/ingest/snapshots", data=form, files=files)).status_code == 401
-    accepted = await client.post("/api/ingest/snapshots", data=form, files=files, headers={"X-API-Key": "ingest-test-key"})
-    assert accepted.status_code == 200, accepted.text
-    assert accepted.json()["snapshots"][0]["provider"] == "yolo-test"
+    accepted = await client.post("/api/ingest/snapshots", data=form, files=files, headers=key)
+    assert accepted.status_code == 202 and accepted.json()["accepted"] and accepted.json()["detections"] == 3
+    # опоздавший кадр картину не меняет, кадр «из будущего» (местное время вместо UTC) — ошибка
+    late = {**form, "taken_at": (utcnow() - timedelta(minutes=5)).isoformat()}
+    assert (await client.post("/api/ingest/snapshots", data=late, files=files, headers=key)).json()["accepted"] is False
+    future = {**form, "taken_at": (utcnow() + timedelta(hours=3)).isoformat()}
+    assert (await client.post("/api/ingest/snapshots", data=future, files=files, headers=key)).status_code == 422
 
+    await check("s1")  # ближайшая плановая сверка
+    snapshots = (await client.get("/api/snapshots?cameraId=c1", headers=manager)).json()
+    assert snapshots[0]["provider"] == "yolo-test"
     shortage = next(
         a
         for a in (await client.get("/api/alerts?siteId=s1", headers=manager)).json()

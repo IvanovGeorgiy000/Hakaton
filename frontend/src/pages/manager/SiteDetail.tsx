@@ -3,8 +3,8 @@ import { Link, Navigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { useApp } from '@/store/context'
 import { SiteToday } from '@/components/SiteToday'
-import { CamerasGrid } from '@/components/CamerasGrid'
 import { StageTimeline } from '@/components/StageTimeline'
+import { VideoWall } from '@/components/video/VideoWall'
 import { cn } from '@/lib/utils'
 
 const TABS = [
@@ -17,12 +17,12 @@ const TABS = [
 export function ManagerSite() {
   const { id } = useParams()
   const [tab, setTab] = useState<(typeof TABS)[number]['id']>('today')
-  const { bySite } = useApp()
+  const { bySite, cameras, base } = useApp()
   const site = id ? bySite(id) : undefined
-  if (!site) return <Navigate to="/manager" replace />
+  if (!site) return <Navigate to={base} replace />
   return (
     <div>
-      <Link to="/manager" className="inline-flex items-center gap-1.5 min-h-[44px] text-primary font-semibold hover:underline mb-2"><ArrowLeft className="w-5 h-5" /> Все объекты</Link>
+      <Link to={base} className="inline-flex items-center gap-1.5 min-h-[44px] text-primary font-semibold hover:underline mb-2"><ArrowLeft className="w-5 h-5" /> Все объекты</Link>
       <div role="tablist" className="flex gap-2 mb-5 overflow-x-auto">
         {TABS.map((t) => (
           <button
@@ -33,8 +33,8 @@ export function ManagerSite() {
           </button>
         ))}
       </div>
-      {tab === 'today' && <SiteToday siteId={site.id} camerasLink="#" />}
-      {tab === 'cameras' && <CamerasGrid siteId={site.id} />}
+      {tab === 'today' && <SiteToday siteId={site.id} onShowCameras={() => setTab('cameras')} />}
+      {tab === 'cameras' && <VideoWall cameras={cameras.filter((c) => c.siteId === site.id)} empty="На объекте пока нет камер." />}
       {tab === 'plan' && <StageTimeline siteId={site.id} />}
     </div>
   )

@@ -86,6 +86,8 @@ export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: stri
             </span>
             <ThemeMenuButton />
             <NotificationsBell alertsPath={alertsPath} />
+            {/* на телефоне справка — здесь: нижняя панель занята разделами роли */}
+            <NavLink to="/help" aria-label="Справка" className="lg:hidden w-11 h-11 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted"><CircleHelp className="w-5 h-5" /></NavLink>
             <button onClick={logout} aria-label="Выйти" className="lg:hidden w-11 h-11 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted cursor-pointer"><LogOut className="w-5 h-5" /></button>
           </div>
         </div>
@@ -96,8 +98,8 @@ export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: stri
       </main>
 
       <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-card border-t border-border z-30 pb-[env(safe-area-inset-bottom)]" aria-label="Разделы">
-        <div className="grid max-w-xl mx-auto" style={{ gridTemplateColumns: `repeat(${nav.length + 1}, 1fr)` }}>
-          {[...nav, { to: '/help', label: 'Справка', Icon: CircleHelp, end: false }].map((n) => (
+        <div className="grid max-w-xl mx-auto" style={{ gridTemplateColumns: `repeat(${nav.length}, 1fr)` }}>
+          {nav.map((n) => (
             <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => cn('flex flex-col items-center justify-center gap-1 min-h-[60px] px-1 text-[12px] text-center transition-colors', isActive ? 'text-primary font-semibold' : 'text-muted-foreground')}>
               <n.Icon className="w-6 h-6" />
               {n.label}
@@ -137,7 +139,6 @@ function NotificationsBell({ alertsPath }: { alertsPath: string }) {
 
   useDismiss(ref, open, () => setOpen(false))
 
-  if (role?.id === 'admin') return null
   return (
     <div className="relative" ref={ref}>
       <button
