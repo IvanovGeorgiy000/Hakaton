@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Playwright: отчёты и следы упавших тестов
+test-results/
+playwright-report/
+blob-report/

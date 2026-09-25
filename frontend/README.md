@@ -12,8 +12,13 @@ npm install
 npm run dev        # http://localhost:5180 — запросы /api и /media проксируются на http://localhost:8100
 npm run build      # сборка в dist/
 npm test           # тесты (Vitest): отставание в днях, разбор адреса камеры, советы по ролям, статус плитки видео
+npm run test:e2e   # смоук по ролям (Playwright): сам поднимает бэкенд (:8102, временная база) и интерфейс (:5191)
 npm run gen:api    # типы из схемы API бэкенда → src/api/openapi.d.ts; src/api/contract.ts сверяет с ними data/types.ts при сборке
 ```
+
+Для `test:e2e` один раз нужен браузер: `npx playwright install chromium` (или `PW_CHANNEL=chrome npm run test:e2e` —
+в установленном Google Chrome). Тесты входят каждой ролью, открывают все её экраны, проверяют диалоги, меню «⋯»,
+пояснения «?», страницу `/demo` и то, что в консоли браузера нет ошибок; прораб — ещё и на экране телефона.
 
 Другой адрес бэкенда для dev-сервера: `VITE_BACKEND_URL=http://host:8100 npm run dev`.
 Если интерфейс и API живут на разных доменах — соберите с `VITE_API_URL=https://api.example.ru/api`.
@@ -79,16 +84,18 @@ src/
   data/         типы (совпадают с JSON бэкенда), подписи ролей, названия и цвета техники
   components/   video/ (VideoWall, VideoTile, CameraViewer, TrackBoxes/LiveBoxes, DetectionBoxes),
                 camera/ (добавить, изменить камеру, адрес потока, проверка связи), site/ (объект, план, зоны, удаление),
-                AlertCard, AlertDetail, PrescribeDialog, CameraFrame, EquipmentCheck, StageTimeline, AnalyzeView,
+                AlertCard, AlertDetail, PrescribeDialog, CameraFrame, EquipmentCheck, StageByCameras, StageTimeline, AnalyzeView,
                 ErrorBoundary, ui/* (в том числе ActionMenu — меню «⋯»)
   pages/        экраны по ролям: foreman/, manager/, inspector/, admin/ (Manage — Сотрудники, Правила, Журнал),
                 shared/ + Login, MinimalDemo, Help
   lib/          видео (WHEP, видимость плиток), рамки в реальном времени (useTracks), опрос /api/live, отставание в днях
                 (schedule), советы по ролям (alertAdvice), состояние в адресе (useUrlState), даты по Москве, подписи
   test/         заготовки данных для тестов (*.test.ts лежат рядом с кодом, npm test)
+e2e/            смоук-тесты Playwright по ролям (npm run test:e2e, настройки — playwright.config.ts)
 ```
 
 ## Стек
 
-Vite · React 19 · TypeScript · Tailwind CSS 4 · TanStack Query · framer-motion (только функциональные анимации) ·
+Vite · React 19 · TypeScript · Tailwind CSS 4 · TanStack Query · framer-motion (только функциональные анимации; компоненты `m.*`
+в `LazyMotion` — сами анимации подгружаются после первого экрана, см. `lib/motionFeatures.ts`) ·
 lucide-react · react-router · keycloak-js · Golos Text (self-hosted). Дизайн-решения: `../design-system/stroymonitor/pages/app.md`.
