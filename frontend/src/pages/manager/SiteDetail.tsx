@@ -7,8 +7,8 @@ import { SiteToday } from '@/components/SiteToday'
 import { StageTimeline } from '@/components/StageTimeline'
 import { VideoWall } from '@/components/video/VideoWall'
 import { Button } from '@/components/ui/Button'
-import { AddCameraDialog, CameraAdminActions } from '@/components/CameraDialogs'
-import { DeleteSiteDialog, PlanDialog, SiteDialog, ZonesDialog } from '@/components/SiteDialogs'
+import { AddCameraDialog, CameraAdminActions } from '@/components/camera'
+import { DeleteSiteDialog, PlanDialog, SiteDialog, ZonesDialog } from '@/components/site'
 import { cn } from '@/lib/utils'
 
 const TABS = [

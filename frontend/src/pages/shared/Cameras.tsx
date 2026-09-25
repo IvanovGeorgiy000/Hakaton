@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Chip } from '@/components/ui/Chip'
 import { Button } from '@/components/ui/Button'
 import { VideoWall } from '@/components/video/VideoWall'
-import { AddCameraDialog, CameraAdminActions } from '@/components/CameraDialogs'
+import { AddCameraDialog, CameraAdminActions } from '@/components/camera'
 
 /**
  * Камеры всех объектов: видеостена с разбивкой по объектам. Здесь же ими и управляют: руководитель и администратор
