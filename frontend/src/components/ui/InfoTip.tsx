@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, m } from 'framer-motion'
 import { CircleHelp } from 'lucide-react'
@@ -9,8 +9,9 @@ const GAP = 8
 
 /**
  * Значок «?» с пояснением. Открывается нажатием — и мышью, и пальцем; закрывается повторным нажатием, нажатием мимо,
- * Escape (закрывает только пояснение, не окно под ним) или прокруткой. Текст пояснения зачитывает экранный диктор.
- * Окошко рисуется поверх страницы, поэтому его не обрезают диалоги и прокручиваемые блоки.
+ * Escape (закрывает только пояснение, не окно под ним) или когда значок уходит за край экрана. Текст пояснения
+ * зачитывает экранный диктор. Окошко рисуется поверх страницы, поэтому его не обрезают диалоги и прокручиваемые блоки;
+ * при прокрутке оно едет вместе со значком: страница сдвигается и сама, пока догружаются картинки выше.
  */
 export function InfoTip({ children, label = 'Пояснение', className }: { children: ReactNode; label?: string; className?: string }) {
   const [open, setOpen] = useState(false)
@@ -18,15 +19,24 @@ export function InfoTip({ children, label = 'Пояснение', className }: {
   const button = useRef<HTMLButtonElement>(null)
   const panel = useRef<HTMLDivElement>(null)
 
-  // место окошка: под значком, а если внизу тесно — над ним; по ширине не вылезает за край экрана
-  useLayoutEffect(() => {
-    if (!open || !button.current) return
+  // место окошка: под значком, а если внизу тесно — над ним; по ширине не вылезает за край экрана.
+  // Значок ушёл за край экрана — пояснение закрывается: показывать его не к чему
+  const place = useCallback(() => {  // только ref и setState — функция одна на всё время жизни значка
+    if (!button.current) return
     const r = button.current.getBoundingClientRect()
+    if (r.bottom < 0 || r.top > window.innerHeight) {
+      setOpen(false)
+      return
+    }
     const width = Math.min(WIDTH, window.innerWidth - 32)
     const left = Math.min(Math.max(16, r.left + r.width / 2 - width / 2), window.innerWidth - 16 - width)
     const above = window.innerHeight - r.bottom < 160 && r.top > window.innerHeight - r.bottom
     setSpot({ top: above ? r.top - GAP : r.bottom + GAP, left, above })
-  }, [open])
+  }, [])
+
+  useLayoutEffect(() => {
+    if (open) place()
+  }, [open, place])
 
   useEffect(() => {
     if (!open) return
@@ -43,15 +53,15 @@ export function InfoTip({ children, label = 'Пояснение', className }: {
     }
     document.addEventListener('pointerdown', onPointer)
     window.addEventListener('keydown', onKey, true)
-    window.addEventListener('scroll', close, true)
-    window.addEventListener('resize', close)
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
     return () => {
       document.removeEventListener('pointerdown', onPointer)
       window.removeEventListener('keydown', onKey, true)
-      window.removeEventListener('scroll', close, true)
-      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
     }
-  }, [open])
+  }, [open, place])
 
   return (
     <span className={cn('inline-flex align-middle', className)}>
