@@ -25,7 +25,7 @@ import websockets
 from app.config import get_settings
 from app.db import SessionLocal, utcnow
 from app.services.analysis.base import DetectionError, UnknownType, pad_box, read_detection
-from app.services.usage import UsageMeter, save
+from app.services.usage import UsageMeter, cleanup_usage, save
 
 log = logging.getLogger("stroykontrol.tracks")
 settings = get_settings()
@@ -33,7 +33,7 @@ settings = get_settings()
 RETRY_MIN_S, RETRY_MAX_S = 1.0, 30.0
 WARN_EVERY_S = 60.0  # одна и та же ошибка в каждом из 15 сообщений в секунду не должна заливать журнал
 USAGE_FLUSH_S = 60.0  # раз в столько секунд учёт работы техники дописывается в базу
-QUEUE_SIZE = 32  # браузер не успевает — выбрасываем старые рамки, а не копим очередь
+USAGE_CLEANUP_S = 3600.0  # старый учёт работы техники чистим раз в час — и без конвейера видео
 
 
 def normalize(raw: Any) -> tuple[dict | None, list[str]]:
@@ -45,7 +45,7 @@ def normalize(raw: Any) -> tuple[dict | None, list[str]]:
     """
     if not isinstance(raw, dict) or not isinstance(raw.get("camera_id"), str) or not isinstance(raw.get("objects"), list):
         return None, ['сообщение должно быть {"camera_id": "…", "ts": "…", "objects": [...]}']
-    objects, problems = [], []
+    objects, problems, seen = [], [], set()
     # размер кадра, по которому посчитаны рамки: у камеры не 16:9 рамки пересчитываем под кадр с полями, как в плеере
     size = (raw.get("frame_w"), raw.get("frame_h"))
     frame = size if all(isinstance(v, int | float) and v > 0 for v in size) else None
@@ -62,9 +62,18 @@ def normalize(raw: Any) -> tuple[dict | None, list[str]]:
         track = item.get("track_id")
         if track is None or track == "":
             problems.append(f"камера {raw['camera_id']}: у объекта нет track_id — рамки будут прыгать, а не ехать")
-            track = f"{kind}#{index}"  # запасной номер: рамку всё же покажем
+            # запасной номер (рамку всё же покажем); «~» — такой трек не годится для учёта движения: номер по порядку
+            # объектов в сообщении, и при другом порядке он достанется другой машине
+            key = f"{kind}:~{index}"
+        else:
+            # трекеры часто нумеруют треки по классам: экскаватор № 1 и самосвал № 1 — разные машины
+            key = f"{kind}:{track}"
+        if key in seen:
+            problems.append(f"камера {raw['camera_id']}: два объекта с одним track_id {track!r} ({kind}) в одном кадре")
+            continue
+        seen.add(key)
         objects.append(
-            {"trackId": str(track), "type": kind, "confidence": round(confidence, 3), "box": {"x": x, "y": y, "w": w, "h": h}}
+            {"trackId": key, "type": kind, "confidence": round(confidence, 3), "box": {"x": x, "y": y, "w": w, "h": h}}
         )
     ts = raw.get("ts") if isinstance(raw.get("ts"), str) else None
     return {"cameraId": raw["camera_id"], "ts": ts, "objects": objects}, problems
@@ -72,22 +81,45 @@ def normalize(raw: Any) -> tuple[dict | None, list[str]]:
 
 @dataclass(eq=False)
 class Subscriber:
-    """Один браузер: какие камеры ему можно (None — все) и какие он сейчас смотрит."""
+    """Один браузер: какие камеры ему можно (None — все) и какие он сейчас смотрит.
+
+    По каждой камере держим только последнее сообщение: браузер не успевает — старые рамки заменяются свежими,
+    а не копятся в общей очереди, где одна частая камера вытесняла бы остальные.
+    """
 
     allowed: set[str] | None
+    requested: set[str] = field(default_factory=set)  # что браузер попросил (права сверяем при каждом пересчёте)
     wanted: set[str] = field(default_factory=set)
-    queue: asyncio.Queue[str] = field(default_factory=lambda: asyncio.Queue(maxsize=QUEUE_SIZE))
+    pending: dict[str, str] = field(default_factory=dict)
+    ready: asyncio.Event = field(default_factory=asyncio.Event)
 
-    def want(self, camera_ids: list[str]) -> None:
-        ids = {c for c in camera_ids if isinstance(c, str)}
-        self.wanted = ids if self.allowed is None else ids & self.allowed
+    def want(self, camera_ids: list) -> None:
+        self.requested = {c for c in camera_ids if isinstance(c, str)}
+        self._refilter()
+
+    def allow(self, allowed: set[str] | None) -> None:
+        """Права пересчитаны (добавили объект, отключили камеру) — сразу применяем к тому, что смотрит браузер."""
+        self.allowed = allowed
+        self._refilter()
+
+    def _refilter(self) -> None:
+        self.wanted = self.requested if self.allowed is None else self.requested & self.allowed
+        for camera_id in list(self.pending):
+            if camera_id not in self.wanted:
+                del self.pending[camera_id]
 
     def push(self, camera_id: str, text: str) -> None:
         if camera_id not in self.wanted:
             return
-        if self.queue.full():
-            self.queue.get_nowait()
-        self.queue.put_nowait(text)
+        self.pending[camera_id] = text
+        self.ready.set()
+
+    async def take(self) -> list[str]:
+        """Дождаться новых рамок и забрать по последнему сообщению с каждой камеры."""
+        await self.ready.wait()
+        self.ready.clear()
+        texts, self.pending = list(self.pending.values()), {}
+        return texts
 
 
 class TrackRelay:
@@ -96,7 +128,7 @@ class TrackRelay:
         self.connected = False
         self.messages = 0  # сколько сообщений пришло с запуска
         self.last_message_at: datetime | None = None
-        self.problem: str | None = None  # последняя ошибка формата — видна в /api/meta
+        self.problem: str | None = None  # последняя ошибка формата — видна администратору в /api/tracker/status
         self.problem_at: datetime | None = None
         self._warned_at = 0.0
         self.usage = UsageMeter()
@@ -119,20 +151,33 @@ class TrackRelay:
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
         self._task = self._flush_task = None
-        await self.flush()  # накопленное за последнюю минуту не теряем
+        try:  # накопленное за последнюю минуту не теряем, но и остановку сервера из-за базы не срываем
+            await self.flush()
+        except Exception:  # noqa: BLE001
+            log.exception("Учёт работы техники при остановке не записан")
 
     async def flush(self) -> int:
         cells = self.usage.take(asyncio.get_running_loop().time())
         if not cells:
             return 0
-        async with SessionLocal() as session:
-            return await save(session, cells)
+        try:
+            async with SessionLocal() as session:
+                return await save(session, cells)
+        except Exception:
+            self.usage.restore(cells)  # база не ответила — минута учёта вернётся в счётчик и запишется в следующий раз
+            raise
 
     async def _flush_loop(self) -> None:
+        loop = asyncio.get_running_loop()
+        cleaned = loop.time()
         while True:
             await asyncio.sleep(USAGE_FLUSH_S)
             try:
                 await self.flush()
+                if loop.time() - cleaned >= USAGE_CLEANUP_S:  # чистка есть и в конвейере видео, но он бывает выключен
+                    cleaned = loop.time()
+                    async with SessionLocal() as session:
+                        await cleanup_usage(session)
             except Exception:  # noqa: BLE001 — сбой записи не должен останавливать поток рамок
                 log.exception("Учёт работы техники не записан")
 

@@ -20,6 +20,17 @@ export interface TrackObject {
 
 interface TrackMessage { cameraId: string; ts: string | null; objects: TrackObject[] }
 
+/** Кто вошёл — по токену (свой и Keycloak — оба JWT). Токен Keycloak обновляется каждые несколько минут, а человек тот же */
+function subjectOf(token: string | null): string | null {
+  if (!token) return null
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))) as { sub?: unknown }
+    return typeof payload.sub === 'string' ? payload.sub : token
+  } catch {
+    return token
+  }
+}
+
 const HOLD_MS = 400  // трек не пришёл — держим рамку ещё столько
 const STALE_MS = 1500  // по камере ничего нет дольше — данных нет
 const RETRY_MIN_MS = 1000, RETRY_MAX_MS = 30_000
@@ -27,7 +38,7 @@ const LINGER_MS = 5000  // все плитки закрылись — подкл
 
 class TrackHub {
   private ws: WebSocket | null = null
-  private token: string | null = null  // с каким входом открыто подключение: сменился пользователь — переподключаемся
+  private subject: string | null = null  // кто вошёл, когда открывали подключение: сменился пользователь — переподключаемся
   private wanted = new Map<string, number>()  // камера → сколько компонентов на неё подписано
   private listeners = new Map<string, Set<() => void>>()
   /** Камера → рамки. Нет записи — данных нет; пустой список — сервис сообщил, что техники в кадре нет */
@@ -38,6 +49,9 @@ class TrackHub {
   private retryTimer: number | undefined
   private lingerTimer: number | undefined
   private disabled = false  // сервер ответил «сервис разметки не подключён» — не стучимся зря
+  // 10–15 сообщений в секунду на камеру: перерисовываем плитку не чаще раза за кадр экрана, а не на каждое
+  private dirty = new Set<string>()
+  private frame: number | undefined
 
   subscribe(cameraId: string, listener: () => void) {
     this.wanted.set(cameraId, (this.wanted.get(cameraId) ?? 0) + 1)
@@ -45,7 +59,7 @@ class TrackHub {
     if (!set) this.listeners.set(cameraId, (set = new Set()))
     set.add(listener)
     window.clearTimeout(this.lingerTimer)
-    if (this.ws && getToken() !== this.token) this.close()  // вышли и вошли другим пользователем, пока сокет ещё жил
+    if (this.ws && subjectOf(getToken()) !== this.subject) this.close()  // вышли и вошли другим, пока сокет ещё жил
     this.ensureOpen()
     this.sendWanted()
     return () => {
@@ -75,20 +89,23 @@ class TrackHub {
     if (!token || !this.wanted.size || this.ws) return
     const ws = new WebSocket(wsUrl('/tracks'))
     this.ws = ws
-    this.token = token
-    ws.onopen = () => {
-      this.retry = RETRY_MIN_MS
-      ws.send(JSON.stringify({ token, subscribe: [...this.wanted.keys()] }))
-    }
+    this.subject = subjectOf(token)
+    ws.onopen = () => ws.send(JSON.stringify({ token, subscribe: [...this.wanted.keys()] }))
     ws.onmessage = (e) => {
-      try { this.receive(JSON.parse(e.data as string) as TrackMessage) } catch { /* кривое сообщение пропускаем */ }
+      try {
+        const data = JSON.parse(e.data as string) as TrackMessage | { type: 'ready' }
+        // паузу между повторами сбрасываем только после входа: иначе при отказе (4401) стучались бы каждую секунду
+        if ('type' in data) this.retry = RETRY_MIN_MS
+        else this.receive(data)
+      } catch { /* кривое сообщение пропускаем */ }
     }
     ws.onclose = (e) => {
       if (this.ws !== ws) return
       this.ws = null
       if (e.code === 4404) { this.disabled = true; return }  // сервис разметки не подключён
       if (!this.wanted.size) return
-      // 4401 — токен истёк или сменился: при повторе возьмём свежий
+      // 4401 — вход не действует (токен истёк, сотрудника отключили): при повторе возьмём свежий токен;
+      // 4503 — сервер входа не отвечает: подождём подольше, пауза растёт до 30 с
       this.retryTimer = window.setTimeout(() => { this.retryTimer = undefined; this.ensureOpen() }, this.retry)
       this.retry = Math.min(this.retry * 2, RETRY_MAX_MS)
     }
@@ -99,7 +116,7 @@ class TrackHub {
     this.retryTimer = undefined
     const ws = this.ws
     this.ws = null
-    this.token = null
+    this.subject = null
     ws?.close()
   }
 
@@ -129,7 +146,13 @@ class TrackHub {
   }
 
   private notify(cameraId: string) {
-    this.listeners.get(cameraId)?.forEach((fn) => fn())
+    this.dirty.add(cameraId)
+    this.frame ??= requestAnimationFrame(() => {
+      this.frame = undefined
+      const cameras = [...this.dirty]
+      this.dirty.clear()
+      for (const id of cameras) this.listeners.get(id)?.forEach((fn) => fn())
+    })
   }
 }
 

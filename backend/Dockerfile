@@ -17,4 +17,5 @@ EXPOSE 8100
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
   CMD ["/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/api/meta', timeout=4)"]
 # Один воркер: конвейер видео (кадры на анализ, сверка) живёт внутри процесса и не должен дублироваться
-CMD ["/app/.venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8100"]
+# --ws-max-size: сообщения браузера в /api/tracks — килобайты; 16 МБ по умолчанию не нужны
+CMD ["/app/.venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8100", "--ws-max-size", "1048576"]

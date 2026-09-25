@@ -530,6 +530,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tracker/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Состояние сервиса разметки: подключён ли, идут ли рамки, последняя ошибка формата */
+        get: operations["tracker_status_api_tracker_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/audit": {
         parameters: {
             query?: never;
@@ -1560,10 +1577,26 @@ export interface components {
             videoDelayMs: number;
             /** Lastmessageat */
             lastMessageAt: string | null;
+        };
+        /**
+         * TrackerStatusOut
+         * @description Что происходит с сервисом разметки — для отладки интеграции (только администратору и руководителю).
+         */
+        TrackerStatusOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Connected */
+            connected: boolean;
+            /** Messages */
+            messages: number;
+            /** Lastmessageat */
+            lastMessageAt: string | null;
             /** Problem */
             problem: string | null;
             /** Problemat */
             problemAt: string | null;
+            /** Viewers */
+            viewers: number;
         };
         /** UserIn */
         UserIn: {
@@ -2697,6 +2730,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tracker_status_api_tracker_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackerStatusOut"];
                 };
             };
         };

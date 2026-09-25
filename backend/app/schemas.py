@@ -598,3 +598,15 @@ class EquipmentUsageOut(ApiModel):
     max_count: int  # сколько машин этого типа было в кадре одновременно
     present_min: float  # сколько минут тип был в кадре
     moving_min: float  # из них двигался
+
+
+class TrackerStatusOut(ApiModel):
+    """Что происходит с сервисом разметки — для отладки интеграции (только администратору и руководителю)."""
+
+    enabled: bool
+    connected: bool
+    messages: int  # сколько сообщений пришло с запуска сервера
+    last_message_at: datetime | None
+    problem: str | None  # последняя ошибка формата: рамка в долях 0–1, нет track_id, два объекта с одним track_id…
+    problem_at: datetime | None
+    viewers: int  # сколько браузеров сейчас смотрят рамки

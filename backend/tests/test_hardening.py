@@ -13,10 +13,14 @@ pytestmark = pytest.mark.anyio
 
 def test_production_refuses_public_secret_and_demo_password():
     assert Settings(demo_mode=True).insecure_defaults() == []  # демо-стенд запускается как раньше
-    problems = Settings(demo_mode=False, secret_key="dev-only-secret-change-me", demo_password="demo").insecure_defaults()
+    # ingest_api_key=None: в тестах окружение задаёт публичный ключ приёма — его проверяет свой тест (test_usage)
+    no_keys = {"ingest_api_key": None, "tracker_api_key": None}
+    problems = Settings(
+        demo_mode=False, secret_key="dev-only-secret-change-me", demo_password="demo", **no_keys
+    ).insecure_defaults()
     assert len(problems) == 2
-    assert Settings(demo_mode=False, secret_key="change-me-before-real-use", seed_on_start=False).insecure_defaults()
-    assert Settings(demo_mode=False, secret_key="s" * 32, seed_on_start=False).insecure_defaults() == []
+    assert Settings(demo_mode=False, secret_key="change-me-before-real-use", seed_on_start=False, **no_keys).insecure_defaults()
+    assert Settings(demo_mode=False, secret_key="s" * 32, seed_on_start=False, **no_keys).insecure_defaults() == []
 
 
 async def test_garbage_jwt_header_is_401_not_500(client):

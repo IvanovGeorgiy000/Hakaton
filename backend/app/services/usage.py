@@ -11,12 +11,18 @@
 import math
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
+from app.db import utcnow
 from app.models import Camera, EquipmentUsage
+
+settings = get_settings()
 
 MAX_GAP_S = 2.0  # сообщений по камере не было дольше — промежуток не засчитываем (сервис или камера молчали)
 MOVE_SAMPLE_S = 5.0
@@ -58,6 +64,8 @@ class UsageMeter:
             box = obj["box"]
             cx, cy = box["x"] + box["w"] / 2, box["y"] + box["h"] / 2
             key = (camera, obj["trackId"])
+            if ":~" in obj["trackId"]:
+                continue  # запасной номер (у сервиса нет track_id): это не одна и та же машина — движение не оцениваем
             track = self._tracks.get(key)
             if track is None:
                 self._tracks[key] = _Track(now, cx, cy)
@@ -78,32 +86,56 @@ class UsageMeter:
         self._tracks = {k: t for k, t in self._tracks.items() if now - t.at < FORGET_TRACK_S}
         return cells
 
+    def restore(self, cells: dict[tuple[str, datetime, str], Cell]) -> None:
+        """Вернуть забранное, если записать не удалось: сложится с тем, что накопилось за это время."""
+        for key, cell in cells.items():
+            mine = self.cells.setdefault(key, Cell())
+            mine.present_s += cell.present_s
+            mine.moving_s += cell.moving_s
+            mine.max_count = max(mine.max_count, cell.max_count)
+
 
 async def save(session: AsyncSession, cells: dict[tuple[str, datetime, str], Cell]) -> int:
-    """Дописать накопленное в базу: к строке того же часа, камеры и типа — прибавить. Удалённые камеры пропускаем."""
+    """Дописать накопленное в базу: к строке того же часа, камеры и типа — прибавить. Удалённые камеры пропускаем.
+
+    Прибавляет сама база (INSERT … ON CONFLICT DO UPDATE): так верно и при нескольких процессах сервера сразу —
+    «прочитать, сложить, записать» в Python потеряло бы или удвоило чужую запись.
+    """
     if not cells:
         return 0
     camera_ids = {camera_id for camera_id, _, _ in cells}
-    cameras = {c.id: c for c in await session.scalars(select(Camera).where(Camera.id.in_(camera_ids)))}
+    cameras = {
+        c.id: c for c in await session.scalars(select(Camera).where(Camera.id.in_(camera_ids), Camera.deleted_at.is_(None)))
+    }
+    insert = pg_insert if session.bind.dialect.name == "postgresql" else sqlite_insert
     saved = 0
     for (camera_id, hour, kind), cell in cells.items():
         camera = cameras.get(camera_id)
         if camera is None or cell.present_s <= 0 and cell.max_count == 0:
             continue
-        row = await session.scalar(
-            select(EquipmentUsage).where(
-                EquipmentUsage.camera_id == camera_id, EquipmentUsage.hour == hour, EquipmentUsage.equipment_type == kind
+        row = insert(EquipmentUsage).values(
+            site_id=camera.site_id, camera_id=camera_id, zone_kind=camera.zone.kind, hour=hour, equipment_type=kind,
+            max_count=cell.max_count, present_s=cell.present_s, moving_s=cell.moving_s,
+        )  # fmt: skip
+        table = EquipmentUsage.__table__.c
+        await session.execute(
+            row.on_conflict_do_update(
+                index_elements=[table.camera_id, table.hour, table.equipment_type],
+                set_={
+                    "present_s": table.present_s + row.excluded.present_s,
+                    "moving_s": table.moving_s + row.excluded.moving_s,
+                    "max_count": func.max(table.max_count, row.excluded.max_count)
+                    if session.bind.dialect.name == "sqlite"
+                    else func.greatest(table.max_count, row.excluded.max_count),
+                },
             )
         )
-        if row is None:
-            row = EquipmentUsage(
-                site_id=camera.site_id, camera_id=camera_id, zone_kind=camera.zone.kind, hour=hour, equipment_type=kind,
-                max_count=0, present_s=0.0, moving_s=0.0,
-            )  # fmt: skip
-            session.add(row)
-        row.present_s += cell.present_s
-        row.moving_s += cell.moving_s
-        row.max_count = max(row.max_count, cell.max_count)
         saved += 1
     await session.commit()
     return saved
+
+
+async def cleanup_usage(session: AsyncSession) -> None:
+    """Удалить учёт старше keep_usage_days."""
+    await session.execute(delete(EquipmentUsage).where(EquipmentUsage.hour < utcnow() - timedelta(days=settings.keep_usage_days)))
+    await session.commit()

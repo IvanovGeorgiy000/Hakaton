@@ -31,7 +31,8 @@ export function gatewayUrl(meta: Meta | undefined): string | null {
 
 /** На сколько придержать видео, чтобы рамки сервиса разметки совпадали с картинкой (0 — сервиса нет) */
 export function trackerDelay(meta: Meta | undefined): number {
-  return meta?.tracker?.enabled ? meta.tracker.videoDelayMs : 0
+  // браузер принимает 0–4000 мс; за пределами присваивание бросает ошибку — страница с видео не должна из-за этого падать
+  return meta?.tracker?.enabled ? Math.min(Math.max(meta.tracker.videoDelayMs, 0), 4000) : 0
 }
 
 export function whepUrl(meta: Meta | undefined, streamPath: string): string | null {
@@ -132,7 +133,9 @@ export function useWhep(url: string | null, delayMs = 0) {
     if (state !== 'playing') return
     for (const receiver of pcRef.current?.getReceivers() ?? []) {
       const r = receiver as RTCRtpReceiver & { jitterBufferTarget?: number | null }
-      if ('jitterBufferTarget' in r) r.jitterBufferTarget = delayMs || null
+      try {
+        if ('jitterBufferTarget' in r) r.jitterBufferTarget = delayMs || null
+      } catch { /* старый браузер или недопустимое значение — видео просто без задержки */ }
     }
   }, [state, delayMs])
 

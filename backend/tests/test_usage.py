@@ -93,3 +93,62 @@ async def test_site_kind(client):
     renamed = await client.patch(f"/api/sites/{created['id']}", headers=manager, json={"name": "Склад ГСМ, корпус 2"})
     assert renamed.json()["kind"] == "industrial"  # форма без поля «вид» его не сбрасывает
     assert (await client.post("/api/sites", headers=manager, json={"name": "Объект", "kind": "castle"})).status_code == 422
+
+
+def test_fallback_track_ids_do_not_count_as_movement():
+    """Нет track_id — номер по порядку в сообщении: при другом порядке он «перепрыгнет» на другую машину."""
+    meter = UsageMeter()
+    for i in range(11):  # две стоящие машины меняются местами в списке — это не движение
+        a, b = ("dump_truck:~0", 10.0), ("dump_truck:~1", 60.0)
+        objects = [a, b] if i % 2 else [(a[0], b[1]), (b[0], a[1])]
+        message = {
+            "cameraId": "c1",
+            "objects": [
+                {"trackId": t, "type": "dump_truck", "confidence": 0.9, "box": {"x": x, "y": 40, "w": 10, "h": 10}}
+                for t, x in objects
+            ],
+        }
+        meter.add(message, now=float(i), wall=HOUR)
+    cell = meter.take(now=11.0)[("c1", HOUR, "dump_truck")]
+    assert cell.present_s == pytest.approx(10.0) and cell.moving_s == 0 and cell.max_count == 2
+
+
+@pytest.mark.anyio
+async def test_usage_survives_database_failure_and_skips_deleted_cameras(client, monkeypatch):
+    from sqlalchemy import update
+
+    from app.db import SessionLocal
+    from app.models import Camera
+    from app.services import tracks
+
+    relay = get_relay()
+    relay.usage = UsageMeter()
+    now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+    for i in range(3):
+        relay.usage.add(_msg("c1", ("7", "excavator", 30)), now=float(i), wall=now)
+
+    async def broken(*_):  # noqa: ANN002, ANN202
+        raise ConnectionError("база не отвечает")
+
+    monkeypatch.setattr(tracks, "save", broken)
+    with pytest.raises(ConnectionError):
+        await relay.flush()
+    monkeypatch.undo()
+    assert relay.usage.cells[("c1", now, "excavator")].present_s == 2  # минута учёта вернулась в счётчик
+
+    async with SessionLocal() as session:  # камеру удалили, пока копился учёт
+        await session.execute(update(Camera).where(Camera.id == "c1").values(deleted_at=now))
+        await session.commit()
+    assert await relay.flush() == 0
+
+
+def test_public_example_keys_are_refused_in_production():
+    from app.config import Settings
+
+    prod = Settings(
+        demo_mode=False, secret_key="x" * 32, seed_on_start=False, tracker_api_key="dev-tracker-key", ingest_api_key="short"
+    )
+    problems = prod.insecure_defaults()
+    assert any("SK_TRACKER_API_KEY" in p for p in problems) and any("SK_INGEST_API_KEY" in p for p in problems)
+    strong = Settings(demo_mode=False, secret_key="x" * 32, seed_on_start=False, tracker_api_key="k" * 24, ingest_api_key=None)
+    assert not strong.insecure_defaults()  # свой длинный ключ — можно (ingest_api_key: в тестах он задан окружением)

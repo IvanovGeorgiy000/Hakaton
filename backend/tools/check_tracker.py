@@ -93,9 +93,13 @@ def check_message(raw: str, report: Report, stats: dict) -> None:
             cam["ages"].append(age)
     except (TypeError, ValueError):
         report.add("ts отсутствует или не ISO 8601 — нужно время кадра с часовым поясом", msg)
+    in_frame = set()
     for obj in msg["objects"]:
         key = check_object(obj, report)
         if key:
+            if key in in_frame:  # сервер различает треки по паре (тип, track_id) — вторую рамку он отбросит
+                report.add("два объекта одного типа с одним track_id в одном кадре", msg)
+            in_frame.add(key)
             cam["tracks"][key] += 1
 
 

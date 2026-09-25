@@ -35,7 +35,6 @@ from app.models import (
     Camera,
     CheckRun,
     Detection,
-    EquipmentUsage,
     Rule,
     Site,
     Snapshot,
@@ -48,6 +47,7 @@ from app.services import texts
 from app.services.analysis import AnalysisError, AnalysisResult, get_analyzer
 from app.services.camera_client import CameraAddress
 from app.services.texts import plural
+from app.services.usage import cleanup_usage
 
 log = logging.getLogger("stroykontrol.engine")
 settings = get_settings()
@@ -639,7 +639,7 @@ async def cleanup_frames(session: AsyncSession) -> int:
     removed = 0
     evidence_ids = select(alert_evidence.c.snapshot_id)
     now = utcnow()
-    await session.execute(delete(EquipmentUsage).where(EquipmentUsage.hour < now - timedelta(days=settings.keep_usage_days)))
+    await cleanup_usage(session)
     daily_until = local_day_start(local_day(now) - timedelta(days=settings.keep_daily_frames_days - 1))
     for site_id in await session.scalars(select(Site.id)):
         stale = select(CheckRun.id).where(CheckRun.site_id == site_id).order_by(CheckRun.at.desc()).offset(KEEP_CHECKS_PER_SITE)

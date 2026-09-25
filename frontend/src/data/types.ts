@@ -269,9 +269,6 @@ export interface Meta {
     videoDelayMs: number
     /** Когда пришло последнее сообщение от сервиса разметки */
     lastMessageAt: string | null
-    /** Последняя ошибка формата от сервиса (рамка в долях 0–1, нет track_id…) — для отладки интеграции */
-    problem: string | null
-    problemAt: string | null
   }
   demoFeeds: DemoFeed[]
 }

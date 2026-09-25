@@ -179,3 +179,21 @@ async def test_ingest_boxes_follow_padding_to_16_9(client):
     manager = await login_as(client, "manager")
     live = next(c for c in (await client.get("/api/live", headers=manager)).json() if c["cameraId"] == "c2")
     assert live["detections"][0]["box"] == {"x": 12.5, "y": 0.0, "w": 75.0, "h": 100.0}  # по центру, между полями
+
+
+async def test_ingest_rejects_image_bomb_politely(client):
+    import struct
+    import zlib
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    # 66 байт с заголовком «10000×10000 пикселей»: разбор такой картинки — отказ, а не падение сервера (500)
+    bomb = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 10000, 10000, 8, 2, 0, 0, 0)) + chunk(b"IEND", b"")
+    sent = await client.post(
+        "/api/ingest/snapshots",
+        data={"camera_id": "c1", "detections": "[]"},
+        files={"image": ("bomb.png", bomb, "image/png")},
+        headers={"X-API-Key": "ingest-test-key"},
+    )
+    assert sent.status_code == 422

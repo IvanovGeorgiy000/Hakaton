@@ -75,8 +75,6 @@ class TrackerOut(ApiModel):
     connected: bool  # сервер сейчас получает рамки от сервиса
     video_delay_ms: int  # на столько придержать видео, чтобы рамки совпадали с картинкой
     last_message_at: str | None  # когда пришло последнее сообщение — видно, идут ли рамки вообще
-    problem: str | None  # последняя ошибка формата от сервиса (рамка в долях 0–1, нет track_id…) — для отладки интеграции
-    problem_at: str | None
 
 
 class DemoFeedOut(ApiModel):
@@ -141,8 +139,6 @@ async def meta() -> MetaOut:
             connected=relay.connected,
             video_delay_ms=settings.tracker_video_delay_ms,
             last_message_at=relay.last_message_at.isoformat() if relay.last_message_at else None,
-            problem=relay.problem,
-            problem_at=relay.problem_at.isoformat() if relay.problem_at else None,
         ),
         demo_feeds=feeds,
     )

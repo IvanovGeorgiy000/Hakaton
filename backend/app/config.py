@@ -4,10 +4,15 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # каталог backend/
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+
+
+# ключи из примеров в README, docker-compose и launch.json — открыты всем, в боевом запуске их быть не должно
+PUBLIC_KEYS = {"dev-tracker-key", "dev-ingest-key", "ingest-test-key", "change-me"}
 
 
 class Settings(BaseSettings):
@@ -56,9 +61,9 @@ class Settings(BaseSettings):
     allow_loopback_cameras: bool = True  # разрешить 127.0.0.1 (демо-ролики крутит шлюз на этом же компьютере)
     max_frame_bytes: int = 12 * 1024 * 1024
     keep_frames_per_camera: int = 200  # сколько сохранённых кадров держать на камеру (доказательства не удаляются)
-    daily_frame_hour: int = 12  # «кадр дня» — первый кадр камеры после этого часа (местное время)
-    keep_daily_frames_days: int = 14  # сколько дней хранить «кадры дня»
-    keep_usage_days: int = 30  # сколько дней хранить учёт работы техники по часам
+    daily_frame_hour: int = Field(12, ge=0, le=23)  # «кадр дня» — первый кадр камеры после этого часа (местное время)
+    keep_daily_frames_days: int = Field(14, ge=1, le=365)  # сколько дней хранить «кадры дня» (0 удалял бы и сегодняшний)
+    keep_usage_days: int = Field(30, ge=1)  # сколько дней хранить учёт работы техники по часам
 
     # --- рамки техники в реальном времени (внешний сервис разметки: детектор + трекер) ---
     # Сервис сам читает видео из шлюза и отдаёт рамки по WebSocket; сервер пересылает их браузерам (с проверкой прав).
@@ -69,7 +74,8 @@ class Settings(BaseSettings):
     # адрес шлюза, по которому сервис разметки читает видео, если он работает не там, где сервер (другой компьютер, своя
     # сеть Docker): например rtsp://192.168.1.10:8554. Не задан — тот же, что у сервера (SK_VIDEO_RTSP_URL)
     tracker_rtsp_url: str | None = None
-    tracker_video_delay_ms: int = 150  # на столько браузер придерживает видео, чтобы рамки совпадали с картинкой
+    # на столько браузер придерживает видео, чтобы рамки совпадали с картинкой; браузер принимает 0–4000 мс
+    tracker_video_delay_ms: int = Field(150, ge=0, le=4000)
 
     def insecure_defaults(self) -> list[str]:
         """Что нельзя оставлять по умолчанию в боевом запуске (демо-режим выключен)."""
@@ -82,6 +88,13 @@ class Settings(BaseSettings):
             problems.append("SK_SECRET_KEY: задайте свой случайный ключ не короче 16 символов (стандартный открыт в репозитории)")
         if self.seed_on_start and self.demo_password == fields["demo_password"].default:
             problems.append("SK_DEMO_PASSWORD не задан: у всех учётных записей из наполнения базы был бы пароль «demo»")
+        # ключ сервиса открывает список камер, чтение их видео по RTSP и приём кадров — примеры из README не годятся
+        for name in ("tracker_api_key", "ingest_api_key"):
+            key = getattr(self, name)
+            if key and (key in PUBLIC_KEYS or len(key) < 16):
+                problems.append(
+                    f"SK_{name.upper()}: задайте свой случайный ключ не короче 16 символов (пример открыт в репозитории)"
+                )
         return problems
 
     @property

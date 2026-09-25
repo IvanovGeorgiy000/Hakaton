@@ -19,7 +19,14 @@ export function AdminUsers() {
   const [editing, setEditing] = useState<User | 'new' | null>(null)
   const [password, setPassword] = useState<User | null>(null)
   const [removing, setRemoving] = useState<User | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)  // кого сейчас включаем или отключаем — повторное нажатие не шлёт второй запрос
+  // кого сейчас включаем, отключаем или удаляем — повторное нажатие по нему не шлёт второй запрос, другие сотрудники доступны
+  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set())
+  const mark = (id: string, on: boolean) => setBusy((prev) => {
+    const next = new Set(prev)
+    if (on) next.add(id)
+    else next.delete(id)
+    return next
+  })
   const [text, setText] = useState('')
   const [roleFilter, setRoleFilter] = useState<RoleId | 'all'>('all')
   const list = useMemo(() => {
@@ -32,10 +39,10 @@ export function AdminUsers() {
       })
   }, [users.data, text, roleFilter, bySite])
   const toggle = async (u: User) => {
-    if (busy) return
-    setBusy(u.id)
+    if (busy.has(u.id)) return
+    mark(u.id, true)
     await run(() => api.updateUser(u.id, { isActive: !u.isActive }), `${u.name}: ${u.isActive ? 'доступ отключён' : 'доступ включён'}`)
-    setBusy(null)
+    mark(u.id, false)
   }
 
   return (
@@ -96,7 +103,7 @@ export function AdminUsers() {
                     { label: 'Сменить пароль', Icon: KeyRound, onSelect: () => setPassword(u) },
                     {
                       label: u.isActive ? 'Отключить доступ' : 'Включить доступ', Icon: Power, onSelect: () => void toggle(u),
-                      disabled: self || busy === u.id, hint: self ? 'Себя отключить нельзя' : undefined,
+                      disabled: self || busy.has(u.id), hint: self ? 'Себя отключить нельзя' : undefined,
                     },
                     { label: 'Удалить', Icon: Trash2, danger: true, onSelect: () => setRemoving(u), disabled: self, hint: 'Себя удалить нельзя' },
                   ]}
@@ -128,15 +135,15 @@ export function AdminUsers() {
             <p className="text-muted-foreground text-[15px]">Если сотрудник может вернуться, лучше отключите его — удалять не обязательно.</p>
             <div className="flex flex-wrap gap-3">
               <Button
-                variant="danger" size="lg" disabled={busy === removing.id}
+                variant="danger" size="lg" disabled={busy.has(removing.id)}
                 onClick={async () => {
-                  setBusy(removing.id)
+                  mark(removing.id, true)
                   const ok = await run(() => api.deleteUser(removing.id), `${removing.name} удалён`)
-                  setBusy(null)
+                  mark(removing.id, false)
                   if (ok) setRemoving(null)
                 }}
               >
-                {busy === removing.id && <Loader2 className="w-5 h-5 animate-spin" />} Удалить
+                {busy.has(removing.id) && <Loader2 className="w-5 h-5 animate-spin" />} Удалить
               </Button>
               <Button variant="outline" size="lg" onClick={() => setRemoving(null)}>Отмена</Button>
             </div>

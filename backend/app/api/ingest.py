@@ -38,7 +38,7 @@ def _image_size(data: bytes) -> tuple[int, int] | None:
     try:
         with Image.open(io.BytesIO(data)) as img:
             return img.size
-    except (OSError, ValueError):
+    except (OSError, ValueError, SyntaxError, Image.DecompressionBombError):  # тот же список, что у normalize_frame
         return None  # непонятную картинку отклонит normalize_frame ниже, с понятным текстом
 
 

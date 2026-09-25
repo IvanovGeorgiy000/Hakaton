@@ -26,7 +26,7 @@ function SiteForm({ site, onClose, onCreated }: { site: Site | null; onClose: ()
   // foremanId: undefined — прораба не трогали (на сервер не отправляем: список сотрудников мог ещё не загрузиться),
   // null — выбрали «не назначен» и прораба нужно снять
   const [form, setForm] = useState<SiteInput>({
-    name: site?.name ?? '', address: site?.address ?? '', contractor: site?.contractor ?? '', kind: site?.kind ?? 'residential',
+    name: site?.name ?? '', address: site?.address ?? '', contractor: site?.contractor ?? '', kind: site?.kind ?? 'other',  // как на сервере: неверный вид — неверная подсказка при распознавании этапа
   })
   const foremanId = form.foremanId === undefined ? currentForeman : form.foremanId
   const [tried, setTried] = useState(false)
