@@ -57,8 +57,9 @@ async def _refresh_cameras() -> None:
                 response.raise_for_status()
                 cameras = response.json()
             except (httpx.HTTPError, ValueError) as exc:
-                log.warning("Список камер не получен (%s) — повтор через 30 с", exc)
-            await asyncio.sleep(30)
+                log.warning("Список камер не получен (%s) — повтор", exc)
+            # пока списка нет (сервер ещё стартует) — спрашиваем часто, потом раз в 30 с
+            await asyncio.sleep(30 if cameras else 3)
 
 
 def frame(camera: dict, t: float) -> dict:
@@ -82,7 +83,8 @@ def frame(camera: dict, t: float) -> dict:
                 "box": {"x": round(max(x, 0), 2), "y": round(max(y, 0), 2), "w": w, "h": h},
             }
         )
-    return {"camera_id": camera["id"], "ts": (datetime.now(UTC) - LATENCY).isoformat(), "objects": objects}
+    ts = (datetime.now(UTC) - LATENCY).isoformat()
+    return {"camera_id": camera["id"], "ts": ts, "frame_w": 1280, "frame_h": 720, "objects": objects}  # ролики — 16:9
 
 
 @asynccontextmanager

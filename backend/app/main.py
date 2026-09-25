@@ -74,6 +74,9 @@ class TrackerOut(ApiModel):
     enabled: bool
     connected: bool  # сервер сейчас получает рамки от сервиса
     video_delay_ms: int  # на столько придержать видео, чтобы рамки совпадали с картинкой
+    last_message_at: str | None  # когда пришло последнее сообщение — видно, идут ли рамки вообще
+    problem: str | None  # последняя ошибка формата от сервиса (рамка в долях 0–1, нет track_id…) — для отладки интеграции
+    problem_at: str | None
 
 
 class DemoFeedOut(ApiModel):
@@ -105,6 +108,7 @@ api = APIRouter(prefix="/api")
 
 @api.get("/meta", response_model=MetaOut, tags=["Служебное"], summary="Состояние сервера и режимы работы")
 async def meta() -> MetaOut:
+    relay = get_relay()
     async with SessionLocal() as session:
         await session.execute(text("SELECT 1"))
     keycloak = None
@@ -133,7 +137,12 @@ async def meta() -> MetaOut:
             check_interval_s=settings.check_interval_s,
         ),
         tracker=TrackerOut(
-            enabled=get_relay().enabled, connected=get_relay().connected, video_delay_ms=settings.tracker_video_delay_ms
+            enabled=relay.enabled,
+            connected=relay.connected,
+            video_delay_ms=settings.tracker_video_delay_ms,
+            last_message_at=relay.last_message_at.isoformat() if relay.last_message_at else None,
+            problem=relay.problem,
+            problem_at=relay.problem_at.isoformat() if relay.problem_at else None,
         ),
         demo_feeds=feeds,
     )

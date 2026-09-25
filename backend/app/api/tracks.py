@@ -24,6 +24,7 @@ router = APIRouter(tags=["Рамки в реальном времени"])
 
 # Коды закрытия WebSocket (4000–4999 — свои): браузер по ним понимает, переподключаться или нет
 WS_UNAUTHORIZED, WS_DISABLED = 4401, 4404
+AUTH_TIMEOUT_S = 10.0  # столько ждём первое сообщение с токеном
 
 
 @router.get(
@@ -84,14 +85,31 @@ async def equipment_usage(
     ]
 
 
+async def _first_message(ws: WebSocket) -> dict:
+    try:
+        message = json.loads(await asyncio.wait_for(ws.receive_text(), AUTH_TIMEOUT_S))
+    except (TimeoutError, ValueError):
+        return {}
+    return message if isinstance(message, dict) else {}
+
+
 @router.websocket("/tracks")
-async def tracks(ws: WebSocket, token: Annotated[str, Query()] = "") -> None:
-    """Браузер: подключается с токеном (?token=…), присылает {"subscribe": [id камер на экране]},
-    получает рамки только этих камер — и только тех, что пользователю разрешено видеть."""
+async def tracks(ws: WebSocket) -> None:
+    """Браузер: первым сообщением присылает {"token": "…", "subscribe": [id камер на экране]}, дальше — новые
+    {"subscribe": […]}; получает рамки только этих камер — и только тех, что пользователю разрешено видеть.
+    Токен — в сообщении, а не в адресе (?token=): адреса попадают в журналы сервера и nginx."""
     await ws.accept()
     relay = get_relay()
     if not relay.enabled:
         await ws.close(WS_DISABLED, "Сервис разметки не подключён")
+        return
+    try:
+        first = await _first_message(ws)
+    except WebSocketDisconnect:
+        return
+    token = first.get("token")
+    if not isinstance(token, str) or not token:
+        await ws.close(WS_UNAUTHORIZED, "Нужно войти в систему")
         return
     async with SessionLocal() as session:
         try:
@@ -105,6 +123,8 @@ async def tracks(ws: WebSocket, token: Annotated[str, Query()] = "") -> None:
             allowed = set(await session.scalars(select(Camera.id).where(Camera.site_id.in_(sites))))
 
     subscriber = Subscriber(allowed=allowed)
+    if isinstance(first.get("subscribe"), list):
+        subscriber.want(first["subscribe"])
     relay.subscribers.add(subscriber)
 
     async def send() -> None:

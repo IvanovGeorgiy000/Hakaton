@@ -1558,6 +1558,12 @@ export interface components {
             connected: boolean;
             /** Videodelayms */
             videoDelayMs: number;
+            /** Lastmessageat */
+            lastMessageAt: string | null;
+            /** Problem */
+            problem: string | null;
+            /** Problemat */
+            problemAt: string | null;
         };
         /** UserIn */
         UserIn: {

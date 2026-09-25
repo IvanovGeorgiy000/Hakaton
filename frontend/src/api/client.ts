@@ -7,6 +7,14 @@ const API_URL: string = import.meta.env.VITE_API_URL ?? '/api'
 const MEDIA_ORIGIN = /^https?:\/\//.test(API_URL) ? new URL(API_URL).origin : ''
 const TOKEN_KEY = 'sk-token'
 
+/** Адрес WebSocket того же сервера, что и API: wsUrl('/tracks') → ws(s)://сервер/api/tracks */
+export function wsUrl(path: string): string {
+  const base = new URL(API_URL, window.location.href)  // относительный /api — от адреса страницы, VITE_API_URL — как есть
+  base.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:'
+  base.pathname = base.pathname.replace(/\/$/, '') + path
+  return base.toString()
+}
+
 export class ApiError extends Error {
   status: number
   constructor(status: number, message: string) {

@@ -26,8 +26,7 @@ from datetime import datetime
 
 import httpx
 
-from app.equipment import EQUIPMENT_TYPES
-from app.services.analysis.base import AnalysisError, AnalysisResult, DetectedObject, clamp_box
+from app.services.analysis.base import AnalysisError, AnalysisResult, DetectedObject, DetectionError, UnknownType, read_detection
 
 
 class HttpAnalyzer:
@@ -54,19 +53,15 @@ class HttpAnalyzer:
             raise AnalysisError(f"Непонятный ответ сервиса анализа: {str(payload)[:200]}")
 
         detections, skipped = [], set()
-        for item in payload.get("detections", []):
+        for number, item in enumerate(payload.get("detections", []), 1):
             try:
-                kind, box = item["type"], item["box"]
-                if kind not in EQUIPMENT_TYPES:
-                    skipped.add(str(kind))
-                    continue
-                x, y, w, h = clamp_box(float(box["x"]), float(box["y"]), float(box["w"]), float(box["h"]))
-                confidence = min(max(float(item.get("confidence", 0)), 0.0), 1.0)
-                if confidence != confidence:  # NaN
-                    raise ValueError("confidence NaN")
-                detections.append(DetectedObject(kind, round(confidence, 3), x, y, w, h))
-            except (KeyError, TypeError, ValueError) as exc:
-                raise AnalysisError(f"Непонятный ответ сервиса анализа: {item!r}") from exc
+                kind, confidence, x, y, w, h = read_detection(item)
+            except UnknownType:
+                skipped.add(str(item.get("type")))
+                continue
+            except DetectionError as exc:  # рамка в долях или пикселях, уверенность в процентах — говорим, что именно
+                raise AnalysisError(f"Сервис анализа: объект № {number} — {exc}") from exc
+            detections.append(DetectedObject(kind, round(confidence, 3), x, y, w, h))
         note = f"Пропущены неизвестные типы техники: {', '.join(sorted(skipped))}" if skipped else None
         model = payload.get("model")
         return AnalysisResult(

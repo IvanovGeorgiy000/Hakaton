@@ -5,6 +5,10 @@
 #   VIDEO_PUBLIC_HOST=192.168.1.10 docker compose up
 # Рамки техники в реальном времени с имитацией сервиса разметки (пока настоящего сервиса нет):
 #   SK_TRACKER_URL=ws://tracker:8200/stream SK_TRACKER_API_KEY=dev-tracker-key docker compose --profile tracker up --build
+# Настоящий сервис разметки на другом компьютере: он читает видео по RTSP (порт 8554, логин sk-tracker, пароль — ключ)
+# и должен знать адрес этого компьютера:
+#   SK_TRACKER_URL=ws://<адрес сервиса>:8200/stream SK_TRACKER_API_KEY=<ключ> SK_TRACKER_RTSP_URL=rtsp://192.168.1.10:8554 \
+#   SK_ANALYSIS_PROVIDER=push docker compose up --build
 
 services:
   db:
@@ -34,6 +38,8 @@ services:
     ports:
       - "${VIDEO_PORT:-8889}:8889"
       - "${VIDEO_UDP_PORT:-8189}:${VIDEO_UDP_PORT:-8189}/udp"
+      # RTSP — для внешнего сервиса разметки: читать потоки камер можно только с учёткой (sk-tracker или токен входа)
+      - "${VIDEO_RTSP_PORT:-8554}:8554"
 
   backend:
     build: ./backend
@@ -54,6 +60,7 @@ services:
       SK_INGEST_API_KEY: ${SK_INGEST_API_KEY:-}
       SK_TRACKER_URL: ${SK_TRACKER_URL:-}  # WebSocket сервиса разметки; пусто — рамки из анализа раз в 2 с
       SK_TRACKER_API_KEY: ${SK_TRACKER_API_KEY:-}
+      SK_TRACKER_RTSP_URL: ${SK_TRACKER_RTSP_URL:-}  # адрес видеошлюза для сервиса на другом компьютере
       SK_TRACKER_VIDEO_DELAY_MS: ${SK_TRACKER_VIDEO_DELAY_MS:-150}
     volumes:
       - media:/app/data

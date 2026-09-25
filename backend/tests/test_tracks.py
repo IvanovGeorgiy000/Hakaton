@@ -25,7 +25,7 @@ def test_normalize_keeps_only_valid_objects():
             {"track_id": 20, "type": "roller", "box": {"x": 1}},  # рамка без размеров
         ],
     }
-    message = normalize(raw)
+    message, problems = normalize(raw)
     assert message == {
         "cameraId": "c1",
         "ts": "2026-09-25T10:15:03.120+03:00",
@@ -34,7 +34,33 @@ def test_normalize_keeps_only_valid_objects():
             {"trackId": "17", "type": "excavator", "confidence": 0.93, "box": {"x": 70.0, "y": 10.0, "w": 30.0, "h": 20.0}}
         ],
     }
-    assert normalize({"camera_id": "c1"}) is None and normalize([1, 2]) is None
+    assert problems == [
+        "камера c1: confidence = 97 — похоже на проценты, нужна доля от 0 до 1",
+        'камера c1: box должен быть {"x", "y", "w", "h"} с числами',
+    ]
+    assert normalize({"camera_id": "c1"})[0] is None and normalize([1, 2])[0] is None
+
+
+def test_normalize_pads_boxes_of_non_16_9_cameras():
+    raw = {
+        "camera_id": "c1",
+        "frame_w": 1600,
+        "frame_h": 1200,
+        "objects": [{"track_id": 1, "type": "crane", "confidence": 0.9, "box": {"x": 0, "y": 0, "w": 100, "h": 100}}],
+    }
+    assert normalize(raw)[0]["objects"][0]["box"] == {"x": 12.5, "y": 0, "w": 75.0, "h": 100}  # как видео 4:3 в плеере 16:9
+
+
+def test_normalize_explains_common_integration_mistakes():
+    yolo = {
+        "camera_id": "c1",
+        "objects": [{"track_id": 1, "type": "crane", "confidence": 0.9, "box": {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4}}],
+    }
+    message, problems = normalize(yolo)
+    assert message["objects"] == [] and "в долях 0–1" in problems[0]
+    no_track = {"camera_id": "c1", "objects": [{"type": "crane", "confidence": 0.9, "box": {"x": 10, "y": 20, "w": 30, "h": 40}}]}
+    message, problems = normalize(no_track)
+    assert message["objects"][0]["trackId"] == "crane#0" and "нет track_id" in problems[0]  # рамку всё же показываем
 
 
 @pytest.mark.anyio
@@ -73,10 +99,15 @@ def test_browser_gets_only_its_cameras(monkeypatch):
 
     with TestClient(app) as http:  # noqa: SIM117 — два контекста читаются по отдельности
         foreman = http.post("/api/auth/demo-login", json={"role": "foreman"}).json()["token"]
-        with http.websocket_connect("/api/tracks?token=garbage") as ws:
+        with http.websocket_connect("/api/tracks") as ws:
+            ws.send_text(json.dumps({"token": "garbage"}))
             assert ws.receive()["code"] == 4401
-        with http.websocket_connect(f"/api/tracks?token={foreman}") as ws:
-            ws.send_text(json.dumps({"subscribe": ["c1", "c4"]}))  # c4 — камера чужого объекта
+        with http.websocket_connect("/api/tracks") as ws:
+            ws.send_text(json.dumps({"subscribe": ["c1"]}))  # без токена
+            assert ws.receive()["code"] == 4401
+        # токен — первым сообщением, а не в адресе: адреса попадают в журналы сервера и nginx
+        with http.websocket_connect("/api/tracks") as ws:
+            ws.send_text(json.dumps({"token": foreman, "subscribe": ["c1", "c4"]}))  # c4 — камера чужого объекта
             for _ in range(200):  # сервер разбирает подписку в своём потоке — ждём, пока она дойдёт
                 if any(s.wanted for s in relay.subscribers):
                     break

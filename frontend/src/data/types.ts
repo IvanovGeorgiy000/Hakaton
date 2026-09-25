@@ -263,7 +263,16 @@ export interface Meta {
   keycloak: { url: string; realm: string; clientId: string } | null
   video: { enabled: boolean; webrtcUrl: string; frameIntervalS: number; checkIntervalS: number }
   /** Рамки в реальном времени от сервиса разметки (WebSocket /api/tracks) */
-  tracker: { enabled: boolean; connected: boolean; videoDelayMs: number }
+  tracker: {
+    enabled: boolean
+    connected: boolean
+    videoDelayMs: number
+    /** Когда пришло последнее сообщение от сервиса разметки */
+    lastMessageAt: string | null
+    /** Последняя ошибка формата от сервиса (рамка в долях 0–1, нет track_id…) — для отладки интеграции */
+    problem: string | null
+    problemAt: string | null
+  }
   demoFeeds: DemoFeed[]
 }
 

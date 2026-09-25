@@ -69,7 +69,7 @@ def is_tracker(user: str, password: str) -> bool:
 
 def tracker_rtsp_url(camera_id: str) -> str:
     """Адрес потока камеры для сервиса разметки (без пароля: логин sk-tracker, пароль — ключ сервиса)."""
-    base = urlsplit(settings.video_rtsp_url)
+    base = urlsplit(settings.tracker_rtsp_url or settings.video_rtsp_url)
     return f"rtsp://{base.hostname}:{base.port or 8554}/{camera_path(camera_id)}"
 
 

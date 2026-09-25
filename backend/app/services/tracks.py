@@ -5,10 +5,11 @@
 только те камеры, которые тот открыл и которые пользователю разрешено видеть.
 
 Формат сообщения сервиса (одно на обработанный кадр одной камеры):
-    {"camera_id": "c1", "ts": "2026-09-25T10:15:03.120+03:00",
+    {"camera_id": "c1", "ts": "2026-09-25T10:15:03.120+03:00", "frame_w": 1920, "frame_h": 1080,
      "objects": [{"track_id": 17, "type": "excavator", "confidence": 0.93,
                   "box": {"x": 24.5, "y": 41.5, "w": 46.5, "h": 57.0}}]}
 box — проценты от кадра, x и y — левый верхний угол; type — один из app.equipment.EQUIPMENT_TYPES.
+frame_w/frame_h — размер кадра, по которому посчитаны рамки: у камеры не 16:9 рамки пересчитываются под кадр с полями.
 """
 
 import asyncio
@@ -16,50 +17,57 @@ import contextlib
 import json
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 import websockets
 
 from app.config import get_settings
 from app.db import SessionLocal, utcnow
-from app.equipment import EQUIPMENT_TYPES
-from app.services.analysis.base import clamp_box
+from app.services.analysis.base import DetectionError, UnknownType, pad_box, read_detection
 from app.services.usage import UsageMeter, save
 
 log = logging.getLogger("stroykontrol.tracks")
 settings = get_settings()
 
 RETRY_MIN_S, RETRY_MAX_S = 1.0, 30.0
+WARN_EVERY_S = 60.0  # одна и та же ошибка в каждом из 15 сообщений в секунду не должна заливать журнал
 USAGE_FLUSH_S = 60.0  # раз в столько секунд учёт работы техники дописывается в базу
 QUEUE_SIZE = 32  # браузер не успевает — выбрасываем старые рамки, а не копим очередь
 
 
-def normalize(raw: Any) -> dict | None:
-    """Сообщение сервиса → сообщение браузеру (camelCase, только известная техника, рамки в пределах кадра).
-    Непонятное сообщение — None: одно кривое сообщение не должно рвать поток остальных."""
+def normalize(raw: Any) -> tuple[dict | None, list[str]]:
+    """Сообщение сервиса → (сообщение браузеру, что в нём не так).
+
+    Браузеру — camelCase, только наша техника, рамки в пределах кадра. Непонятное сообщение — None: одно кривое
+    сообщение не должно рвать поток остальных. Список проблем — для журнала и /api/meta: по нему разработчик сервиса
+    видит, почему рамки не появляются (рамка в долях или пикселях, нет track_id и т. п.).
+    """
     if not isinstance(raw, dict) or not isinstance(raw.get("camera_id"), str) or not isinstance(raw.get("objects"), list):
-        return None
-    objects = []
-    for item in raw["objects"]:
+        return None, ['сообщение должно быть {"camera_id": "…", "ts": "…", "objects": [...]}']
+    objects, problems = [], []
+    # размер кадра, по которому посчитаны рамки: у камеры не 16:9 рамки пересчитываем под кадр с полями, как в плеере
+    size = (raw.get("frame_w"), raw.get("frame_h"))
+    frame = size if all(isinstance(v, int | float) and v > 0 for v in size) else None
+    for index, item in enumerate(raw["objects"]):
         try:
-            if item["type"] not in EQUIPMENT_TYPES:
-                continue
-            confidence = float(item.get("confidence", 0))
-            if not 0 <= confidence <= 1:  # NaN сюда тоже не проходит
-                continue
-            x, y, w, h = clamp_box(*(float(item["box"][k]) for k in "xywh"))
-            objects.append(
-                {
-                    "trackId": str(item["track_id"]),
-                    "type": item["type"],
-                    "confidence": round(confidence, 3),
-                    "box": {"x": x, "y": y, "w": w, "h": h},
-                }
-            )
-        except (KeyError, TypeError, ValueError):
+            kind, confidence, x, y, w, h = read_detection(item)
+            if frame:
+                x, y, w, h = pad_box(x, y, w, h, *frame)
+        except UnknownType:
+            continue  # люди, легковушки — не наше дело
+        except DetectionError as exc:
+            problems.append(f"камера {raw['camera_id']}: {exc}")
             continue
+        track = item.get("track_id")
+        if track is None or track == "":
+            problems.append(f"камера {raw['camera_id']}: у объекта нет track_id — рамки будут прыгать, а не ехать")
+            track = f"{kind}#{index}"  # запасной номер: рамку всё же покажем
+        objects.append(
+            {"trackId": str(track), "type": kind, "confidence": round(confidence, 3), "box": {"x": x, "y": y, "w": w, "h": h}}
+        )
     ts = raw.get("ts") if isinstance(raw.get("ts"), str) else None
-    return {"cameraId": raw["camera_id"], "ts": ts, "objects": objects}
+    return {"cameraId": raw["camera_id"], "ts": ts, "objects": objects}, problems
 
 
 @dataclass(eq=False)
@@ -86,6 +94,11 @@ class TrackRelay:
     def __init__(self) -> None:
         self.subscribers: set[Subscriber] = set()
         self.connected = False
+        self.messages = 0  # сколько сообщений пришло с запуска
+        self.last_message_at: datetime | None = None
+        self.problem: str | None = None  # последняя ошибка формата — видна в /api/meta
+        self.problem_at: datetime | None = None
+        self._warned_at = 0.0
         self.usage = UsageMeter()
         self._task: asyncio.Task | None = None
         self._flush_task: asyncio.Task | None = None
@@ -124,10 +137,18 @@ class TrackRelay:
                 log.exception("Учёт работы техники не записан")
 
     def publish(self, raw: Any) -> None:
-        message = normalize(raw)
+        now, loop_time = utcnow(), asyncio.get_running_loop().time()
+        self.messages += 1
+        self.last_message_at = now
+        message, problems = normalize(raw)
+        if problems:
+            self.problem, self.problem_at = problems[0], now
+            if loop_time - self._warned_at >= WARN_EVERY_S:
+                self._warned_at = loop_time
+                log.warning("Сервис разметки прислал рамки не по формату: %s", problems[0])
         if message is None:
             return
-        self.usage.add(message, asyncio.get_running_loop().time(), utcnow())
+        self.usage.add(message, loop_time, now)
         text = json.dumps(message, ensure_ascii=False, separators=(",", ":"))
         for subscriber in self.subscribers:
             subscriber.push(message["cameraId"], text)

@@ -3,23 +3,26 @@
 Если сервис анализа сам забирает видео (например, из шлюза), он присылает сюда кадр и найденную технику.
 Кадр попадает туда же, куда и результаты собственного конвейера, — в ближайшую сверку объекта (раз в минуту).
 Чтобы сервер при этом не разбирал кадры сам, задайте SK_ANALYSIS_PROVIDER=push.
+Ключ — SK_INGEST_API_KEY или ключ сервиса разметки SK_TRACKER_API_KEY: сервису удобнее один ключ на всё.
 """
 
 import hmac
+import io
 import json
+import logging
 from datetime import datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile, status
+from PIL import Image
 
 from app.config import get_settings
 from app.db import utcnow
-from app.equipment import EQUIPMENT_TYPES
 from app.models import Camera
 from app.schemas import IngestOut
 from app.security import Session
 from app.services.analysis import AnalysisResult, DetectedObject
-from app.services.analysis.base import clamp_box
+from app.services.analysis.base import DetectionError, UnknownType, pad_box, read_detection
 from app.services.camera_client import CameraError, normalize_frame_async
 from app.services.pipeline import CameraLive, LiveFrame, get_pipeline
 
@@ -27,12 +30,21 @@ settings = get_settings()
 router = APIRouter(prefix="/ingest", tags=["Приём данных от сервиса анализа"])
 
 
-def _confidence(value: object) -> float:
-    """Уверенность — число от 0 до 1. NaN и «97» (проценты) отклоняем, а не пишем в базу."""
-    number = float(value)  # type: ignore[arg-type]
-    if not 0 <= number <= 1:  # NaN не проходит ни одно сравнение
-        raise ValueError("confidence вне 0..1")
-    return number
+log = logging.getLogger("stroykontrol.ingest")
+_warned_mode = False
+
+
+def _image_size(data: bytes) -> tuple[int, int] | None:
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            return img.size
+    except (OSError, ValueError):
+        return None  # непонятную картинку отклонит normalize_frame ниже, с понятным текстом
+
+
+def _key_ok(given: str | None) -> bool:
+    keys = [k for k in (settings.ingest_api_key, settings.tracker_api_key) if k]
+    return bool(given) and any(hmac.compare_digest(given.encode(), k.encode()) for k in keys)  # байты: не-ASCII не роняет
 
 
 @router.post("/snapshots", response_model=IngestOut, status_code=status.HTTP_202_ACCEPTED, summary="Принять кадр с детекциями")
@@ -47,23 +59,34 @@ async def ingest_snapshot(
     model: Annotated[str | None, Form()] = None,
     x_api_key: Annotated[str | None, Header()] = None,
 ) -> IngestOut:
-    if not settings.ingest_api_key:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Приём выключен: задайте SK_INGEST_API_KEY")
-    # сравниваем байты: строка с не-ASCII символами роняла compare_digest в 500
-    if not x_api_key or not hmac.compare_digest(x_api_key.encode(), settings.ingest_api_key.encode()):
+    if not settings.ingest_api_key and not settings.tracker_api_key:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "Приём выключен: задайте SK_INGEST_API_KEY или SK_TRACKER_API_KEY"
+        )
+    if not _key_ok(x_api_key):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный ключ")
     camera = await session.get(Camera, camera_id)
     if camera is None or camera.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Камера не найдена")
     try:
-        items = [
-            DetectedObject(d["type"], _confidence(d.get("confidence", 0)), *clamp_box(*(float(d["box"][k]) for k in "xywh")))
-            for d in json.loads(detections)
-            if d["type"] in EQUIPMENT_TYPES
-        ]
-        jpeg = await normalize_frame_async(await image.read(settings.max_frame_bytes + 1))
-    except (ValueError, KeyError, TypeError):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Непонятный формат детекций") from None
+        raw = json.loads(detections)
+    except ValueError:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "detections — не JSON") from None
+    if not isinstance(raw, list):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "detections должен быть JSON-массивом объектов")
+    items, skipped = [], set()
+    data = await image.read(settings.max_frame_bytes + 1)
+    size = _image_size(data)  # рамки посчитаны по исходному кадру, а храним его дополненным до 16:9
+    for number, item in enumerate(raw, 1):
+        try:
+            kind, confidence, x, y, w, h = read_detection(item)
+            items.append(DetectedObject(kind, confidence, *(pad_box(x, y, w, h, *size) if size else (x, y, w, h))))
+        except UnknownType:
+            skipped.add(str(item.get("type")))
+        except DetectionError as exc:  # номер объекта и что не так — разработчику сервиса не придётся гадать
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"Объект № {number} в detections: {exc}") from None
+    try:
+        jpeg = await normalize_frame_async(data)
     except CameraError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.message) from None
 
@@ -81,4 +104,16 @@ async def ingest_snapshot(
     frame = LiveFrame(at=at, jpeg=jpeg, result=AnalysisResult(provider=provider, detections=items, model=model))
     live.frame, live.online, live.error, live.received_at = frame, True, None, at
     live.history.append(frame)
-    return IngestOut(accepted=True, detections=len(items), note="Кадр принят: попадёт в ближайшую сверку объекта")
+    notes = ["Кадр принят: попадёт в ближайшую сверку объекта."]
+    if skipped:
+        notes.append(f"Пропущены не наши типы: {', '.join(sorted(skipped))}.")
+    if settings.analysis_provider != "push":
+        # сервер и сам разбирает кадры этой камеры — картина смешивается: то его разбор, то сервиса
+        notes.append(f"Сервер сам разбирает кадры (SK_ANALYSIS_PROVIDER={settings.analysis_provider}) — включите push.")
+        global _warned_mode
+        if not _warned_mode:
+            _warned_mode = True
+            log.warning(
+                "Кадры приходят от сервиса анализа, но SK_ANALYSIS_PROVIDER=%s — задайте push", settings.analysis_provider
+            )
+    return IngestOut(accepted=True, detections=len(items), note=" ".join(notes))

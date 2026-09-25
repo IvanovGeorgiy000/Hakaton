@@ -66,6 +66,9 @@ class Settings(BaseSettings):
         None  # WebSocket сервиса, например ws://127.0.0.1:8200/stream; не задан — рамки раз в 2 с из анализа
     )
     tracker_api_key: str | None = None  # ключ сервиса: список камер, чтение видео из шлюза, подключение к его WebSocket
+    # адрес шлюза, по которому сервис разметки читает видео, если он работает не там, где сервер (другой компьютер, своя
+    # сеть Docker): например rtsp://192.168.1.10:8554. Не задан — тот же, что у сервера (SK_VIDEO_RTSP_URL)
+    tracker_rtsp_url: str | None = None
     tracker_video_delay_ms: int = 150  # на столько браузер придерживает видео, чтобы рамки совпадали с картинкой
 
     def insecure_defaults(self) -> list[str]:

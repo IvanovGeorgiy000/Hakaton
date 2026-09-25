@@ -12,7 +12,8 @@ import { DetectionBoxes } from './DetectionBoxes'
 export function LiveBoxes({ cameraId, live, labels = true }: { cameraId: string; live?: LiveCamera; labels?: boolean }) {
   const { meta } = useApp()
   const tracks = useTracks(meta?.tracker?.enabled ? cameraId : null)
-  if (tracks.length) return <TrackBoxes tracks={tracks} labels={labels} />
+  // сервис разметки говорит об этой камере (даже «техники нет») — верим ему; молчит — рамки из анализа кадров
+  if (tracks) return <TrackBoxes tracks={tracks} labels={labels} />
   return live ? <DetectionBoxes detections={live.detections} labels={labels} /> : null
 }
 

@@ -127,3 +127,55 @@ async def test_push_mode_ingest(client):
         if a["equipment"] == "dump_truck" and a["code"] >= "ОТК-26-0138"
     )
     assert shortage["status"] == "resolved" and "снято автоматически" in shortage["history"][-1]["text"]
+
+
+async def test_ingest_explains_integration_mistakes(client, monkeypatch):
+    """Частые ошибки внешнего сервиса — не молчаливые неправильные рамки, а понятный ответ с номером объекта."""
+    from app.config import get_settings
+
+    files = {"image": ("frame.jpg", (SEED / "pit-loading.jpg").read_bytes(), "image/jpeg")}
+    key = {"X-API-Key": "ingest-test-key"}
+
+    async def send(*objects: dict, headers: dict = key) -> httpx.Response:
+        form = {"camera_id": "c2", "detections": json.dumps(list(objects))}
+        return await client.post("/api/ingest/snapshots", data=form, files=files, headers=headers)
+
+    box = {"x": 10, "y": 20, "w": 30, "h": 40}
+    yolo = await send({"type": "crane", "confidence": 0.9, "box": {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4}})
+    assert yolo.status_code == 422 and "в долях 0–1" in yolo.json()["detail"] and "№ 1" in yolo.json()["detail"]
+    pixels = await send(
+        {"type": "crane", "confidence": 0.9, "box": box},
+        {"type": "crane", "confidence": 0.9, "box": {"x": 320, "y": 180, "w": 640, "h": 360}},
+    )
+    assert pixels.status_code == 422 and "пиксели" in pixels.json()["detail"] and "№ 2" in pixels.json()["detail"]
+    percent = await send({"type": "crane", "confidence": 93, "box": box})
+    assert percent.status_code == 422 and "проценты" in percent.json()["detail"]
+    # не наша техника — пропускаем и говорим об этом; сервер сам разбирает кадры (mock) — подсказываем включить push
+    ok = (await send({"type": "person", "confidence": 0.9, "box": box}, {"type": "crane", "confidence": 0.9, "box": box})).json()
+    assert ok["detections"] == 1 and "person" in ok["note"] and "push" in ok["note"]
+    # один ключ на сервис: ключ сервиса разметки подходит и для приёма кадров
+    monkeypatch.setattr(get_settings(), "tracker_api_key", "tracker-key")
+    assert (await send({"type": "crane", "confidence": 0.9, "box": box}, headers={"X-API-Key": "tracker-key"})).status_code == 202
+    assert (await send(headers={"X-API-Key": "wrong"})).status_code == 401
+
+
+async def test_ingest_boxes_follow_padding_to_16_9(client):
+    """Камера 4:3: сервис считает рамку по своему кадру, сервер хранит кадр с полями до 16:9 — рамка должна сесть туда же."""
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (1600, 1200), (90, 90, 90)).save(buffer, "JPEG")
+    files = {"image": ("frame.jpg", buffer.getvalue(), "image/jpeg")}
+    whole = json.dumps([{"type": "crane", "confidence": 0.9, "box": {"x": 0, "y": 0, "w": 100, "h": 100}}])
+    sent = await client.post(
+        "/api/ingest/snapshots",
+        data={"camera_id": "c2", "detections": whole},
+        files=files,
+        headers={"X-API-Key": "ingest-test-key"},
+    )
+    assert sent.status_code == 202
+    manager = await login_as(client, "manager")
+    live = next(c for c in (await client.get("/api/live", headers=manager)).json() if c["cameraId"] == "c2")
+    assert live["detections"][0]["box"] == {"x": 12.5, "y": 0.0, "w": 75.0, "h": 100.0}  # по центру, между полями
