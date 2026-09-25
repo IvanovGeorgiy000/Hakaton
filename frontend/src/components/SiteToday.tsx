@@ -3,6 +3,7 @@ import { MapPin, HardHat, Building } from 'lucide-react'
 import { useApp } from '@/store/context'
 import { isOpen, bySeverity } from '@/store/selectors'
 import { cn, fmtDate, plural } from '@/lib/utils'
+import { lagDays, pace, planUnits } from '@/lib/schedule'
 import { StatusPill } from './ui/StatusPill'
 import { StatTile } from './ui/StatTile'
 import { EmptyState } from './ui/EmptyState'
@@ -17,7 +18,7 @@ export function SiteToday({ siteId, camerasLink, onShowCameras, showName = true 
   /** false — название объекта уже стоит над вкладками страницы объекта */
   showName?: boolean
 }) {
-  const { siteStatus, alertsForSite, bySite, byStage, role } = useApp()
+  const { siteStatus, alertsForSite, bySite, byStage, stagesOf, role } = useApp()
   const { alert: sel, open: setSel, close } = useOpenAlert()
   const site = bySite(siteId)
   if (!site) return <p className="text-muted-foreground">Объект не найден или у вас нет к нему доступа.</p>
@@ -27,7 +28,8 @@ export function SiteToday({ siteId, camerasLink, onShowCameras, showName = true 
   const closed = alertsForSite(siteId).filter((a) => !isOpen(a.status))
   const { planProgress: plan, factProgress: fact } = site  // по всему плану объекта; null — плана нет
   const hasPlan = plan !== null && fact !== null
-  const lag = plan !== null && fact !== null ? plan - fact : 0
+  const lag = hasPlan ? lagDays(planUnits(stagesOf(siteId))) : null  // в днях, как у этапов
+  const progress = lag === null ? null : pace(lag)
   const urgent = open.filter((a) => a.severity === 'high').length
 
   // На телефоне первым идёт «что не так»: показатели уезжают ниже, иначе они занимают весь первый экран
@@ -55,8 +57,8 @@ export function SiteToday({ siteId, camerasLink, onShowCameras, showName = true 
         {/* весь объект, а не текущий этап: на странице плана те же цифры стоят в строке «Объект в целом» */}
         <StatTile
           label="Готовность объекта" value={hasPlan ? `${fact}%` : '—'}
-          hint={!hasPlan ? 'план работ не задан' : Math.abs(lag) <= 2 ? `по графику ${plan}% — идёт по графику` : lag > 0 ? `по графику ${plan}% — отстаёт на ${lag}%` : `по графику ${plan}% — опережает на ${-lag}%`}
-          tone={!hasPlan ? undefined : lag > 10 ? 'danger' : lag > 2 ? 'warn' : 'ok'}
+          hint={!hasPlan ? 'план работ не задан' : progress ? `по графику ${plan}% — ${progress.text}` : `по графику ${plan}%`}
+          tone={progress?.tone}
         />
         <StatTile
           label="Открытых замечаний" value={open.length}

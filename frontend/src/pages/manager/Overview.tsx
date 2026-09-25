@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { SiteDialog } from '@/components/SiteDialogs'
 import { fmtWhen, plural, pluralWord, todayLabel } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import { lagDays, pace, planUnits } from '@/lib/schedule'
 import { useSearchParam } from '@/lib/useUrlState'
 
 const SHOW = ['all', 'critical', 'warning', 'ok'] as const
@@ -18,7 +19,7 @@ type Show = typeof SHOW[number]
 
 /** Все объекты одним взглядом: светофор, этап, отставание, открытые замечания. Руководитель и администратор здесь же добавляют объекты. */
 export function ManagerOverview() {
-  const { sites: visibleSites, siteStatus, alertsForSite, byStage, lastDataAt, base, role } = useApp()
+  const { sites: visibleSites, siteStatus, alertsForSite, byStage, stagesOf, lastDataAt, base, role } = useApp()
   const navigate = useNavigate()
   const [creating, setCreating] = useState(false)
   const [show, setShow] = useSearchParam<Show>('status', 'all', SHOW)
@@ -52,7 +53,8 @@ export function ManagerOverview() {
         {visibleSites.filter((s) => show === 'all' || siteStatus(s.id) === show).sort((a, b) => rank(siteStatus(b.id)) - rank(siteStatus(a.id))).map((s) => {
           const status = siteStatus(s.id)
           const open = alertsForSite(s.id).filter((a) => isOpen(a.status))
-          const lag = s.planProgress !== null && s.factProgress !== null ? s.planProgress - s.factProgress : 0
+          const lag = s.planProgress === null ? null : lagDays(planUnits(stagesOf(s.id)))
+          const progress = lag === null ? null : pace(lag)
           const stage = byStage(s.currentStageId)
           return (
             <div key={s.id}>
@@ -73,7 +75,11 @@ export function ManagerOverview() {
                 <div className="mt-3"><StatusPill status={status} /></div>
                 <dl className="grid grid-cols-3 gap-2 mt-4 text-[14px]">
                   <div><dt className="text-muted-foreground">Этап</dt><dd className="font-semibold leading-tight">{stage?.name ?? '—'}</dd></div>
-                  <div><dt className="text-muted-foreground">Выполнено</dt><dd className={cn('font-semibold', lag > 5 && 'text-danger')}>{s.factProgress === null ? <span className="text-muted-foreground font-normal">нет плана</span> : <>{s.factProgress}% <span className="text-muted-foreground font-normal">/ план {s.planProgress}%</span></>}</dd></div>
+                  <div><dt className="text-muted-foreground">Выполнено</dt><dd className="font-semibold">
+                    {s.factProgress === null ? <span className="text-muted-foreground font-normal">нет плана</span> : <>{s.factProgress}% <span className="text-muted-foreground font-normal">/ план {s.planProgress}%</span></>}
+                    {/* на карточке — только отставание: что идёт по графику, и так видно по цифрам */}
+                    {progress && progress.tone !== 'ok' && <span className={cn('block', progress.tone === 'danger' ? 'text-danger' : 'text-warn')}>{progress.short}</span>}
+                  </dd></div>
                   <div><dt className="text-muted-foreground">Замечания</dt><dd className="font-semibold">{open.length ? plural(open.length, 'открытое', 'открытых', 'открытых') : 'нет'}</dd></div>
                 </dl>
                 {open[0] && (

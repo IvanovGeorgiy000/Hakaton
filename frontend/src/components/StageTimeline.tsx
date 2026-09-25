@@ -5,13 +5,14 @@ import { api } from '@/api'
 import { EQUIPMENT, PROGRESS_REPORTERS, type Stage } from '@/data'
 import { useApp } from '@/store/context'
 import { ago, cn, daysBetween, fmtDate, plural, todayISO } from '@/lib/utils'
+import { lagDays, pace, planUnits, type Tone } from '@/lib/schedule'
 import { Button } from './ui/Button'
 import { InfoTip } from './ui/InfoTip'
 import { VehicleIcon } from './VehicleIcon'
 
 type Kind = 'done' | 'current' | 'future'
-type Tone = 'ok' | 'warn' | 'danger'
-interface Phase { stage: Stage; works: Stage[]; plan: number; fact: number; days: number; kind: Kind }
+/** lag — на сколько дней отстали от графика, меньше нуля — опередили */
+interface Phase { stage: Stage; works: Stage[]; plan: number; fact: number; lag: number; kind: Kind }
 
 const FILL: Record<Tone, string> = { ok: 'bg-ok', warn: 'bg-warn', danger: 'bg-danger' }
 const TEXT: Record<Tone, string> = { ok: 'text-ok', warn: 'text-warn', danger: 'text-danger' }
@@ -23,19 +24,11 @@ const kindOf = (plan: number, fact: number): Kind => (fact >= 100 ? 'done' : pla
 
 /** Выполнение укрупнённого этапа: по его работам с весом по длительности, у этапа без работ — его собственное */
 function measure(stage: Stage, works: Stage[]): Omit<Phase, 'stage' | 'works' | 'kind'> {
-  if (!works.length) return { plan: stage.planProgress, fact: stage.factProgress, days: length(stage) }
+  const lag = lagDays(works.length ? works : [stage]) ?? 0
+  if (!works.length) return { plan: stage.planProgress, fact: stage.factProgress, lag }
   const total = works.reduce((n, w) => n + length(w), 0)
   const avg = (key: 'planProgress' | 'factProgress') => Math.round(works.reduce((n, w) => n + w[key] * length(w), 0) / total)
-  return { plan: avg('planProgress'), fact: avg('factProgress'), days: length(stage) }
-}
-
-/** Словами: успевают ли по графику. Отставание в процентах переводим в дни этапа. */
-function pace(plan: number, fact: number, days: number): { tone: Tone; text: string } {
-  const lag = plan - fact
-  if (Math.abs(lag) <= 2) return { tone: 'ok', text: 'идёт по графику' }
-  if (lag < 0) return { tone: 'ok', text: `опережает график на ${-lag}%` }
-  const behind = Math.max(1, Math.round((lag * days) / 100))
-  return { tone: lag > 10 ? 'danger' : 'warn', text: `отстаёт на ${lag}% — примерно на ${plural(behind, 'день', 'дня', 'дней')}` }
+  return { plan: avg('planProgress'), fact: avg('factProgress'), lag }
 }
 
 /**
@@ -58,8 +51,10 @@ export function StageTimeline({ siteId }: { siteId: string }) {
   if (!phases.length) return <p className="text-muted-foreground">План работ пока пуст.</p>
   const of = (kind: Kind) => phases.filter((p) => p.kind === kind)
 
-  const whole = site && site.planProgress !== null && site.factProgress !== null
-    ? { plan: site.planProgress, fact: site.factProgress, ...pace(site.planProgress, site.factProgress, daysBetween(phases[0].stage.start, phases[phases.length - 1].stage.end) + 1) }
+  // отставание объекта — в днях, как у этапов: 2% всего объекта — это почти неделя
+  const lag = lagDays(planUnits(stages))
+  const whole = site && site.planProgress !== null && site.factProgress !== null && lag !== null
+    ? { plan: site.planProgress, fact: site.factProgress, ...pace(lag) }
     : null
 
   return (
@@ -162,8 +157,8 @@ function Track({ plan, fact, tone, big }: { plan: number; fact: number; tone: To
   )
 }
 
-function Numbers({ plan, fact, days, className }: { plan: number; fact: number; days: number; className?: string }) {
-  const p = pace(plan, fact, days)
+function Numbers({ plan, fact, lag, className }: { plan: number; fact: number; lag: number; className?: string }) {
+  const p = pace(lag)
   return (
     <div className={cn('flex flex-wrap items-baseline gap-x-4 gap-y-1', className)}>
       <span>По факту <b>{fact}%</b></span>
@@ -174,7 +169,7 @@ function Numbers({ plan, fact, days, className }: { plan: number; fact: number; 
 }
 
 function CurrentPhase({ phase, canReport }: { phase: Phase; canReport: boolean }) {
-  const { stage, works, plan, fact, days } = phase
+  const { stage, works, plan, fact, lag } = phase
   const today = todayISO()
   const overdue = daysBetween(stage.end, today)
   // «на каком этапе должно быть и на каком по факту» — словами, по работам этапа
@@ -186,8 +181,8 @@ function CurrentPhase({ phase, canReport }: { phase: Phase; canReport: boolean }
         <h3 className="text-[18px] font-semibold leading-snug">{stage.name}</h3>
         <span className="text-[14px] text-muted-foreground">{range(stage)}</span>
       </header>
-      <div className="mt-4"><Track big plan={plan} fact={fact} tone={pace(plan, fact, days).tone} /></div>
-      <Numbers plan={plan} fact={fact} days={days} className="mt-2.5 text-[15px]" />
+      <div className="mt-4"><Track big plan={plan} fact={fact} tone={pace(lag).tone} /></div>
+      <Numbers plan={plan} fact={fact} lag={lag} className="mt-2.5 text-[15px]" />
       {overdue > 0 && <p className="mt-1 text-[15px] font-semibold text-danger">Срок этапа вышел {plural(overdue, 'день', 'дня', 'дней')} назад</p>}
 
       {works.length > 0 && (
@@ -210,6 +205,7 @@ function WorkRow({ work, canReport }: { work: Stage; canReport: boolean }) {
   const { rules } = useApp()
   const kind = kindOf(work.planProgress, work.factProgress)
   const rule = work.ruleKey ? rules[work.ruleKey] : undefined
+  const lag = lagDays([work]) ?? 0
   if (kind !== 'current') {
     return (
       <li className="py-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[15px]">
@@ -227,8 +223,8 @@ function WorkRow({ work, canReport }: { work: Stage; canReport: boolean }) {
         <span className="font-semibold text-[16px]">{work.name}</span>
         <span className="text-[14px] text-muted-foreground">{range(work)}</span>
       </div>
-      <div className="mt-2.5"><Track plan={work.planProgress} fact={work.factProgress} tone={pace(work.planProgress, work.factProgress, length(work)).tone} /></div>
-      <Numbers plan={work.planProgress} fact={work.factProgress} days={length(work)} className="mt-2 text-[14px]" />
+      <div className="mt-2.5"><Track plan={work.planProgress} fact={work.factProgress} tone={pace(lag).tone} /></div>
+      <Numbers plan={work.planProgress} fact={work.factProgress} lag={lag} className="mt-2 text-[14px]" />
       {stale(work) && <p className="text-[14px] text-warn font-semibold mt-0.5">Выполнение давно не отмечали: {work.factUpdatedAt ? ago(work.factUpdatedAt) : 'ни разу'}</p>}
       {rule && rule.required.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[14px]">
