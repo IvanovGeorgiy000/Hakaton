@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import { AlertTriangle, Bell, CircleHelp, LogOut, CheckCircle2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useApp, useToasts } from '@/store/context'
@@ -154,12 +154,12 @@ export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: stri
       <div className="fixed z-[60] bottom-24 lg:bottom-6 inset-x-4 flex flex-col items-center gap-2 pointer-events-none" role="status" aria-live="polite">
         <AnimatePresence>
           {toasts.map((t) => (
-            <motion.div
+            <m.div
               key={t.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.16 }}
               className="pointer-events-auto bg-card text-foreground border border-border rounded-xl px-4 py-3 max-w-md text-[15px] flex items-center gap-2.5 shadow-[var(--shadow-pop)]"
             >
               {t.tone === 'error' ? <AlertTriangle className="w-5 h-5 text-warn shrink-0" /> : <CheckCircle2 className="w-5 h-5 text-ok shrink-0" />} {t.text}
-            </motion.div>
+            </m.div>
           ))}
         </AnimatePresence>
       </div>
@@ -193,7 +193,7 @@ function NotificationsBell({ alertsPath }: { alertsPath: string }) {
       </button>
       <AnimatePresence>
         {open && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }}
             className="absolute right-0 mt-2 w-[min(92vw,380px)] bg-card border border-border rounded-xl shadow-[var(--shadow-pop)] overflow-hidden"
           >
@@ -215,7 +215,7 @@ function NotificationsBell({ alertsPath }: { alertsPath: string }) {
                 ))}
               </ul>
             )}
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

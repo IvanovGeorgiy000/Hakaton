@@ -1,10 +1,10 @@
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { Loader2 } from 'lucide-react'
 
 /** Пока подгружается код экрана. Появляется с задержкой: быстрая загрузка проходит без мелькания. */
 export function PageLoading() {
   return (
-    <motion.div
+    <m.div
       role="status"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -13,6 +13,6 @@ export function PageLoading() {
     >
       <Loader2 className="w-8 h-8 text-primary animate-spin" aria-hidden />
       Открываем раздел…
-    </motion.div>
+    </m.div>
   )
 }

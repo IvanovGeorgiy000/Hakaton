@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { EQUIPMENT, type Detection } from '@/data'
 import { cn, inkOn } from '@/lib/utils'
 
@@ -14,7 +14,7 @@ export function DetectionBoxes({ detections, labels = true }: { detections: Dete
       {detections.map((d, i) => {
         const info = EQUIPMENT[d.type]
         return (
-          <motion.div
+          <m.div
             key={`${d.type}-${i}`} className="absolute"
             initial={false}
             animate={{ left: `${d.box.x}%`, top: `${d.box.y}%`, width: `${d.box.w}%`, height: `${d.box.h}%` }}
@@ -29,7 +29,7 @@ export function DetectionBoxes({ detections, labels = true }: { detections: Dete
                 {info.name} {Math.round(d.confidence * 100)}%
               </span>
             )}
-          </motion.div>
+          </m.div>
         )
       })}
     </div>

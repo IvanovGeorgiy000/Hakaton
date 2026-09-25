@@ -1,5 +1,5 @@
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { CheckCircle2, Circle, Loader2, PencilLine } from 'lucide-react'
 import { api } from '@/api'
 import { EQUIPMENT, PROGRESS_REPORTERS, type Stage } from '@/data'
@@ -45,8 +45,8 @@ export function StageTimeline({ siteId }: { siteId: string }) {
     .sort((a, b) => a.start.localeCompare(b.start))
     .map((stage) => {
       const works = stages.filter((w) => w.parentId === stage.id).sort((a, b) => a.start.localeCompare(b.start))
-      const m = measure(stage, works)
-      return { stage, works, ...m, kind: kindOf(m.plan, m.fact) }
+      const measured = measure(stage, works)
+      return { stage, works, ...measured, kind: kindOf(measured.plan, measured.fact) }
     })
   if (!phases.length) return <p className="text-muted-foreground">План работ пока пуст.</p>
   const of = (kind: Kind) => phases.filter((p) => p.kind === kind)
@@ -148,7 +148,7 @@ function Section({ title, count, info, children }: { title: string; count: numbe
 function Track({ plan, fact, tone, big }: { plan: number; fact: number; tone: Tone; big?: boolean }) {
   return (
     <div className={cn('relative rounded-full bg-muted', big ? 'h-3.5' : 'h-2.5')} role="img" aria-label={`Сделано по факту ${fact}%, по графику должно быть ${plan}%`}>
-      <motion.div
+      <m.div
         className={cn('absolute inset-y-0 left-0 rounded-full', FILL[tone])}
         initial={{ width: 0 }} animate={{ width: `${fact}%` }} transition={{ duration: 0.5, ease: 'easeOut' }}
       />

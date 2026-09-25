@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import { MoreHorizontal, type LucideIcon } from 'lucide-react'
 import { useDismiss } from '@/lib/useDismiss'
 import { useMenuKeys } from '@/lib/useMenuKeys'
@@ -35,7 +35,7 @@ export function ActionMenu({ label, actions }: { label: string; actions: MenuAct
       </button>
       <AnimatePresence>
         {open && (
-          <motion.div
+          <m.div
             ref={menu} role="menu" aria-label={label}
             initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }}
             className="absolute right-0 mt-2 w-60 bg-card border border-border rounded-xl shadow-[var(--shadow-pop)] p-1.5 z-40"
@@ -54,7 +54,7 @@ export function ActionMenu({ label, actions }: { label: string; actions: MenuAct
                 {a.disabled && a.hint && <span className="sr-only"> — {a.hint}</span>}
               </button>
             ))}
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

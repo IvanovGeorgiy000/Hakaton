@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import { Moon, MonitorSmartphone, Sun } from 'lucide-react'
 import { useTheme, type ThemeMode } from '@/store/themeContext'
 import { useDismiss } from '@/lib/useDismiss'
@@ -56,7 +56,7 @@ export function ThemeMenuButton({ className }: { className?: string }) {
       </button>
       <AnimatePresence>
         {open && (
-          <motion.div
+          <m.div
             ref={menu} role="menu" aria-label="Оформление"
             initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }}
             className="absolute right-0 mt-2 w-56 bg-card border border-border rounded-xl shadow-[var(--shadow-pop)] p-1.5 z-40"
@@ -71,7 +71,7 @@ export function ThemeMenuButton({ className }: { className?: string }) {
                 <o.Icon className="w-5 h-5 text-muted-foreground" /> {o.label}
               </button>
             ))}
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

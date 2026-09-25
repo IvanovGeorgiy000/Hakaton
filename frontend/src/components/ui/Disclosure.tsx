@@ -1,5 +1,5 @@
 import { useId, useState, type ReactNode } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -20,12 +20,12 @@ export function Disclosure({ title, children, className }: { title: ReactNode; c
       </h3>
       <AnimatePresence initial={false}>
         {open && (
-          <motion.div
+          <m.div
             id={id} className="overflow-hidden"
             initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}
           >
             <div className="px-4 pb-4">{children}</div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </section>

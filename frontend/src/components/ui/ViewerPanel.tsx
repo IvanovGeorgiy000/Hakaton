@@ -1,6 +1,6 @@
 import { useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import { useDialog } from './useDialog'
 
 interface Props {
@@ -24,13 +24,13 @@ export function ViewerPanel({ open, label, onClose, onKey, children }: Props) {
   return createPortal(
     <AnimatePresence>
       {open && (
-        <motion.div
+        <m.div
           ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={label}
           className="fixed inset-0 z-[70] bg-black text-white flex flex-col focus-visible:outline-none"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
         >
           {children}
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>,
     document.body,

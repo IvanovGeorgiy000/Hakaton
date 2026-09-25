@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import { CircleHelp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -73,7 +73,7 @@ export function InfoTip({ children, label = 'Пояснение', className }: {
           <div role="status" className="sr-only">{open ? children : null}</div>
           <AnimatePresence>
           {open && spot && (
-            <motion.div
+            <m.div
               ref={panel} aria-hidden
               initial={{ opacity: 0, y: spot.above ? 4 : -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }}
               style={{ top: spot.top, left: spot.left, width: Math.min(WIDTH, window.innerWidth - 32) }}
@@ -84,7 +84,7 @@ export function InfoTip({ children, label = 'Пояснение', className }: {
               )}
             >
               {children}
-            </motion.div>
+            </m.div>
           )}
           </AnimatePresence>
         </>,

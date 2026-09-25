@@ -1,6 +1,6 @@
 import { lazy, Suspense, type ComponentType } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { MotionConfig } from 'framer-motion'
+import { LazyMotion, MotionConfig } from 'framer-motion'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Home, Video, CalendarDays, Building2, Bell, ClipboardList, BarChart3, Settings2 } from 'lucide-react'
 import { AppProvider } from '@/store/AppContext'
@@ -123,12 +123,16 @@ function Router() {
   )
 }
 
+// анимации подгружаются отдельно (см. lib/motionFeatures); strict — если где-то остался тяжёлый motion.*, сразу будет видно
+const motionFeatures = () => import('@/lib/motionFeatures').then((mod) => mod.default)
+
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5_000, retry: 1, refetchOnWindowFocus: true } },
 })
 
 export default function App() {
   return (
+    <LazyMotion features={motionFeatures} strict>
     <MotionConfig reducedMotion="user">
       <ErrorBoundary full>
       <ThemeProvider>
@@ -144,5 +148,6 @@ export default function App() {
       </ThemeProvider>
       </ErrorBoundary>
     </MotionConfig>
+    </LazyMotion>
   )
 }

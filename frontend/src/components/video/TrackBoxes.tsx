@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, m } from 'framer-motion'
 import { EQUIPMENT, type LiveCamera } from '@/data'
 import { useApp } from '@/store/context'
 import { trackPace, useTracks, type TrackObject } from '@/lib/useTracks'
@@ -30,7 +30,7 @@ function TrackBoxes({ tracks, labels, pace }: { tracks: TrackObject[]; labels: b
         {tracks.map((t) => {
           const info = EQUIPMENT[t.type]
           return (
-            <motion.div
+            <m.div
               key={t.trackId} className="absolute"
               initial={{ opacity: 0, left: `${t.box.x}%`, top: `${t.box.y}%`, width: `${t.box.w}%`, height: `${t.box.h}%` }}
               animate={{ opacity: 1, left: `${t.box.x}%`, top: `${t.box.y}%`, width: `${t.box.w}%`, height: `${t.box.h}%` }}
@@ -46,7 +46,7 @@ function TrackBoxes({ tracks, labels, pace }: { tracks: TrackObject[]; labels: b
                   {info.name} {Math.round(t.confidence * 100)}%
                 </span>
               )}
-            </motion.div>
+            </m.div>
           )
         })}
       </AnimatePresence>

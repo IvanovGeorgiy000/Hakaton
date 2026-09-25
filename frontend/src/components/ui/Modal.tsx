@@ -1,5 +1,5 @@
 import { useRef, type ReactNode } from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useDialog } from './useDialog'
@@ -27,13 +27,13 @@ export function Modal({ open, onClose, title, children, wide }: ModalProps) {
   return (
     <AnimatePresence>
       {open && (
-        <motion.div
+        <m.div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/45 p-0 sm:p-6"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
           onPointerDown={(e) => { downOnBackdrop.current = e.target === e.currentTarget }}
           onClick={(e) => { if (downOnBackdrop.current && e.target === e.currentTarget) onClose(); downOnBackdrop.current = false }}
         >
-          <motion.div
+          <m.div
             ref={panel} tabIndex={-1}
             role="dialog" aria-modal="true" aria-label={title}
             className={cn('bg-card w-full max-h-[94dvh] overflow-y-auto rounded-t-2xl sm:rounded-2xl shadow-[var(--shadow-pop)] focus-visible:outline-none', wide ? 'sm:max-w-4xl' : 'sm:max-w-2xl')}
@@ -48,8 +48,8 @@ export function Modal({ open, onClose, title, children, wide }: ModalProps) {
               </button>
             </div>
             <div className="p-5 sm:p-6">{children}</div>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>
   )
