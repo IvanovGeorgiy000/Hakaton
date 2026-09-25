@@ -11,6 +11,7 @@
 npm install
 npm run dev        # http://localhost:5180 — запросы /api и /media проксируются на http://localhost:8100
 npm run build      # сборка в dist/
+npm test           # тесты (Vitest): отставание в днях, разбор адреса камеры, советы по ролям, статус плитки видео
 ```
 
 Другой адрес бэкенда для dev-сервера: `VITE_BACKEND_URL=http://host:8100 npm run dev`.
