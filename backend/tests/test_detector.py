@@ -1,6 +1,8 @@
 """Своя модель распознавания: классы модели → техника ТЗ, разбор выхода YOLO, номера машин, рамки по видео."""
 
 import asyncio
+import subprocess
+import sys
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -8,13 +10,14 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from app.config import ASSETS_DIR, Settings, get_settings
+from app.config import ASSETS_DIR, BASE_DIR, Settings, get_settings
 from app.services import detector as detector_module
 from app.services.analysis.base import DetectedObject
 from app.services.detector import Detector, _resize, class_map
 from app.services.realtime import FORGET_S, BoxTracker, LiveTracking
 
 settings = get_settings()
+BACKEND = BASE_DIR
 MOCS = {
     0: "Worker", 1: "Static crane", 2: "Hanging head", 3: "Crane", 4: "Roller", 5: "Bulldozer", 6: "Excavator",
     7: "Truck", 8: "Loader", 9: "Pump truck", 10: "Concrete mixer", 11: "Pile driving", 12: "Other vehicle",
@@ -188,6 +191,13 @@ async def test_model_takes_freshest_frame_of_each_camera_in_turn():
     assert video_filter.startswith(f"fps={settings.realtime_fps:g},") and video_filter.endswith(
         "format=rgb24,scale=640:360:flags=area"
     )
+
+
+def test_modules_import_in_any_order():
+    # модуль модели импортирует пакет analysis, а тот — анализатор на модели: круг ловится только в чистом процессе
+    for module in ("app.services.detector", "app.services.realtime", "app.services.analysis.local", "tools.export_model"):
+        result = subprocess.run([sys.executable, "-c", f"import {module}"], cwd=BACKEND, capture_output=True, text=True)
+        assert result.returncode == 0, f"{module}: {result.stderr.strip().splitlines()[-1]}"
 
 
 def test_local_provider_needs_the_model_file(monkeypatch, tmp_path):

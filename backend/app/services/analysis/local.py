@@ -2,15 +2,18 @@
 
 import time
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from app.services.analysis.base import AnalysisError, AnalysisResult
-from app.services.detector import Detector
+
+if TYPE_CHECKING:  # модуль модели сам импортирует пакет analysis — прямой импорт замкнул бы круг
+    from app.services.detector import Detector
 
 
 class LocalAnalyzer:
     name = "local"
 
-    def __init__(self, detector: Detector) -> None:
+    def __init__(self, detector: "Detector") -> None:
         self.detector = detector
 
     async def analyze(self, image: bytes, *, camera_id: str | None = None, taken_at: datetime | None = None) -> AnalysisResult:

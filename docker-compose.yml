@@ -4,7 +4,8 @@
 # Открываете стенд с другого устройства (телефон в той же сети) — укажите адрес этого компьютера:
 #   VIDEO_PUBLIC_HOST=192.168.1.10 docker compose up
 # Технику на видео распознаёт своя модель (backend/models/detector.onnx) прямо в бэкенде — и на кадрах раз в 2 с, и рамками
-# в реальном времени по видео камер, которые смотрят. В Docker она считает на процессоре (~70 мс на кадр).
+# в реальном времени по видео камер, которые смотрят. В Docker она считает только на процессоре: на Mac с M4 это ≈ 0,2 с
+# на кадр против 0,035 с с CoreML без Docker — для показа на Mac бэкенд лучше запускать без Docker (см. README).
 # Вместо неё — имитация внешнего сервиса разметки (рамки по разметке демо-роликов):
 #   SK_TRACKER_URL=ws://tracker:8200/stream SK_TRACKER_API_KEY=dev-tracker-key docker compose --profile tracker up --build
 # Внешний сервис разметки на другом компьютере: он читает видео по RTSP (порт 8554, логин sk-tracker, пароль — ключ)
@@ -61,6 +62,9 @@ services:
       SK_ANALYSIS_API_KEY: ${SK_ANALYSIS_API_KEY:-}
       SK_INGEST_API_KEY: ${SK_INGEST_API_KEY:-}
       SK_REALTIME_FPS: ${SK_REALTIME_FPS:-8}  # рамки своей моделью по видео камер, которые смотрят; 0 — только раз в 2 с
+      # ядер на модель: в Docker Desktop для Mac 4 потока быстрее всех ядер (0,22 с против 0,35: в ВМ вперемешку быстрые
+      # и медленные ядра); на Linux-сервере можно 0 — решит ONNX Runtime
+      SK_DETECTOR_THREADS: ${SK_DETECTOR_THREADS:-4}
       SK_TRACKER_URL: ${SK_TRACKER_URL:-}  # WebSocket внешнего сервиса разметки; пусто — рамки своей модели
       SK_TRACKER_API_KEY: ${SK_TRACKER_API_KEY:-}
       SK_TRACKER_RTSP_URL: ${SK_TRACKER_RTSP_URL:-}  # адрес видеошлюза для сервиса на другом компьютере
