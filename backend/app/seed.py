@@ -294,6 +294,7 @@ STAGES = [
 
 # Выполнение текущих работ по факту: на сколько процентов оно расходится с графиком (минус — отставание).
 # ЖК заметно отстаёт — как и в его отклонениях; детский сад идёт чуть впереди графика.
+SITE_KIND = {"s1": "residential", "s2": "public", "s3": "road", "s4": "public"}  # дом, школа, дорога, детский сад
 FACT_SHIFT = {"s1": -15, "s2": -6, "s3": -7, "s4": 4}
 
 
@@ -305,7 +306,9 @@ async def _catalog(session: AsyncSession, today: date) -> None:
     password_hash = hash_password(settings.demo_password)
     sites = {}
     for pos, (sid, name, address, contractor, foreman) in enumerate(SITES):
-        sites[sid] = Site(id=sid, name=name, address=address, contractor=contractor, foreman_name=foreman, position=pos)
+        sites[sid] = Site(
+            id=sid, name=name, address=address, contractor=contractor, foreman_name=foreman, kind=SITE_KIND[sid], position=pos
+        )
     session.add_all(sites.values())
     await session.flush()  # объекты должны существовать до зон, камер и пользователей, которые на них ссылаются
     for uid, login, name, role, phone, site_ids in USERS:

@@ -75,12 +75,17 @@ class PasswordIn(ApiModel):
 
 
 # ---------- объекты ----------
+# вид объекта: жилой дом, соцобъект (школа, детский сад), дорога, промышленный, другое — как models.SITE_KINDS
+SiteKind = Literal["residential", "public", "road", "industrial", "other"]
+
+
 class SiteOut(ApiModel):
     id: str
     name: str
     address: str
     contractor: str
     foreman: str
+    kind: SiteKind
     current_stage_id: str | None
     plan_progress: int | None  # сколько должно быть сделано по графику, % — по всему плану; None — плана нет
     fact_progress: int | None  # сколько сделано по факту, %
@@ -93,6 +98,7 @@ def site_out(s: Site, current_stage_id: str | None, progress: tuple[int, int] | 
         address=s.address,
         contractor=s.contractor,
         foreman=s.foreman_name,
+        kind=s.kind,
         current_stage_id=current_stage_id,
         plan_progress=progress[0] if progress else None,
         fact_progress=progress[1] if progress else None,
@@ -103,6 +109,7 @@ class SiteIn(ApiModel):
     name: str = Field(min_length=2, max_length=200)
     address: str = Field(default="", max_length=200)
     contractor: str = Field(default="", max_length=200)
+    kind: SiteKind = "other"
     foreman_id: str | None = None  # прораб объекта: получит к нему доступ; явный null — снять прораба, поля нет — не трогать
 
 
@@ -326,6 +333,7 @@ class SnapshotOut(ApiModel):
     analyzed: bool
     provider: str | None
     note: str | None
+    daily: bool  # «кадр дня» — хранится две недели, по нему видно, как меняется площадка
 
 
 def snapshot_out(s: Snapshot) -> SnapshotOut:
@@ -337,6 +345,7 @@ def snapshot_out(s: Snapshot) -> SnapshotOut:
         analyzed=s.analyzed,
         provider=s.provider,
         note=s.note,
+        daily=s.daily,
         detections=[
             DetectionOut(
                 id=f"d{d.id}",
@@ -577,3 +586,15 @@ class TrackerCameraOut(ApiModel):
     zone_kind: str  # work — рабочая зона, gate — въезд, storage — склад
     rtsp_url: str  # логин шлюза sk-tracker, пароль — ключ сервиса
     demo_clip: str | None  # камера смотрит демо-ролик (для имитации сервиса)
+
+
+class EquipmentUsageOut(ApiModel):
+    """Сколько работала техника за час на одной камере (по рамкам сервиса разметки)."""
+
+    hour: datetime  # начало часа
+    camera_id: str
+    zone_kind: str  # work | gate | storage
+    type: EquipmentType
+    max_count: int  # сколько машин этого типа было в кадре одновременно
+    present_min: float  # сколько минут тип был в кадре
+    moving_min: float  # из них двигался

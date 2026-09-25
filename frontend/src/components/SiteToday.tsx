@@ -3,6 +3,7 @@ import { MapPin, HardHat, Building } from 'lucide-react'
 import { useApp } from '@/store/context'
 import { isOpen, bySeverity } from '@/store/selectors'
 import { cn, fmtDate, plural } from '@/lib/utils'
+import { SITE_KIND } from '@/lib/labels'
 import { lagDays, pace, planUnits } from '@/lib/schedule'
 import { StatusPill } from './ui/StatusPill'
 import { StatTile } from './ui/StatTile'
@@ -41,7 +42,7 @@ export function SiteToday({ siteId, camerasLink, onShowCameras, showName = true 
             {showName && <h1 className="text-[22px] sm:text-2xl font-semibold leading-tight">{site.name}</h1>}
             <div className={cn('flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground text-[15px]', showName && 'mt-2')}>
               <span className="inline-flex items-center gap-1.5"><MapPin className="w-4 h-4" />{site.address}</span>
-              <span className="inline-flex items-center gap-1.5"><Building className="w-4 h-4" />{site.contractor}</span>
+              <span className="inline-flex items-center gap-1.5"><Building className="w-4 h-4" />{site.kind !== 'other' && <>{SITE_KIND[site.kind].split(' (')[0]} · </>}{site.contractor}</span>
               {role?.id !== 'foreman' && <span className="inline-flex items-center gap-1.5"><HardHat className="w-4 h-4" />Прораб: {site.foreman || 'не назначен'}</span>}
             </div>
           </div>

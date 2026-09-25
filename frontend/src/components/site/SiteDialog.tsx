@@ -2,7 +2,8 @@ import { useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { api } from '@/api'
-import type { Site, SiteInput } from '@/data'
+import type { Site, SiteInput, SiteKind } from '@/data'
+import { SITE_KIND } from '@/lib/labels'
 import { useApp } from '@/store/context'
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
@@ -25,7 +26,7 @@ function SiteForm({ site, onClose, onCreated }: { site: Site | null; onClose: ()
   // foremanId: undefined — прораба не трогали (на сервер не отправляем: список сотрудников мог ещё не загрузиться),
   // null — выбрали «не назначен» и прораба нужно снять
   const [form, setForm] = useState<SiteInput>({
-    name: site?.name ?? '', address: site?.address ?? '', contractor: site?.contractor ?? '',
+    name: site?.name ?? '', address: site?.address ?? '', contractor: site?.contractor ?? '', kind: site?.kind ?? 'residential',
   })
   const foremanId = form.foremanId === undefined ? currentForeman : form.foremanId
   const [tried, setTried] = useState(false)
@@ -54,6 +55,13 @@ function SiteForm({ site, onClose, onCreated }: { site: Site | null; onClose: ()
     <form onSubmit={submit} noValidate className="space-y-4">
       <Field label="Название" error={tried ? nameError : undefined}>
         {(id, d) => <input id={id} value={form.name} maxLength={200} onChange={(e) => set({ name: e.target.value })} aria-invalid={tried && !!nameError} aria-describedby={d} className={inputCls} placeholder="ЖК «Северный парк», корпус 4" />}
+      </Field>
+      <Field label="Вид объекта" hint="От вида зависят этапы и техника: на дороге — асфальт и катки, у дома — котлован, каркас. Это подсказка для распознавания этапа по кадрам">
+        {(id, d) => (
+          <select id={id} value={form.kind} onChange={(e) => set({ kind: e.target.value as SiteKind })} aria-describedby={d} className={inputCls}>
+            {(Object.keys(SITE_KIND) as SiteKind[]).map((k) => <option key={k} value={k}>{SITE_KIND[k]}</option>)}
+          </select>
+        )}
       </Field>
       <Field label="Адрес">
         {(id) => <input id={id} value={form.address} maxLength={200} onChange={(e) => set({ address: e.target.value })} className={inputCls} />}

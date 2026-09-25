@@ -21,13 +21,16 @@ from typing import Any
 import websockets
 
 from app.config import get_settings
+from app.db import SessionLocal, utcnow
 from app.equipment import EQUIPMENT_TYPES
 from app.services.analysis.base import clamp_box
+from app.services.usage import UsageMeter, save
 
 log = logging.getLogger("stroykontrol.tracks")
 settings = get_settings()
 
 RETRY_MIN_S, RETRY_MAX_S = 1.0, 30.0
+USAGE_FLUSH_S = 60.0  # раз в столько секунд учёт работы техники дописывается в базу
 QUEUE_SIZE = 32  # браузер не успевает — выбрасываем старые рамки, а не копим очередь
 
 
@@ -83,7 +86,9 @@ class TrackRelay:
     def __init__(self) -> None:
         self.subscribers: set[Subscriber] = set()
         self.connected = False
+        self.usage = UsageMeter()
         self._task: asyncio.Task | None = None
+        self._flush_task: asyncio.Task | None = None
 
     @property
     def enabled(self) -> bool:
@@ -92,18 +97,37 @@ class TrackRelay:
     def start(self) -> None:
         if self.enabled and self._task is None:
             self._task = asyncio.create_task(self._run(), name="track-relay")
+            self._flush_task = asyncio.create_task(self._flush_loop(), name="equipment-usage")
 
     async def stop(self) -> None:
-        if self._task:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
+        for task in (self._task, self._flush_task):
+            if task:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+        self._task = self._flush_task = None
+        await self.flush()  # накопленное за последнюю минуту не теряем
+
+    async def flush(self) -> int:
+        cells = self.usage.take(asyncio.get_running_loop().time())
+        if not cells:
+            return 0
+        async with SessionLocal() as session:
+            return await save(session, cells)
+
+    async def _flush_loop(self) -> None:
+        while True:
+            await asyncio.sleep(USAGE_FLUSH_S)
+            try:
+                await self.flush()
+            except Exception:  # noqa: BLE001 — сбой записи не должен останавливать поток рамок
+                log.exception("Учёт работы техники не записан")
 
     def publish(self, raw: Any) -> None:
         message = normalize(raw)
         if message is None:
             return
+        self.usage.add(message, asyncio.get_running_loop().time(), utcnow())
         text = json.dumps(message, ensure_ascii=False, separators=(",", ":"))
         for subscriber in self.subscribers:
             subscriber.push(message["cameraId"], text)

@@ -4,16 +4,18 @@ import asyncio
 import contextlib
 import hmac
 import json
+from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import select
 
+from app.api.deps import get_site
 from app.config import get_settings
-from app.db import SessionLocal
-from app.models import Camera
-from app.schemas import TrackerCameraOut
-from app.security import Session, authenticate, visible_site_ids
+from app.db import SessionLocal, utcnow
+from app.models import Camera, EquipmentUsage
+from app.schemas import EquipmentUsageOut, TrackerCameraOut
+from app.security import CurrentUser, Session, authenticate, visible_site_ids
 from app.services import video
 from app.services.tracks import Subscriber, get_relay
 
@@ -49,6 +51,36 @@ async def tracker_cameras(session: Session, x_api_key: Annotated[str | None, Hea
             demo_clip=video.demo_clip_of(c.path),
         )
         for c in cameras
+    ]
+
+
+@router.get(
+    "/sites/{site_id}/equipment-usage",
+    response_model=list[EquipmentUsageOut],
+    summary="Сколько работала техника по часам (по рамкам сервиса разметки)",
+)
+async def equipment_usage(
+    site_id: str, user: CurrentUser, session: Session, hours: Annotated[int, Query(ge=1, le=24 * 30)] = 24
+) -> list[EquipmentUsageOut]:
+    """По часу, камере и типу техники: сколько машин сразу, сколько минут в кадре и сколько из них двигалась.
+    Одну машину могут видеть две камеры — складывать минуты разных камер нельзя, лучше брать максимум по зоне."""
+    await get_site(session, user, site_id)
+    rows = await session.scalars(
+        select(EquipmentUsage)
+        .where(EquipmentUsage.site_id == site_id, EquipmentUsage.hour >= utcnow() - timedelta(hours=hours))
+        .order_by(EquipmentUsage.hour, EquipmentUsage.camera_id, EquipmentUsage.equipment_type)
+    )
+    return [
+        EquipmentUsageOut(
+            hour=r.hour,
+            camera_id=r.camera_id,
+            zone_kind=r.zone_kind,
+            type=r.equipment_type,
+            max_count=r.max_count,
+            present_min=round(r.present_s / 60, 1),
+            moving_min=round(r.moving_s / 60, 1),
+        )  # fmt: skip
+        for r in rows
     ]
 
 

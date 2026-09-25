@@ -1,4 +1,4 @@
-import type { AlertKind, AlertStatus, Severity } from '@/data'
+import type { AlertKind, AlertStatus, Severity, SiteKind } from '@/data'
 
 export const SEVERITY: Record<Severity, { label: string; tone: 'danger' | 'warn' | 'info'; bar: string }> = {
   high: { label: 'Срочно', tone: 'danger', bar: 'bg-danger' },
@@ -27,4 +27,13 @@ export const STAGE_STATUS = {
   done: { label: 'Завершён', tone: 'ok' as const },
   in_progress: { label: 'Идёт сейчас', tone: 'info' as const },
   planned: { label: 'Впереди', tone: 'neutral' as const },
+}
+
+/** Виды объектов — для формы объекта и подписи на его странице */
+export const SITE_KIND: Record<SiteKind, string> = {
+  residential: 'Жилой дом',
+  public: 'Социальный объект (школа, детский сад, больница)',
+  road: 'Дорога',
+  industrial: 'Промышленный объект',
+  other: 'Другое',
 }

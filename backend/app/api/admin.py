@@ -102,6 +102,7 @@ def _site_fields(site: Site) -> dict:
         "name": site.name,
         "address": site.address,
         "contractor": site.contractor,
+        "kind": site.kind,
         "foreman": site.foreman_name,
     }
 
@@ -121,6 +122,7 @@ async def create_site(body: SiteIn, user: CurrentUser, session: Session, request
         name=body.name.strip(),
         address=body.address.strip(),
         contractor=body.contractor.strip(),
+        kind=body.kind,
         position=position,
     )
     session.add(site)
@@ -139,6 +141,8 @@ async def update_site(site_id: str, body: SiteIn, user: CurrentUser, session: Se
     site = await _site(session, site_id)
     before = _site_fields(site)
     site.name, site.address, site.contractor = body.name.strip(), body.address.strip(), body.contractor.strip()
+    if "kind" in body.model_fields_set:  # старая форма без поля «вид» не сбрасывает его в «другое»
+        site.kind = body.kind
     await _set_foreman(session, site, body)
     if changed := audit.changes(before, _site_fields(site)):
         audit.record(

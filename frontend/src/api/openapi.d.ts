@@ -299,6 +299,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/snapshots/daily": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * «Кадры дня» камер — по одному в день за последние дни
+         * @description Первый кадр каждой камеры после полудня (SK_DAILY_FRAME_HOUR): по ним видно, как меняется площадка день ото дня.
+         */
+        get: operations["daily_snapshots_api_snapshots_daily_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/alerts": {
         parameters: {
             query?: never;
@@ -481,6 +501,27 @@ export interface paths {
          * @description Какие потоки читать из шлюза. Логин шлюза — sk-tracker, пароль — ключ сервиса. Заголовок X-Api-Key — тот же ключ.
          */
         get: operations["tracker_cameras_api_tracker_cameras_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sites/{site_id}/equipment-usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Сколько работала техника по часам (по рамкам сервиса разметки)
+         * @description По часу, камере и типу техники: сколько машин сразу, сколько минут в кадре и сколько из них двигалась.
+         *     Одну машину могут видеть две камеры — складывать минуты разных камер нельзя, лучше брать максимум по зоне.
+         */
+        get: operations["equipment_usage_api_sites__site_id__equipment_usage_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1116,6 +1157,32 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /**
+         * EquipmentUsageOut
+         * @description Сколько работала техника за час на одной камере (по рамкам сервиса разметки).
+         */
+        EquipmentUsageOut: {
+            /**
+             * Hour
+             * Format: date-time
+             */
+            hour: string;
+            /** Cameraid */
+            cameraId: string;
+            /** Zonekind */
+            zoneKind: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "excavator" | "dump_truck" | "roller" | "manipulator" | "mixer" | "bulldozer" | "truck" | "crane";
+            /** Maxcount */
+            maxCount: number;
+            /** Presentmin */
+            presentMin: number;
+            /** Movingmin */
+            movingMin: number;
+        };
         /** ExtraRow */
         ExtraRow: {
             /**
@@ -1331,6 +1398,12 @@ export interface components {
              * @default
              */
             contractor: string;
+            /**
+             * Kind
+             * @default other
+             * @enum {string}
+             */
+            kind: "residential" | "public" | "road" | "industrial" | "other";
             /** Foremanid */
             foremanId?: string | null;
         };
@@ -1346,6 +1419,11 @@ export interface components {
             contractor: string;
             /** Foreman */
             foreman: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "residential" | "public" | "road" | "industrial" | "other";
             /** Currentstageid */
             currentStageId: string | null;
             /** Planprogress */
@@ -1374,6 +1452,8 @@ export interface components {
             provider: string | null;
             /** Note */
             note: string | null;
+            /** Daily */
+            daily: boolean;
         };
         /** StageIn */
         StageIn: {
@@ -2224,6 +2304,40 @@ export interface operations {
             };
         };
     };
+    daily_snapshots_api_snapshots_daily_get: {
+        parameters: {
+            query?: {
+                /** @description Ограничить одним объектом */
+                siteId?: string | null;
+                cameraId?: string | null;
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_alerts_api_alerts_get: {
         parameters: {
             query?: {
@@ -2535,6 +2649,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TrackerCameraOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    equipment_usage_api_sites__site_id__equipment_usage_get: {
+        parameters: {
+            query?: {
+                hours?: number;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentUsageOut"][];
                 };
             };
             /** @description Validation Error */

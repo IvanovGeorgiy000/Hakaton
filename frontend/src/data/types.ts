@@ -41,12 +41,16 @@ export interface User {
 
 export type SiteStatus = 'ok' | 'warning' | 'critical'
 
+/** Вид объекта: у дороги и у дома разные этапы и техника — подсказка сервису, который определяет этап по кадрам */
+export type SiteKind = 'residential' | 'public' | 'road' | 'industrial' | 'other'
+
 export interface Site {
   id: string
   name: string
   address: string
   contractor: string
   foreman: string
+  kind: SiteKind
   currentStageId: string | null
   /** По всему плану объекта: сколько должно быть сделано по графику и сколько по факту, %. null — плана нет */
   planProgress: number | null
@@ -149,6 +153,8 @@ export interface Snapshot {
   analyzed: boolean
   provider: string | null
   note: string | null
+  /** «Кадр дня» — первый кадр камеры после полудня, хранится две недели */
+  daily: boolean
 }
 
 export type AlertKind = 'missing' | 'count_below' | 'unexpected' | 'idle' | 'camera_offline'
@@ -266,6 +272,7 @@ export interface SiteInput {
   name: string
   address: string
   contractor: string
+  kind?: SiteKind
   /** id прораба; null — снять прораба с объекта; поля нет — прораба не менять */
   foremanId?: string | null
 }

@@ -3,7 +3,7 @@
 import secrets
 from datetime import date, datetime
 
-from sqlalchemy import JSON, Column, Date, ForeignKey, Index, String, Table, Text
+from sqlalchemy import JSON, Column, Date, ForeignKey, Index, String, Table, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base, UTCDateTime, utcnow
@@ -12,6 +12,8 @@ from app.db import Base, UTCDateTime, utcnow
 def new_id(prefix: str) -> str:
     return f"{prefix}_{secrets.token_hex(5)}"
 
+
+SITE_KINDS = ("residential", "public", "road", "industrial", "other")  # жилой дом, соцобъект, дорога, промышленный, другое
 
 # Структура таблиц меняется только вместе с миграцией: uv run alembic revision --autogenerate -m "…" (см. alembic.ini)
 
@@ -52,6 +54,8 @@ class Site(Base):
     address: Mapped[str] = mapped_column(String(200), default="")
     contractor: Mapped[str] = mapped_column(String(200), default="")
     foreman_name: Mapped[str] = mapped_column(String(120), default="")
+    # вид объекта: у дороги и у дома разные этапы и техника — это подсказка сервису, определяющему этап по кадрам
+    kind: Mapped[str] = mapped_column(String(16), default="other", server_default="other")  # см. SITE_KINDS
     position: Mapped[int] = mapped_column(default=0)
     # выполнение объекта не хранится: его считают по календарному плану (services/plan.py)
 
@@ -191,12 +195,36 @@ class Snapshot(Base):
     provider: Mapped[str | None] = mapped_column(String(40))
     analysis_ms: Mapped[int | None]
     note: Mapped[str | None] = mapped_column(Text)
+    # «кадр дня»: первый разобранный кадр камеры после полудня — хранится две недели, чтобы видеть, как меняется площадка
+    daily: Mapped[bool] = mapped_column(default=False, server_default=false())
 
     detections: Mapped[list["Detection"]] = relationship(cascade="all, delete-orphan", lazy="selectin", order_by="Detection.id")
 
     __table_args__ = (
         Index("ix_snapshots_camera_taken", "camera_id", "taken_at"),
         Index("ix_snapshots_site_taken", "site_id", "taken_at"),
+    )
+
+
+class EquipmentUsage(Base):
+    """Сколько работала техника: по часам, камерам и типам — из рамок сервиса разметки (треки 10–15 раз в секунду).
+    present_s — сколько секунд этот тип был в кадре, moving_s — из них двигался, max_count — сколько машин сразу."""
+
+    __tablename__ = "equipment_usage"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    site_id: Mapped[str] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    camera_id: Mapped[str] = mapped_column(ForeignKey("cameras.id", ondelete="CASCADE"))
+    zone_kind: Mapped[str] = mapped_column(String(16))  # вид зоны камеры на момент записи
+    hour: Mapped[datetime] = mapped_column(UTCDateTime)  # начало часа
+    equipment_type: Mapped[str] = mapped_column(String(20))
+    max_count: Mapped[int] = mapped_column(default=0)
+    present_s: Mapped[float] = mapped_column(default=0.0)
+    moving_s: Mapped[float] = mapped_column(default=0.0)
+
+    __table_args__ = (
+        UniqueConstraint("camera_id", "hour", "equipment_type", name="uq_equipment_usage_camera_hour_type"),
+        Index("ix_equipment_usage_site_hour", "site_id", "hour"),
     )
 
 
