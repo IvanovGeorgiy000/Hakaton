@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Moon, MonitorSmartphone, Sun } from 'lucide-react'
 import { useTheme, type ThemeMode } from '@/store/themeContext'
 import { useDismiss } from '@/lib/useDismiss'
+import { useMenuKeys } from '@/lib/useMenuKeys'
 import { cn } from '@/lib/utils'
 
 const OPTIONS: { id: ThemeMode; label: string; Icon: typeof Sun }[] = [
@@ -36,14 +37,18 @@ export function ThemeMenuButton({ className }: { className?: string }) {
   const { mode, theme, setMode } = useTheme()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  useDismiss(ref, open, () => setOpen(false))
+  const trigger = useRef<HTMLButtonElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
+  const close = useCallback(() => setOpen(false), [])
+  useDismiss(ref, open, close)
+  useMenuKeys(menu, trigger, open, close)
   const Current = theme === 'dark' ? Moon : Sun
   const label = OPTIONS.find((o) => o.id === mode)?.label ?? ''
 
   return (
     <div className={cn('relative', className)} ref={ref}>
       <button
-        type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}
+        ref={trigger} type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}
         aria-label={`Оформление: ${label.toLowerCase()}`} title="Оформление"
         className={cn('w-11 h-11 rounded-lg flex items-center justify-center cursor-pointer transition-colors', open ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}
       >
@@ -52,7 +57,7 @@ export function ThemeMenuButton({ className }: { className?: string }) {
       <AnimatePresence>
         {open && (
           <motion.div
-            role="menu" aria-label="Оформление"
+            ref={menu} role="menu" aria-label="Оформление"
             initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }}
             className="absolute right-0 mt-2 w-56 bg-card border border-border rounded-xl shadow-[var(--shadow-pop)] p-1.5 z-40"
           >

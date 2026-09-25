@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { KeyRound, Loader2, Pencil, Phone, Plus, Power, Trash2 } from 'lucide-react'
+import { KeyRound, Loader2, Pencil, Phone, Plus, Power, Search, Trash2 } from 'lucide-react'
 import { api } from '@/api'
 import { ROLES, type RoleId, type User } from '@/data'
 import { useApp } from '@/store/context'
@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { Field, inputCls } from '@/components/ui/Field'
+import { ActionMenu } from '@/components/ui/ActionMenu'
 import { cn } from '@/lib/utils'
 
 /** Сотрудники: завести, изменить роль и объекты, сменить пароль, отключить, удалить (администратор) */
@@ -18,6 +19,24 @@ export function AdminUsers() {
   const [editing, setEditing] = useState<User | 'new' | null>(null)
   const [password, setPassword] = useState<User | null>(null)
   const [removing, setRemoving] = useState<User | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)  // кого сейчас включаем или отключаем — повторное нажатие не шлёт второй запрос
+  const [text, setText] = useState('')
+  const [roleFilter, setRoleFilter] = useState<RoleId | 'all'>('all')
+  const list = useMemo(() => {
+    const words = text.trim().toLowerCase().split(/\s+/).filter(Boolean)
+    return (users.data ?? [])
+      .filter((u) => roleFilter === 'all' || u.role === roleFilter)
+      .filter((u) => {
+        const hay = [u.name, u.login, u.phone, ...u.siteIds.map((id) => bySite(id)?.name)].join(' ').toLowerCase()
+        return words.every((w) => hay.includes(w))
+      })
+  }, [users.data, text, roleFilter, bySite])
+  const toggle = async (u: User) => {
+    if (busy) return
+    setBusy(u.id)
+    await run(() => api.updateUser(u.id, { isActive: !u.isActive }), `${u.name}: ${u.isActive ? 'доступ отключён' : 'доступ включён'}`)
+    setBusy(null)
+  }
 
   return (
     <div>
@@ -29,10 +48,25 @@ export function AdminUsers() {
         </>}
         action={<Button size="lg" onClick={() => setEditing('new')}><Plus className="w-5 h-5" /> Добавить сотрудника</Button>}
       />
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_220px] mb-4">
+        <label className="relative block">
+          <span className="sr-only">Поиск сотрудника</span>
+          <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden />
+          <input type="search" value={text} onChange={(e) => setText(e.target.value)} placeholder="Фамилия, логин, телефон, объект…" className={cn(inputCls, 'pl-10')} />
+        </label>
+        <label>
+          <span className="sr-only">Роль</span>
+          <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as RoleId | 'all')} className={inputCls}>
+            <option value="all">Все роли</option>
+            {ROLES.map((r) => <option key={r.id} value={r.id}>{r.title}</option>)}
+          </select>
+        </label>
+      </div>
       {users.isPending && <p className="text-muted-foreground">Загружаем список…</p>}
       {users.isError && <p role="alert" className="text-danger">Не удалось загрузить сотрудников.</p>}
+      {users.isSuccess && list.length === 0 && <p className="text-muted-foreground">Никого не нашли. Измените поиск или роль.</p>}
       <ul className="space-y-3">
-        {users.data?.map((u) => {
+        {list.map((u) => {
           const self = u.id === me?.id
           return (
             <li key={u.id} className={cn('bg-card rounded-xl border border-border shadow-[var(--shadow-card)] p-4 flex flex-wrap items-center gap-x-5 gap-y-3', !u.isActive && 'opacity-70')}>
@@ -53,18 +87,20 @@ export function AdminUsers() {
                   </a>
                 )}
               </div>
-              <div className="flex flex-wrap gap-2">
+              {/* главное действие — на виду, редкие — в меню «⋯» */}
+              <div className="flex items-center gap-1">
                 <Button variant="outline" size="sm" onClick={() => setEditing(u)}><Pencil className="w-4 h-4" /> Изменить</Button>
-                <Button variant="outline" size="sm" onClick={() => setPassword(u)}><KeyRound className="w-4 h-4" /> Пароль</Button>
-                <Button
-                  variant="outline" size="sm" disabled={self} title={self ? 'Себя отключить нельзя' : undefined}
-                  onClick={() => void run(() => api.updateUser(u.id, { isActive: !u.isActive }), `${u.name}: ${u.isActive ? 'доступ отключён' : 'доступ включён'}`)}
-                >
-                  <Power className="w-4 h-4" /> {u.isActive ? 'Отключить' : 'Включить'}
-                </Button>
-                <Button variant="ghost" size="sm" disabled={self} aria-label={`Удалить ${u.name}`} title={self ? 'Себя удалить нельзя' : undefined} onClick={() => setRemoving(u)}>
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+                <ActionMenu
+                  label={`Ещё действия: ${u.name}`}
+                  actions={[
+                    { label: 'Сменить пароль', Icon: KeyRound, onSelect: () => setPassword(u) },
+                    {
+                      label: u.isActive ? 'Отключить доступ' : 'Включить доступ', Icon: Power, onSelect: () => void toggle(u),
+                      disabled: self || busy === u.id, hint: self ? 'Себя отключить нельзя' : undefined,
+                    },
+                    { label: 'Удалить', Icon: Trash2, danger: true, onSelect: () => setRemoving(u), disabled: self, hint: 'Себя удалить нельзя' },
+                  ]}
+                />
               </div>
             </li>
           )
@@ -91,7 +127,17 @@ export function AdminUsers() {
             <p>«{removing.name}» больше не сможет войти в систему. Его ответы на отклонения и записи в журнале действий сохранятся.</p>
             <p className="text-muted-foreground text-[15px]">Если сотрудник может вернуться, лучше отключите его — удалять не обязательно.</p>
             <div className="flex flex-wrap gap-3">
-              <Button variant="danger" size="lg" onClick={async () => { if (await run(() => api.deleteUser(removing.id), `${removing.name} удалён`)) setRemoving(null) }}>Удалить</Button>
+              <Button
+                variant="danger" size="lg" disabled={busy === removing.id}
+                onClick={async () => {
+                  setBusy(removing.id)
+                  const ok = await run(() => api.deleteUser(removing.id), `${removing.name} удалён`)
+                  setBusy(null)
+                  if (ok) setRemoving(null)
+                }}
+              >
+                {busy === removing.id && <Loader2 className="w-5 h-5 animate-spin" />} Удалить
+              </Button>
               <Button variant="outline" size="lg" onClick={() => setRemoving(null)}>Отмена</Button>
             </div>
           </div>
