@@ -3,7 +3,7 @@
 import secrets
 from datetime import date, datetime
 
-from sqlalchemy import JSON, Column, Date, ForeignKey, Index, String, Table, Text, UniqueConstraint, false
+from sqlalchemy import JSON, Column, Date, ForeignKey, Index, String, Table, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base, UTCDateTime, utcnow
@@ -195,8 +195,6 @@ class Snapshot(Base):
     provider: Mapped[str | None] = mapped_column(String(40))
     analysis_ms: Mapped[int | None]
     note: Mapped[str | None] = mapped_column(Text)
-    # «кадр дня»: первый разобранный кадр камеры после полудня — хранится две недели, чтобы видеть, как меняется площадка
-    daily: Mapped[bool] = mapped_column(default=False, server_default=false())
 
     detections: Mapped[list["Detection"]] = relationship(cascade="all, delete-orphan", lazy="selectin", order_by="Detection.id")
 

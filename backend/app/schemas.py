@@ -333,7 +333,6 @@ class SnapshotOut(ApiModel):
     analyzed: bool
     provider: str | None
     note: str | None
-    daily: bool  # «кадр дня» — хранится две недели, по нему видно, как меняется площадка
 
 
 def snapshot_out(s: Snapshot) -> SnapshotOut:
@@ -345,7 +344,6 @@ def snapshot_out(s: Snapshot) -> SnapshotOut:
         analyzed=s.analyzed,
         provider=s.provider,
         note=s.note,
-        daily=s.daily,
         detections=[
             DetectionOut(
                 id=f"d{d.id}",

@@ -1,11 +1,9 @@
-from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Query
 from sqlalchemy import func, select
 
 from app.api.deps import CameraIdQuery, SiteIdQuery, scope
-from app.db import utcnow
 from app.models import Snapshot
 from app.schemas import SnapshotOut, snapshot_out
 from app.security import CurrentUser, Session
@@ -33,22 +31,4 @@ async def list_snapshots(
         .where(Snapshot.id.in_(select(ranked.c.id).where(ranked.c.rank <= per_camera)))
         .order_by(Snapshot.taken_at.desc())
     )
-    return [snapshot_out(s) for s in rows]
-
-
-@router.get("/daily", response_model=list[SnapshotOut], summary="«Кадры дня» камер — по одному в день за последние дни")
-async def daily_snapshots(
-    user: CurrentUser,
-    session: Session,
-    site_id: SiteIdQuery = None,
-    camera_id: CameraIdQuery = None,
-    days: Annotated[int, Query(ge=1, le=60)] = 14,
-) -> list[SnapshotOut]:
-    """Первый кадр каждой камеры после полудня (SK_DAILY_FRAME_HOUR): по ним видно, как меняется площадка день ото дня."""
-    query = scope(select(Snapshot), Snapshot.site_id, user, site_id).where(
-        Snapshot.daily, Snapshot.taken_at >= utcnow() - timedelta(days=days)
-    )
-    if camera_id:
-        query = query.where(Snapshot.camera_id == camera_id)
-    rows = await session.scalars(query.order_by(Snapshot.taken_at.desc()))
     return [snapshot_out(s) for s in rows]

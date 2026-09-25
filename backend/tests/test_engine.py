@@ -1,6 +1,6 @@
 """Движок сверки: что он находит в кадрах из видео и как ведёт предупреждения дальше."""
 
-from datetime import UTC, timedelta
+from datetime import timedelta
 
 import pytest
 
@@ -155,46 +155,15 @@ async def test_cleanup_keeps_evidence_and_bounds_growth(client, monkeypatch):
     # 10 минут: доказательств у отклонения не больше шести — остальные кадры обычные, их и должна убирать чистка
     await _minutes("s1", {"c1": "pit-excavator", "c2": "gate-crane"}, 10)
     monkeypatch.setattr(engine.settings, "keep_frames_per_camera", 2)
-    monkeypatch.setattr(engine.settings, "keep_daily_frames_days", 1)  # «кадры дня» — только за сегодня
     monkeypatch.setattr(engine, "KEEP_CHECKS_PER_SITE", 3)
     async with SessionLocal() as session:
         evidence_before = set(await session.scalars(select(alert_evidence.c.snapshot_id)))
-        today = engine.local_day_start(engine.local_day(utcnow()))
-        daily_today = set(await session.scalars(select(Snapshot.id).where(Snapshot.daily, Snapshot.taken_at >= today)))
         assert await engine.cleanup_frames(session) > 0
         left = set(await session.scalars(select(Snapshot.id)))
         assert evidence_before <= left  # ни один кадр-доказательство не удалён
-        assert daily_today <= left  # «кадры дня» не попадают под лимит на камеру
-        old_daily = select(Snapshot.id).where(
-            Snapshot.daily, Snapshot.taken_at < today, Snapshot.id.not_in(select(alert_evidence.c.snapshot_id))
-        )
-        assert not list(await session.scalars(old_daily))  # а старше срока — удаляются
+        # сверх лимита остаются только доказательства: на камеру — не больше 2 обычных кадров
+        per_camera = select(Snapshot.camera_id, func.count()).where(Snapshot.id.not_in(select(alert_evidence.c.snapshot_id)))
+        assert all(n <= 2 for _, n in (await session.execute(per_camera.group_by(Snapshot.camera_id))).all())
         assert await session.scalar(select(func.count()).select_from(CheckRun).where(CheckRun.site_id == "s1")) == 3
     foreman = await login_as(client, "foreman")
     assert (await client.get("/api/alerts", headers=foreman)).status_code == 200  # интерфейс после чистки работает
-
-
-async def test_daily_frame_is_the_first_after_noon(client):
-    from datetime import datetime
-
-    from sqlalchemy import select
-
-    from app.db import SessionLocal
-    from app.models import Snapshot
-    from app.services import engine
-
-    day = engine.local_day(utcnow()) + timedelta(days=1)  # завтра: в этот день кадров ещё нет ни у одной камеры
-
-    def local(hour: int, minute: int = 0):  # noqa: ANN202
-        return datetime.combine(day, datetime.min.time().replace(hour=hour, minute=minute), engine.TZ).astimezone(UTC)
-
-    for moment in (local(11, 50), local(12, 5), local(12, 6)):
-        await feed("c1", "pit-excavator", at=moment)
-        await check("s1", at=moment)
-    async with SessionLocal() as session:
-        frames = list(
-            await session.scalars(
-                select(Snapshot).where(Snapshot.camera_id == "c1", Snapshot.taken_at >= local(11)).order_by(Snapshot.taken_at)
-            )
-        )
-    assert [s.daily for s in frames] == [False, True, False]  # до полудня — нет; первый после — да; следующий — уже нет

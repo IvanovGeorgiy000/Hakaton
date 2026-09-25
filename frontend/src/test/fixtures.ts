@@ -17,7 +17,7 @@ export function camera(p: Partial<Camera> = {}): Camera {
 }
 
 export function snapshot(detections: Snapshot['detections']): Snapshot {
-  return { id: `sn-${detections.length}`, cameraId: 'c1', takenAt: '2026-09-25T10:00:00Z', imageUrl: '', detections, analyzed: true, provider: null, note: null, daily: false }
+  return { id: `sn-${detections.length}`, cameraId: 'c1', takenAt: '2026-09-25T10:00:00Z', imageUrl: '', detections, analyzed: true, provider: null, note: null }
 }
 
 export function alert(p: Partial<Alert> = {}): Alert {

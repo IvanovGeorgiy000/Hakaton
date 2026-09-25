@@ -19,7 +19,7 @@ import asyncio
 import logging
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
@@ -27,7 +27,6 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.db import utcnow
 from app.models import (
     OPEN_STATUSES,
     Alert,
@@ -154,37 +153,12 @@ async def process_frame(
             same = [p for p in previous.detections if p.equipment_type == d.type]
             item.moving = not any(iou(item, p) >= IDLE_IOU for p in same)
         snapshot.detections.append(item)
-    snapshot.daily = analyzed and await _first_after_noon(session, camera.id, at)
     session.add(snapshot)
 
     camera.status, camera.last_error = "online", None
     camera.last_seen_at = max(at, camera.last_seen_at) if camera.last_seen_at else at
     camera.last_snapshot_at = max(at, camera.last_snapshot_at) if camera.last_snapshot_at else at
     return snapshot
-
-
-def local_day_start(day: date) -> datetime:
-    """Полночь местного дня — в UTC, как хранится время в базе"""
-    return datetime.combine(day, time(0), TZ).astimezone(UTC)
-
-
-async def _first_after_noon(session: AsyncSession, camera_id: str, at: datetime) -> bool:
-    """Это «кадр дня»? — первый разобранный кадр камеры после daily_frame_hour по местному времени.
-    Такие кадры хранятся две недели: по ним видно, как меняется площадка (котлован углубляется, растёт каркас)."""
-    if at.astimezone(TZ).hour < settings.daily_frame_hour:
-        return False
-    start = local_day_start(local_day(at))
-    taken = await session.scalar(
-        select(Snapshot.id)
-        .where(
-            Snapshot.camera_id == camera_id,
-            Snapshot.daily,
-            Snapshot.taken_at >= start,
-            Snapshot.taken_at < start + timedelta(days=1),
-        )
-        .limit(1)
-    )
-    return taken is None
 
 
 class _Frame(Protocol):
@@ -634,13 +608,11 @@ KEEP_CHECKS_PER_SITE = 600
 
 
 async def cleanup_frames(session: AsyncSession) -> int:
-    """Удалить старые кадры сверх лимита на камеру и старые записи проверок. Кадры-доказательства не трогаем,
-    «кадры дня» живут своё время (keep_daily_frames_days), учёт работы техники — keep_usage_days."""
+    """Удалить старые кадры сверх лимита на камеру, старые записи проверок и учёт работы техники старше
+    keep_usage_days. Кадры-доказательства не трогаем."""
     removed = 0
     evidence_ids = select(alert_evidence.c.snapshot_id)
-    now = utcnow()
     await cleanup_usage(session)
-    daily_until = local_day_start(local_day(now) - timedelta(days=settings.keep_daily_frames_days - 1))
     for site_id in await session.scalars(select(Site.id)):
         stale = select(CheckRun.id).where(CheckRun.site_id == site_id).order_by(CheckRun.at.desc()).offset(KEEP_CHECKS_PER_SITE)
         await session.execute(delete(CheckRun).where(CheckRun.id.in_(stale)))
@@ -648,19 +620,9 @@ async def cleanup_frames(session: AsyncSession) -> int:
         old = list(
             await session.scalars(
                 select(Snapshot)
-                .where(Snapshot.camera_id == camera_id, Snapshot.id.not_in(evidence_ids), Snapshot.daily.is_(False))
+                .where(Snapshot.camera_id == camera_id, Snapshot.id.not_in(evidence_ids))
                 .order_by(Snapshot.taken_at.desc())
                 .offset(settings.keep_frames_per_camera)
-            )
-        )
-        old += list(
-            await session.scalars(
-                select(Snapshot).where(
-                    Snapshot.camera_id == camera_id,
-                    Snapshot.id.not_in(evidence_ids),
-                    Snapshot.daily,
-                    Snapshot.taken_at < daily_until,
-                )
             )
         )
         for snapshot in old:

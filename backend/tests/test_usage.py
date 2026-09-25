@@ -1,4 +1,4 @@
-"""Учёт работы техники по рамкам сервиса разметки, «кадры дня», вид объекта."""
+"""Учёт работы техники по рамкам в реальном времени, вид объекта."""
 
 from datetime import UTC, datetime
 
@@ -74,14 +74,6 @@ async def test_usage_is_saved_and_shown_by_site(client):
     ]
     foreman = await login_as(client, "foreman")  # у прораба только объект s1, камера c4 — чужая
     assert (await client.get("/api/sites/s2/equipment-usage", headers=foreman)).status_code == 404
-
-
-@pytest.mark.anyio
-async def test_daily_frames_api(client):
-    foreman = await login_as(client, "foreman")
-    frames = (await client.get("/api/snapshots/daily?days=14", headers=foreman)).json()
-    assert frames and all(f["daily"] for f in frames)
-    assert all(f["cameraId"] in {"c1", "c2", "c3"} for f in frames)  # только камеры своего объекта
 
 
 @pytest.mark.anyio

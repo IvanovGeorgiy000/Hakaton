@@ -299,26 +299,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/snapshots/daily": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * «Кадры дня» камер — по одному в день за последние дни
-         * @description Первый кадр каждой камеры после полудня (SK_DAILY_FRAME_HOUR): по ним видно, как меняется площадка день ото дня.
-         */
-        get: operations["daily_snapshots_api_snapshots_daily_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/alerts": {
         parameters: {
             query?: never;
@@ -1469,8 +1449,6 @@ export interface components {
             provider: string | null;
             /** Note */
             note: string | null;
-            /** Daily */
-            daily: boolean;
         };
         /** StageIn */
         StageIn: {
@@ -2326,40 +2304,6 @@ export interface operations {
                 siteId?: string | null;
                 cameraId?: string | null;
                 perCamera?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SnapshotOut"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    daily_snapshots_api_snapshots_daily_get: {
-        parameters: {
-            query?: {
-                /** @description Ограничить одним объектом */
-                siteId?: string | null;
-                cameraId?: string | null;
-                days?: number;
             };
             header?: never;
             path?: never;

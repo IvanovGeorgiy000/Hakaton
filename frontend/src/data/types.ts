@@ -153,8 +153,6 @@ export interface Snapshot {
   analyzed: boolean
   provider: string | null
   note: string | null
-  /** «Кадр дня» — первый кадр камеры после полудня, хранится две недели */
-  daily: boolean
 }
 
 export type AlertKind = 'missing' | 'count_below' | 'unexpected' | 'idle' | 'camera_offline'
