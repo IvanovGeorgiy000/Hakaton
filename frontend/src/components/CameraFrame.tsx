@@ -28,8 +28,9 @@ export function CameraFrame({ camera, snapshot, highlight, showLabels = true, sh
   const dets = snapshot?.detections ?? []
   // у демонстрационных камер номер из идентификатора (c1 → CAM-01), у добавленных — короткий код
   const camNo = /^c\d+$/.test(camera.id) ? `CAM-${camera.id.slice(1).padStart(2, '0')}` : `CAM-${camera.id.slice(-4).toUpperCase()}`
+  // только span: кадр стоит внутри кнопок (строка отклонения, «развернуть кадр»), а в <button> div недопустим
   return (
-    <div className={cn('relative w-full aspect-video rounded-lg overflow-hidden bg-slate-900 select-none', className)}>
+    <span className={cn('relative block w-full aspect-video rounded-lg overflow-hidden bg-slate-900 select-none', className)}>
       {snapshot?.imageUrl ? (
         <img src={mediaUrl(snapshot.imageUrl)} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
       ) : (
@@ -61,22 +62,22 @@ export function CameraFrame({ camera, snapshot, highlight, showLabels = true, sh
             <filter id={`${gid}-n`}><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" /></filter>
             <rect width="100%" height="100%" filter={`url(#${gid}-n)`} />
           </svg>
-          <div className="absolute inset-0 pointer-events-none" aria-hidden style={{ background: 'radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.38) 100%)' }} />
+          <span className="absolute inset-0 pointer-events-none" aria-hidden style={{ background: 'radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.38) 100%)' }} />
         </>
       )}
 
       {offline && (
-        <div className="absolute inset-0 bg-slate-950/85 flex flex-col items-center justify-center text-white">
+        <span className="absolute inset-0 bg-slate-950/85 flex flex-col items-center justify-center text-white">
           <span className={thumb ? 'text-sm font-semibold' : 'text-2xl font-semibold'}>Нет сигнала</span>
           {!thumb && <span className="text-sm opacity-80">последний кадр {snapshot ? fmtWhen(snapshot.takenAt) : '—'}</span>}
-        </div>
+        </span>
       )}
 
       {/* Кадр получен, но разобрать его не удалось (например, демо-анализатор не знает этот вид) */}
       {!offline && !thumb && snapshot && !snapshot.analyzed && (
-        <div className="absolute inset-x-0 bottom-0 bg-slate-950/75 text-white text-[13px] px-3 py-2 pr-40">
+        <span className="absolute inset-x-0 bottom-0 bg-slate-950/75 text-white text-[13px] px-3 py-2 pr-40">
           Кадр получен, техника не распознана: {snapshot.note ?? 'сервис анализа недоступен'}
-        </div>
+        </span>
       )}
 
       {/* Рамки распознавания */}
@@ -84,7 +85,7 @@ export function CameraFrame({ camera, snapshot, highlight, showLabels = true, sh
         const info = EQUIPMENT[d.type]
         const hl = !highlight || highlight.includes(d.type)
         return (
-          <div
+          <span
             key={d.id}
             className="absolute"
             style={{
@@ -101,30 +102,30 @@ export function CameraFrame({ camera, snapshot, highlight, showLabels = true, sh
                 {info.name} {d.confidence.toFixed(2)}
               </span>
             )}
-          </div>
+          </span>
         )
       })}
 
       {/* Экранные надписи камеры */}
       {!thumb && (
         <>
-          <div className="absolute left-2 top-2 text-white text-[11px] sm:text-[12px] font-mono leading-tight [text-shadow:0_1px_2px_rgba(0,0,0,.9)]">
-            <div className="font-semibold">{camNo}</div>
-            <div className="opacity-90">{camera.name.split('—')[1]?.trim() ?? camera.name}</div>
-          </div>
+          <span className="absolute left-2 top-2 text-white text-[11px] sm:text-[12px] font-mono leading-tight [text-shadow:0_1px_2px_rgba(0,0,0,.9)]">
+            <span className="block font-semibold">{camNo}</span>
+            <span className="block opacity-90">{camera.name.split('—')[1]?.trim() ?? camera.name}</span>
+          </span>
           {!offline && (
-            <div className="absolute right-2 top-2 flex items-center gap-1.5 text-white text-[11px] sm:text-[12px] font-mono [text-shadow:0_1px_2px_rgba(0,0,0,.9)]">
+            <span className="absolute right-2 top-2 flex items-center gap-1.5 text-white text-[11px] sm:text-[12px] font-mono [text-shadow:0_1px_2px_rgba(0,0,0,.9)]">
               <span className="w-2 h-2 rounded-full bg-red-500" /> REC
-            </div>
+            </span>
           )}
           {snapshot && (
-            <div className="absolute right-2 bottom-2 text-white text-[11px] sm:text-[12px] font-mono [text-shadow:0_1px_2px_rgba(0,0,0,.9)]">
+            <span className="absolute right-2 bottom-2 text-white text-[11px] sm:text-[12px] font-mono [text-shadow:0_1px_2px_rgba(0,0,0,.9)]">
               {fmtDateShort(snapshot.takenAt)} {fmtTimeSec(snapshot.takenAt)}
-            </div>
+            </span>
           )}
         </>
       )}
-    </div>
+    </span>
   )
 }
 
