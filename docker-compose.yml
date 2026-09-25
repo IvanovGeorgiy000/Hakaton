@@ -3,9 +3,11 @@
 # Порты можно сменить: WEB_PORT=8081 API_PORT=8101 VIDEO_PORT=8890 VIDEO_UDP_PORT=8190 docker compose up --build
 # Открываете стенд с другого устройства (телефон в той же сети) — укажите адрес этого компьютера:
 #   VIDEO_PUBLIC_HOST=192.168.1.10 docker compose up
-# Рамки техники в реальном времени с имитацией сервиса разметки (пока настоящего сервиса нет):
+# Технику на видео распознаёт своя модель (backend/models/detector.onnx) прямо в бэкенде — и на кадрах раз в 2 с, и рамками
+# в реальном времени по видео камер, которые смотрят. В Docker она считает на процессоре (~70 мс на кадр).
+# Вместо неё — имитация внешнего сервиса разметки (рамки по разметке демо-роликов):
 #   SK_TRACKER_URL=ws://tracker:8200/stream SK_TRACKER_API_KEY=dev-tracker-key docker compose --profile tracker up --build
-# Настоящий сервис разметки на другом компьютере: он читает видео по RTSP (порт 8554, логин sk-tracker, пароль — ключ)
+# Внешний сервис разметки на другом компьютере: он читает видео по RTSP (порт 8554, логин sk-tracker, пароль — ключ)
 # и должен знать адрес этого компьютера:
 #   SK_TRACKER_URL=ws://<адрес сервиса>:8200/stream SK_TRACKER_API_KEY=<ключ> SK_TRACKER_RTSP_URL=rtsp://192.168.1.10:8554 \
 #   SK_ANALYSIS_PROVIDER=push docker compose up --build
@@ -54,11 +56,12 @@ services:
       SK_VIDEO_WEBRTC_URL: http://${VIDEO_PUBLIC_HOST:-localhost}:${VIDEO_PORT:-8889}
       SK_FRAME_INTERVAL_S: ${SK_FRAME_INTERVAL_S:-2}
       SK_CHECK_INTERVAL_S: ${SK_CHECK_INTERVAL_S:-60}
-      SK_ANALYSIS_PROVIDER: ${SK_ANALYSIS_PROVIDER:-mock}
+      SK_ANALYSIS_PROVIDER: ${SK_ANALYSIS_PROVIDER:-auto}  # auto — своя модель; mock — демо-разметка роликов
       SK_ANALYSIS_API_URL: ${SK_ANALYSIS_API_URL:-}
       SK_ANALYSIS_API_KEY: ${SK_ANALYSIS_API_KEY:-}
       SK_INGEST_API_KEY: ${SK_INGEST_API_KEY:-}
-      SK_TRACKER_URL: ${SK_TRACKER_URL:-}  # WebSocket сервиса разметки; пусто — рамки из анализа раз в 2 с
+      SK_REALTIME_FPS: ${SK_REALTIME_FPS:-8}  # рамки своей моделью по видео камер, которые смотрят; 0 — только раз в 2 с
+      SK_TRACKER_URL: ${SK_TRACKER_URL:-}  # WebSocket внешнего сервиса разметки; пусто — рамки своей модели
       SK_TRACKER_API_KEY: ${SK_TRACKER_API_KEY:-}
       SK_TRACKER_RTSP_URL: ${SK_TRACKER_RTSP_URL:-}  # адрес видеошлюза для сервиса на другом компьютере
       SK_TRACKER_VIDEO_DELAY_MS: ${SK_TRACKER_VIDEO_DELAY_MS:-150}

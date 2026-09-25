@@ -1,4 +1,5 @@
-"""Сколько работала техника — по рамкам сервиса разметки (10–15 сообщений в секунду на камеру).
+"""Сколько работала техника — по рамкам в реальном времени: своей модели (видео — до 8 раз в секунду, а камеры, которые
+никто не смотрит, — раз в 2 с по анализу кадров) или внешнего сервиса разметки (10–15 сообщений в секунду на камеру).
 
 По каждой камере и типу техники копим за час: сколько секунд тип был в кадре, сколько из них двигался и сколько
 машин было одновременно. Раз в минуту накопленное дописывается в базу (таблица equipment_usage).
@@ -30,6 +31,12 @@ MOVE_MIN = 1.0  # % кадра
 FORGET_TRACK_S = 60.0
 
 
+def max_gap() -> float:
+    """Промежуток между сообщениями, который ещё засчитываем. Рамки из анализа кадров приходят раз в frame_interval_s
+    (камеру никто не смотрит) — с запасом на неровный шаг: иначе каждый промежуток обрезался бы до 2 с."""
+    return max(MAX_GAP_S, settings.frame_interval_s * 1.5)
+
+
 @dataclass
 class Cell:
     present_s: float = 0.0
@@ -54,7 +61,7 @@ class UsageMeter:
     def add(self, message: dict, now: float, wall: datetime) -> None:
         """message — сообщение сервиса в нашем виде (tracks.normalize); now — монотонное время, wall — UTC."""
         camera = message["cameraId"]
-        dt = min(max(now - self._last.get(camera, now), 0.0), MAX_GAP_S)
+        dt = min(max(now - self._last.get(camera, now), 0.0), max_gap())
         self._last[camera] = now
         hour = wall.replace(minute=0, second=0, microsecond=0)
         counts: Counter[str] = Counter()

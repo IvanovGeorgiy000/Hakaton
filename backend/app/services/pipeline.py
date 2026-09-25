@@ -1,7 +1,7 @@
-"""Конвейер живого видео: кадр каждые 2 секунды → сервис анализа → сверка объекта с планом раз в минуту.
+"""Конвейер живого видео: кадр каждые 2 секунды → анализ → сверка объекта с планом раз в минуту.
 
 • С каждой включённой камеры кадры берутся прямо из её видеопотока в шлюзе (ffmpeg, fps = 1/frame_interval_s).
-  Каждый кадр уходит в сервис анализа (сейчас — встроенная заглушка, потом — внешний сервис по адресу из настроек).
+  Каждый кадр разбирает анализатор: своя модель в сервере, демо-заглушка или внешний сервис — по настройкам.
   Анализ не успевает за кадрами — берётся самый свежий кадр, старые отбрасываются: очередь не копится.
 • Результаты держим в памяти (последняя минута по каждой камере) — их видно в интерфейсе поверх видео.
 • Раз в check_interval_s объект сверяется с правилом этапа. В базу пишется по одному кадру на камеру
@@ -24,6 +24,7 @@ from app.models import Camera, Site
 from app.services import video
 from app.services.analysis import AnalysisError, AnalysisResult, get_analyzer
 from app.services.engine import check_site, cleanup_frames
+from app.services.tracks import get_relay
 
 log = logging.getLogger("stroykontrol.pipeline")
 settings = get_settings()
@@ -127,6 +128,8 @@ class Pipeline:
         if settings.video_enabled:  # без шлюза (тесты) его не трогаем — даже если на этом компьютере он запущен
             await self._sync_gateway(wanted)
 
+        if (tracking := get_relay().local) is not None:  # своя модель: чьё видео можно разбирать в реальном времени
+            tracking.set_cameras(wanted)
         analyzer = get_analyzer()
         for camera in wanted.values():
             if hasattr(analyzer, "bind_camera"):  # демо-анализатору говорим, какой ролик показывает камера
@@ -237,6 +240,12 @@ class Pipeline:
             frame = LiveFrame(at=at, jpeg=jpeg, result=result)
             live.frame = frame
             live.history.append(frame)
+            # своя модель: рамки кадра — ещё и в поток рамок (учёт работы техники; браузеру — пока видео не разбирается)
+            if result.supported and (tracking := get_relay().local) is not None:
+                try:
+                    tracking.feed(camera_id, at, result.detections)
+                except Exception:  # noqa: BLE001 — сбой рамок не должен останавливать анализ кадров камеры
+                    log.exception("Рамки по кадру камеры %s не отправлены", camera_id)
 
     # ---------- сверка ----------
     async def check(self, site_id: str, *, trigger: str, at: datetime | None = None) -> None:

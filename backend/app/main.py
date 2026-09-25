@@ -16,8 +16,9 @@ from app.db import SessionLocal, engine, utcnow
 from app.schemas import ApiModel
 from app.seed import prepare_database
 from app.services import video
-from app.services.analysis import get_analyzer
+from app.services.analysis import LocalAnalyzer, get_analyzer, provider_name
 from app.services.pipeline import get_pipeline
+from app.services.realtime import LiveTracking
 from app.services.tracks import get_relay
 
 VERSION = "0.10.0"
@@ -32,18 +33,22 @@ async def lifespan(_: FastAPI):
         raise RuntimeError("Боевой запуск (SK_DEMO_MODE=false) с небезопасными настройками:\n- " + "\n- ".join(problems))
     settings.frames_dir.mkdir(parents=True, exist_ok=True)
     await prepare_database()
+    analyzer, relay = get_analyzer(), get_relay()  # своя модель загружается здесь — до первого кадра
     log.info(
         "Анализ кадров: %s, кадр с камеры раз в %.0f с, сверка раз в %d с",
-        get_analyzer().name,
+        provider_name(),
         settings.frame_interval_s,
         settings.check_interval_s,
     )
+    if isinstance(analyzer, LocalAnalyzer) and not settings.tracker_url:
+        # рамки в реальном времени — своей моделью (внешний сервис разметки, если задан, важнее); до запуска конвейера:
+        # он сообщает, какие камеры включены
+        relay.local = LiveTracking(analyzer.detector, relay.deliver, relay.watched)
     feeds, pipeline = video.DemoFeeds(), get_pipeline()
     if settings.video_enabled:
         feeds.start()  # демо-ролики → шлюз
         pipeline.start()  # потоки камер в шлюзе, кадры на анализ, сверка объектов
-    relay = get_relay()
-    relay.start()  # рамки в реальном времени — если подключён сервис разметки (SK_TRACKER_URL)
+    relay.start()  # рамки в реальном времени: своя модель или внешний сервис разметки (SK_TRACKER_URL)
     yield
     await relay.stop()
     await pipeline.stop()
@@ -69,10 +74,10 @@ class VideoOut(ApiModel):
 
 
 class TrackerOut(ApiModel):
-    """Рамки в реальном времени от сервиса разметки (WebSocket /api/tracks)."""
+    """Рамки в реальном времени (WebSocket /api/tracks): своя модель по видео камер или внешний сервис разметки."""
 
     enabled: bool
-    connected: bool  # сервер сейчас получает рамки от сервиса
+    connected: bool  # рамки могут идти: модель загружена / к сервису есть подключение
     video_delay_ms: int  # на столько придержать видео, чтобы рамки совпадали с картинкой
     last_message_at: str | None  # когда пришло последнее сообщение — видно, идут ли рамки вообще
 
@@ -122,7 +127,7 @@ async def meta() -> MetaOut:
     return MetaOut(
         version=VERSION,
         demo_mode=settings.demo_mode,
-        analysis_provider=settings.analysis_provider,
+        analysis_provider=provider_name(),
         timezone=settings.timezone,
         server_time=utcnow().isoformat(),
         database="sqlite" if settings.is_sqlite else "postgresql",

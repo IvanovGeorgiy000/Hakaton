@@ -1,8 +1,10 @@
-"""Рамки техники в реальном времени: приём от сервиса разметки и раздача браузерам.
+"""Рамки техники в реальном времени: откуда они берутся и как раздаются браузерам.
 
-Сервис разметки (детектор + трекер) сам читает видео камер из шлюза и отдаёт по WebSocket сообщения
-«кадр камеры → объекты с track_id». Сервер держит одно подключение к нему и пересылает каждому браузеру
-только те камеры, которые тот открыл и которые пользователю разрешено видеть.
+Два источника:
+  • своя модель (SK_ANALYSIS_PROVIDER=local/auto, см. services/realtime.py) — сама разбирает видео камер, которые смотрят;
+  • внешний сервис разметки (SK_TRACKER_URL) — детектор + трекер: сам читает видео камер из шлюза и отдаёт
+    по WebSocket сообщения «кадр камеры → объекты с track_id»; сервер держит одно подключение к нему.
+Каждому браузеру уходят только те камеры, которые он открыл и которые пользователю разрешено видеть.
 
 Формат сообщения сервиса (одно на обработанный кадр одной камеры):
     {"camera_id": "c1", "ts": "2026-09-25T10:15:03.120+03:00", "frame_w": 1920, "frame_h": 1080,
@@ -18,7 +20,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import websockets
 
@@ -26,6 +28,9 @@ from app.config import get_settings
 from app.db import SessionLocal, utcnow
 from app.services.analysis.base import DetectionError, UnknownType, pad_box, read_detection
 from app.services.usage import UsageMeter, cleanup_usage, save
+
+if TYPE_CHECKING:
+    from app.services.realtime import LiveTracking
 
 log = logging.getLogger("stroykontrol.tracks")
 settings = get_settings()
@@ -125,7 +130,8 @@ class Subscriber:
 class TrackRelay:
     def __init__(self) -> None:
         self.subscribers: set[Subscriber] = set()
-        self.connected = False
+        self.local: LiveTracking | None = None  # своя модель вместо внешнего сервиса (задаётся при запуске сервера)
+        self._connected = False  # есть подключение к внешнему сервису
         self.messages = 0  # сколько сообщений пришло с запуска
         self.last_message_at: datetime | None = None
         self.problem: str | None = None  # последняя ошибка формата — видна администратору в /api/tracker/status
@@ -136,15 +142,45 @@ class TrackRelay:
         self._flush_task: asyncio.Task | None = None
 
     @property
-    def enabled(self) -> bool:
+    def external(self) -> bool:
         return bool(settings.tracker_url)
 
+    @property
+    def source(self) -> str | None:
+        """Откуда рамки в реальном времени: service — внешний сервис разметки, model — своя модель по видео, None — ниоткуда."""
+        if self.external:
+            return "service"
+        if self.local is not None and self.local.realtime:
+            return "model"
+        return None
+
+    @property
+    def enabled(self) -> bool:
+        """Браузеру есть смысл подключаться к /api/tracks."""
+        return self.source is not None
+
+    @property
+    def connected(self) -> bool:
+        """Рамки могут идти: к внешнему сервису есть подключение / своя модель загружена."""
+        return self._connected if self.external else self.local is not None
+
+    def watched(self) -> set[str]:
+        """Камеры, которые сейчас кто-то смотрит (с учётом прав на них)."""
+        return set().union(*(s.wanted for s in self.subscribers))
+
     def start(self) -> None:
-        if self.enabled and self._task is None:
+        if self.external and self._task is None:
             self._task = asyncio.create_task(self._run(), name="track-relay")
+        # учёт работы техники — по рамкам любого источника; своя модель без видео тоже даёт рамки (раз в 2 с)
+        if (self.external or self.local is not None) and self._flush_task is None:
             self._flush_task = asyncio.create_task(self._flush_loop(), name="equipment-usage")
+        if self.local is not None:
+            self.local.start()
 
     async def stop(self) -> None:
+        if self.local is not None:
+            await self.local.stop()
+            self.local = None
         for task in (self._task, self._flush_task):
             if task:
                 task.cancel()
@@ -182,17 +218,25 @@ class TrackRelay:
                 log.exception("Учёт работы техники не записан")
 
     def publish(self, raw: Any) -> None:
-        now, loop_time = utcnow(), asyncio.get_running_loop().time()
-        self.messages += 1
-        self.last_message_at = now
+        """Сообщение внешнего сервиса разметки: проверить формат и раздать."""
         message, problems = normalize(raw)
         if problems:
+            now, loop_time = utcnow(), asyncio.get_running_loop().time()
             self.problem, self.problem_at = problems[0], now
             if loop_time - self._warned_at >= WARN_EVERY_S:
                 self._warned_at = loop_time
                 log.warning("Сервис разметки прислал рамки не по формату: %s", problems[0])
         if message is None:
+            self.messages += 1
+            self.last_message_at = utcnow()
             return
+        self.deliver(message)
+
+    def deliver(self, message: dict) -> None:
+        """Рамки в нашем виде (как после normalize) → учёт работы техники и браузеры, которые смотрят эту камеру."""
+        now, loop_time = utcnow(), asyncio.get_running_loop().time()
+        self.messages += 1
+        self.last_message_at = now
         self.usage.add(message, loop_time, now)
         text = json.dumps(message, ensure_ascii=False, separators=(",", ":"))
         for subscriber in self.subscribers:
@@ -204,7 +248,7 @@ class TrackRelay:
         while True:
             try:
                 async with websockets.connect(settings.tracker_url, additional_headers=headers, max_size=2**20) as ws:
-                    self.connected, delay = True, RETRY_MIN_S
+                    self._connected, delay = True, RETRY_MIN_S
                     log.info("Сервис разметки подключён: %s", settings.tracker_url)
                     async for text in ws:
                         try:
@@ -214,10 +258,10 @@ class TrackRelay:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 — сеть, отказ сервиса, неверный адрес: пробуем снова, сервер не падает
-                if self.connected or delay == RETRY_MIN_S:
+                if self._connected or delay == RETRY_MIN_S:
                     log.warning("Сервис разметки недоступен (%s) — переподключение", exc)
             finally:
-                self.connected = False
+                self._connected = False
             await asyncio.sleep(delay)
             delay = min(delay * 2, RETRY_MAX_S)
 

@@ -17,6 +17,8 @@ dependencies = [
     "cryptography>=44.0",
     "tzdata>=2024.2",
     "alembic>=1.14",
+    "onnxruntime>=1.20",
+    "numpy>=2.0",
 ]
 
 [project.optional-dependencies]

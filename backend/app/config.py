@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # каталог backend/
@@ -40,13 +40,26 @@ class Settings(BaseSettings):
     keycloak_admin_client_secret: str | None = None
 
     # --- анализ кадров ---
-    # mock — встроенная заглушка; http — каждый кадр (раз в frame_interval_s) уходит во внешний сервис;
-    # push — внешний сервис сам присылает детекции в /api/ingest, сервер кадры не разбирает
-    analysis_provider: Literal["mock", "http", "push"] = "mock"
+    # local — своя модель (detector_model) прямо в сервере; auto — local, если файл модели на месте, иначе mock;
+    # mock — демо-заглушка (знает только демо-ролики и демо-фото); http — каждый кадр (раз в frame_interval_s) уходит
+    # во внешний сервис; push — внешний сервис сам присылает детекции в /api/ingest, сервер кадры не разбирает
+    analysis_provider: Literal["auto", "local", "mock", "http", "push"] = "auto"
     analysis_api_url: str | None = None  # полный адрес метода, например http://ml:8200/analyze
     analysis_api_key: str | None = None
     analysis_timeout_s: float = 20.0
     ingest_api_key: str | None = None  # ключ для приёма готовых детекций от внешнего сервиса (push-режим)
+
+    # --- своя модель распознавания: YOLO в формате ONNX (новая версия — tools/export_model.py) ---
+    detector_model: Path = BASE_DIR / "models" / "detector.onnx"
+    detector_confidence: float = Field(0.35, gt=0, lt=1)  # рамки с уверенностью ниже не показываем и не учитываем
+    detector_threads: int = Field(0, ge=0)  # ядер процессора на модель; 0 — решает ONNX Runtime
+    detector_accelerate: bool = True  # CoreML на Mac (вдвое быстрее, ответы те же), CUDA — если стоит onnxruntime-gpu
+    # класс модели → тип техники, если имена не совпали с нашими: {"Truck": "truck", "Pump truck": ""} ("" — не показывать)
+    detector_classes: dict[str, str] = {}
+    # рамки в реальном времени своей моделью: сколько раз в секунду разбирать видео камеры, которую сейчас смотрят;
+    # 0 — не разбирать видео, рамки только из анализа кадров раз в frame_interval_s
+    realtime_fps: float = Field(8.0, ge=0, le=25)
+    realtime_max_cameras: int = Field(8, ge=1)  # больше камер сразу видео не разбираем: модели не хватит на всех
 
     # --- камеры и видео ---
     # Видео идёт через шлюз mediamtx: он забирает RTSP с камер и отдаёт браузеру WebRTC. Сервер сам заводит в шлюзе
@@ -65,17 +78,25 @@ class Settings(BaseSettings):
     keep_daily_frames_days: int = Field(14, ge=1, le=365)  # сколько дней хранить «кадры дня» (0 удалял бы и сегодняшний)
     keep_usage_days: int = Field(30, ge=1)  # сколько дней хранить учёт работы техники по часам
 
-    # --- рамки техники в реальном времени (внешний сервис разметки: детектор + трекер) ---
+    # --- рамки техники в реальном времени от внешнего сервиса разметки (детектор + трекер) ---
+    # Не нужен, если кадры разбирает своя модель (local): она сама ведёт рамки по видео (realtime_fps).
     # Сервис сам читает видео из шлюза и отдаёт рамки по WebSocket; сервер пересылает их браузерам (с проверкой прав).
-    tracker_url: str | None = (
-        None  # WebSocket сервиса, например ws://127.0.0.1:8200/stream; не задан — рамки раз в 2 с из анализа
-    )
+    tracker_url: str | None = None  # WebSocket сервиса, например ws://127.0.0.1:8200/stream
     tracker_api_key: str | None = None  # ключ сервиса: список камер, чтение видео из шлюза, подключение к его WebSocket
     # адрес шлюза, по которому сервис разметки читает видео, если он работает не там, где сервер (другой компьютер, своя
     # сеть Docker): например rtsp://192.168.1.10:8554. Не задан — тот же, что у сервера (SK_VIDEO_RTSP_URL)
     tracker_rtsp_url: str | None = None
     # на столько браузер придерживает видео, чтобы рамки совпадали с картинкой; браузер принимает 0–4000 мс
     tracker_video_delay_ms: int = Field(150, ge=0, le=4000)
+
+    @field_validator("detector_classes")
+    @classmethod
+    def _known_equipment(cls, value: dict[str, str]) -> dict[str, str]:
+        from app.equipment import EQUIPMENT_TYPES
+
+        if unknown := {k: v for k, v in value.items() if v and v not in EQUIPMENT_TYPES}:
+            raise ValueError(f"неизвестные типы техники {unknown}; можно: {', '.join(EQUIPMENT_TYPES)} или пусто")
+        return value
 
     def insecure_defaults(self) -> list[str]:
         """Что нельзя оставлять по умолчанию в боевом запуске (демо-режим выключен)."""

@@ -92,13 +92,17 @@ async def equipment_usage(
     "/tracker/status",
     response_model=TrackerStatusOut,
     dependencies=[require_roles("admin", "manager")],
-    summary="Состояние сервиса разметки: подключён ли, идут ли рамки, последняя ошибка формата",
+    summary="Рамки в реальном времени: откуда (своя модель или внешний сервис), идут ли, какие камеры разбираются",
 )
 async def tracker_status() -> TrackerStatusOut:
     relay = get_relay()
+    detector = relay.local.detector if relay.local else None
     return TrackerStatusOut(
-        enabled=relay.enabled, connected=relay.connected, messages=relay.messages, last_message_at=relay.last_message_at,
-        problem=relay.problem, problem_at=relay.problem_at, viewers=len(relay.subscribers),
+        enabled=relay.enabled, source=relay.source, connected=relay.connected, messages=relay.messages,
+        last_message_at=relay.last_message_at, problem=relay.problem, problem_at=relay.problem_at,
+        viewers=len(relay.subscribers), live_cameras=relay.local.live if relay.local else [],
+        model=detector.name if detector else None, model_device=detector.device if detector else None,
+        model_ms=round(detector.avg_ms, 1) if detector else None,
     )  # fmt: skip
 
 

@@ -11,6 +11,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --extra postgres --no-install-project
 COPY alembic.ini ./
 COPY migrations ./migrations
+COPY models ./models
 COPY app ./app
 
 EXPOSE 8100

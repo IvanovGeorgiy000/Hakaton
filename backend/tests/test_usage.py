@@ -31,7 +31,8 @@ def test_meter_counts_presence_movement_and_gaps():
     meter.add(_msg("c1", ("1", "excavator", 30.0)), now=40.0, wall=HOUR.replace(second=40))  # 30 с тишины — не засчитываются
     cells = meter.take(now=40.0)
     excavator, truck = cells[("c1", HOUR, "excavator")], cells[("c1", HOUR, "dump_truck")]
-    assert excavator.present_s == pytest.approx(12.0) and excavator.moving_s == 0  # 10 с + не больше 2 с за паузу
+    # 10 с + не больше 3 с за паузу: рамки из анализа кадров идут раз в 2 с — нужен запас на неровный шаг
+    assert excavator.present_s == pytest.approx(13.0) and excavator.moving_s == 0
     assert truck.present_s == pytest.approx(10.0) and truck.moving_s == pytest.approx(6.0)  # движение видно с 5-й секунды
     assert excavator.max_count == 1 and meter.take(now=41.0) == {}
 

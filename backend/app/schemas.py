@@ -601,12 +601,17 @@ class EquipmentUsageOut(ApiModel):
 
 
 class TrackerStatusOut(ApiModel):
-    """Что происходит с сервисом разметки — для отладки интеграции (только администратору и руководителю)."""
+    """Откуда рамки в реальном времени и что с ними — для отладки (только администратору и руководителю)."""
 
     enabled: bool
+    source: str | None  # model — своя модель по видео камер; service — внешний сервис разметки; None — рамок нет
     connected: bool
-    messages: int  # сколько сообщений пришло с запуска сервера
+    messages: int  # сколько сообщений с рамками было с запуска сервера
     last_message_at: datetime | None
-    problem: str | None  # последняя ошибка формата: рамка в долях 0–1, нет track_id, два объекта с одним track_id…
+    problem: str | None  # внешний сервис: последняя ошибка формата (рамка в долях 0–1, нет track_id…)
     problem_at: datetime | None
     viewers: int  # сколько браузеров сейчас смотрят рамки
+    live_cameras: list[str]  # своя модель: камеры, чьё видео она сейчас разбирает (их кто-то смотрит)
+    model: str | None  # своя модель: название
+    model_device: str | None  # на чём считает: CPU, CoreML, CUDA
+    model_ms: float | None  # сколько в среднем занимает один кадр
