@@ -12,6 +12,8 @@
 # и должен знать адрес этого компьютера:
 #   SK_TRACKER_URL=ws://<адрес сервиса>:8200/stream SK_TRACKER_API_KEY=<ключ> SK_TRACKER_RTSP_URL=rtsp://192.168.1.10:8554 \
 #   SK_ANALYSIS_PROVIDER=push docker compose up --build
+# Этап по камерам с имитацией сервиса этапов (пока настоящего нет; он определяет этап по кадрам раз в 20 минут):
+#   SK_STAGE_URL=http://stage:8300/stage docker compose --profile stage up --build
 
 services:
   db:
@@ -69,6 +71,9 @@ services:
       SK_TRACKER_API_KEY: ${SK_TRACKER_API_KEY:-}
       SK_TRACKER_RTSP_URL: ${SK_TRACKER_RTSP_URL:-}  # адрес видеошлюза для сервиса на другом компьютере
       SK_TRACKER_VIDEO_DELAY_MS: ${SK_TRACKER_VIDEO_DELAY_MS:-150}
+      SK_STAGE_URL: ${SK_STAGE_URL:-}  # сервис этапов (этап по кадрам); пусто — этап по камерам не определяется
+      SK_STAGE_API_KEY: ${SK_STAGE_API_KEY:-}
+      SK_STAGE_INTERVAL_MIN: ${SK_STAGE_INTERVAL_MIN:-20}
     volumes:
       - media:/app/data
     depends_on:
@@ -90,6 +95,17 @@ services:
     environment:
       MOCK_TRACKER_BACKEND_URL: http://backend:8100
       SK_TRACKER_API_KEY: ${SK_TRACKER_API_KEY:-}
+
+  # имитация сервиса этапов: этап по технике в рабочих зонах, тот же контракт, что у настоящего.
+  # Запускается только с профилем: docker compose --profile stage up
+  stage:
+    profiles: [stage]
+    build: ./backend
+    command: ["/app/.venv/bin/uvicorn", "app.mock_stage:app", "--host", "0.0.0.0", "--port", "8300"]
+    healthcheck:
+      disable: true
+    environment:
+      SK_STAGE_API_KEY: ${SK_STAGE_API_KEY:-}
 
   frontend:
     build: ./frontend

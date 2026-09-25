@@ -226,6 +226,31 @@ class EquipmentUsage(Base):
     )
 
 
+class StageEstimate(Base):
+    """Какой этап идёт по кадрам — ответ сервиса этапов (запрос раз в stage_interval_min и по кнопке).
+
+    stage_name — копией: этап могут переименовать или удалить, а ответ должен читаться. stage_id и stage_name пустые,
+    а error пустой — сервис ответил «по кадрам не понять»; error заполнен — запрос не удался (сервис молчал или ответил
+    не по формату)."""
+
+    __tablename__ = "stage_estimates"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    site_id: Mapped[str] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    at: Mapped[datetime] = mapped_column(UTCDateTime)
+    trigger: Mapped[str] = mapped_column(String(10))  # schedule | manual
+    request_id: Mapped[str] = mapped_column(String(40))
+    stage_id: Mapped[str | None] = mapped_column(ForeignKey("stages.id", ondelete="SET NULL"))
+    stage_name: Mapped[str | None] = mapped_column(String(200))
+    confidence: Mapped[float | None]
+    reason: Mapped[str | None] = mapped_column(Text)  # почему так решено — показывается людям
+    model: Mapped[str | None] = mapped_column(String(80))
+    error: Mapped[str | None] = mapped_column(Text)
+    elapsed_ms: Mapped[int | None]
+
+    __table_args__ = (Index("ix_stage_estimates_site_at", "site_id", "at"),)
+
+
 class Detection(Base):
     """Единица техники на снимке. Рамка — в процентах от кадра 16:9, начало координат слева сверху."""
 

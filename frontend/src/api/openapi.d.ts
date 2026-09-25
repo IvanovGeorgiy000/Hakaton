@@ -527,6 +527,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sites/{site_id}/stage-estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Этап по камерам: последний ответ сервиса этапов рядом с этапом по графику */
+        get: operations["get_site_stage_api_sites__site_id__stage_estimate_get"];
+        put?: never;
+        /** Определить этап по камерам сейчас (руководитель, администратор); ответ сервиса — до минуты */
+        post: operations["run_site_stage_api_sites__site_id__stage_estimate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/audit": {
         parameters: {
             query?: never;
@@ -1428,6 +1446,29 @@ export interface components {
             /** Factprogress */
             factProgress: number | null;
         };
+        /**
+         * SiteStageOut
+         * @description Этап по камерам рядом с этапом по графику.
+         */
+        SiteStageOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Canrun */
+            canRun: boolean;
+            /** Plannedstageid */
+            plannedStageId: string | null;
+            /** Plannedstagename */
+            plannedStageName: string | null;
+            latest: components["schemas"]["StageEstimateOut"] | null;
+            /** Matchesplan */
+            matchesPlan: boolean | null;
+            /** Error */
+            error: string | null;
+            /** Errorat */
+            errorAt: string | null;
+            /** Nextat */
+            nextAt: string | null;
+        };
         /** SnapshotOut */
         SnapshotOut: {
             /** Id */
@@ -1449,6 +1490,27 @@ export interface components {
             provider: string | null;
             /** Note */
             note: string | null;
+        };
+        /**
+         * StageEstimateOut
+         * @description Ответ сервиса этапов: какой этап идёт по кадрам.
+         */
+        StageEstimateOut: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Stageid */
+            stageId: string | null;
+            /** Stagename */
+            stageName: string | null;
+            /** Confidence */
+            confidence: number | null;
+            /** Reason */
+            reason: string | null;
+            /** Model */
+            model: string | null;
         };
         /** StageIn */
         StageIn: {
@@ -2704,6 +2766,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TrackerStatusOut"];
+                };
+            };
+        };
+    };
+    get_site_stage_api_sites__site_id__stage_estimate_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteStageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_site_stage_api_sites__site_id__stage_estimate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteStageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

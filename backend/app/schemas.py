@@ -598,6 +598,31 @@ class EquipmentUsageOut(ApiModel):
     moving_min: float  # из них двигался
 
 
+class StageEstimateOut(ApiModel):
+    """Ответ сервиса этапов: какой этап идёт по кадрам."""
+
+    at: datetime
+    stage_id: str | None  # этап или работа из плана; None — «по кадрам не понять» (или этап удалили из плана)
+    stage_name: str | None
+    confidence: float | None  # 0–1
+    reason: str | None  # почему так решено — для людей
+    model: str | None
+
+
+class SiteStageOut(ApiModel):
+    """Этап по камерам рядом с этапом по графику."""
+
+    enabled: bool  # подключён ли сервис этапов (SK_STAGE_URL)
+    can_run: bool  # может ли этот пользователь спросить сервис сейчас (руководитель, администратор)
+    planned_stage_id: str | None  # работа, которая идёт сегодня по графику
+    planned_stage_name: str | None
+    latest: StageEstimateOut | None  # последний ответ сервиса
+    matches_plan: bool | None  # ответ совпал с графиком; None — не с чем сравнить («не понять» или на сегодня работ нет)
+    error: str | None  # последний запрос не удался (после последнего ответа): сервис молчал или ответил не по формату
+    error_at: datetime | None
+    next_at: datetime | None  # когда следующий запрос по расписанию; None — ещё не было или ждёт свежих кадров
+
+
 class TrackerStatusOut(ApiModel):
     """Откуда рамки в реальном времени и что с ними — для отладки (только администратору и руководителю)."""
 

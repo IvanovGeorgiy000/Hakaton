@@ -8,7 +8,7 @@
  */
 import type {
   Alert, AlertEvent, AnalyzeResult, AuditEvent, Camera, CheckRow, Detection, Deviation, EquipmentCheckResult, ExtraRow,
-  LiveCamera, Meta, ProbeResult, Rule, Site, Snapshot, Stage, User, WeeklyReport, Zone,
+  LiveCamera, Meta, ProbeResult, Rule, Site, SiteStage, Snapshot, Stage, StageEstimate, User, WeeklyReport, Zone,
 } from '@/data'
 import type { components } from './openapi'
 
@@ -43,4 +43,6 @@ export type Contract = [
   Check<Same<Deviation, S['DeviationOut']>>,
   Check<Same<ProbeResult, S['ProbeOut']>>,
   Check<Same<AuditEvent, S['AuditOut']>>,
+  Check<Same<SiteStage, S['SiteStageOut']>>,
+  Check<Same<StageEstimate, S['StageEstimateOut']>>,
 ]

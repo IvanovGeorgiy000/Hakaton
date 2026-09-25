@@ -204,6 +204,37 @@ export interface EquipmentCheckResult {
   arriving: Partial<Record<EquipmentType, number>>
 }
 
+/** Ответ сервиса этапов: какой этап идёт по кадрам */
+export interface StageEstimate {
+  at: string
+  /** Этап или работа из плана; null — «по кадрам не понять» (или этап уже удалили из плана) */
+  stageId: string | null
+  stageName: string | null
+  /** 0–1 */
+  confidence: number | null
+  /** Почему так решено — для людей */
+  reason: string | null
+  model: string | null
+}
+
+/** Этап по камерам рядом с этапом по графику (GET /sites/{id}/stage-estimate) */
+export interface SiteStage {
+  /** Подключён ли сервис этапов */
+  enabled: boolean
+  /** Может ли пользователь спросить сервис сейчас (руководитель, администратор) */
+  canRun: boolean
+  plannedStageId: string | null
+  plannedStageName: string | null
+  latest: StageEstimate | null
+  /** Совпал ли ответ с графиком; null — не с чем сравнить */
+  matchesPlan: boolean | null
+  /** Последний запрос не удался */
+  error: string | null
+  errorAt: string | null
+  /** Когда следующий запрос по расписанию */
+  nextAt: string | null
+}
+
 export interface Deviation { kind: 'missing' | 'count_below' | 'unexpected'; type: EquipmentType; need: number | null; have: number; title: string; why: string }
 
 export interface AnalyzeResult {

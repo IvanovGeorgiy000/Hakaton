@@ -1,7 +1,8 @@
 import { request } from './client'
 import type {
   Alert, AlertStatus, AnalyzeResult, AuditEvent, Camera, CameraPatch, Connection, EquipmentCheckResult, LiveCamera, Meta, NewCamera,
-  ProbeResult, RoleId, Rule, Sample, Site, SiteInput, Snapshot, Stage, StageInput, User, UserInput, UserPatch, WeeklyReport, Zone, ZoneInput,
+  ProbeResult, RoleId, Rule, Sample, Site, SiteInput, SiteStage, Snapshot, Stage, StageInput, User, UserInput, UserPatch, WeeklyReport, Zone,
+  ZoneInput,
 } from '@/data'
 
 export { ApiError, getFreshToken, getToken, mediaUrl, setToken, setTokenRefresher, UNAUTHORIZED_EVENT, wsUrl } from './client'
@@ -51,6 +52,10 @@ export const api = {
     request<Alert>('POST', `/alerts/${id}/actions`, { status, comment, dueDate }),
 
   equipmentCheck: (siteId: string) => request<EquipmentCheckResult>('GET', `/sites/${siteId}/equipment-check`),
+  /** Этап по камерам: последний ответ сервиса этапов рядом с этапом по графику */
+  siteStage: (siteId: string) => request<SiteStage>('GET', `/sites/${siteId}/stage-estimate`),
+  /** Спросить сервис этапов сейчас — ответ до минуты */
+  runSiteStage: (siteId: string) => request<SiteStage>('POST', `/sites/${siteId}/stage-estimate`),
   weeklyReport: () => request<WeeklyReport>('GET', '/reports/weekly'),
 
   samples: () => request<Sample[]>('GET', '/analyze/samples'),
