@@ -4,6 +4,8 @@ import { EQUIPMENT, type AnalyzeResult, type Detection } from '@/data'
 import { VehicleIcon } from './VehicleIcon'
 import { cn, inkOn } from '@/lib/utils'
 
+const ANALYZER: Record<string, string> = { local: 'модель распознавания на сервере', mock: 'демонстрационный' }
+
 /** Кадр с рамками найденной техники (кадр 16:9 приходит с сервера — рамки считаются по нему) */
 export function AnalyzedFrame({ src, detections, busy }: { src: string; detections: Detection[]; busy?: boolean }) {
   return (
@@ -84,7 +86,7 @@ export function AnalyzeSummary({ result }: { result: AnalyzeResult }) {
       ))}
 
       <p className="text-[13px] text-muted-foreground">
-        Анализатор: {result.provider === 'mock' ? 'демонстрационный' : 'внешний сервис распознавания'}{result.model ? ` (${result.model})` : ''} · {result.elapsedMs} мс
+        Анализатор: {ANALYZER[result.provider] ?? 'внешний сервис распознавания'}{result.model ? ` (${result.model})` : ''} · {result.elapsedMs} мс
       </p>
     </div>
   )

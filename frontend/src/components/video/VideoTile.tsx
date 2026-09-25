@@ -23,7 +23,7 @@ export function VideoTile({ camera, live, showBoxes, paused, onOpen, actions }: 
   const { ref, inView } = useInView<HTMLElement>()
   const pageVisible = usePageVisible()
   const active = camera.enabled && inView && pageVisible && !paused
-  // рамки идут от сервиса разметки — придерживаем видео на время его обработки, чтобы рамка попадала в машину
+  // рамки идут в реальном времени — придерживаем видео на время разбора кадра, чтобы рамка попадала в машину
   const { videoRef, state } = useWhep(active ? whepUrl(meta, camera.streamPath) : null, showBoxes ? trackerDelay(meta) : 0)
   const status = tileStatus(camera, live, state)
   const zone = byZone(camera.zoneId)

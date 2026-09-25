@@ -537,7 +537,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Состояние сервиса разметки: подключён ли, идут ли рамки, последняя ошибка формата */
+        /** Рамки в реальном времени: откуда (своя модель или внешний сервис), идут ли, какие камеры разбираются */
         get: operations["tracker_status_api_tracker_status_get"];
         put?: never;
         post?: never;
@@ -1566,7 +1566,7 @@ export interface components {
         };
         /**
          * TrackerOut
-         * @description Рамки в реальном времени от сервиса разметки (WebSocket /api/tracks).
+         * @description Рамки в реальном времени (WebSocket /api/tracks): своя модель по видео камер или внешний сервис разметки.
          */
         TrackerOut: {
             /** Enabled */
@@ -1580,11 +1580,13 @@ export interface components {
         };
         /**
          * TrackerStatusOut
-         * @description Что происходит с сервисом разметки — для отладки интеграции (только администратору и руководителю).
+         * @description Откуда рамки в реальном времени и что с ними — для отладки (только администратору и руководителю).
          */
         TrackerStatusOut: {
             /** Enabled */
             enabled: boolean;
+            /** Source */
+            source: string | null;
             /** Connected */
             connected: boolean;
             /** Messages */
@@ -1597,6 +1599,14 @@ export interface components {
             problemAt: string | null;
             /** Viewers */
             viewers: number;
+            /** Livecameras */
+            liveCameras: string[];
+            /** Model */
+            model: string | null;
+            /** Modeldevice */
+            modelDevice: string | null;
+            /** Modelms */
+            modelMs: number | null;
         };
         /** UserIn */
         UserIn: {

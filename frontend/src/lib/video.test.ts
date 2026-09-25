@@ -23,7 +23,7 @@ describe('tileStatus — что показать на плитке камеры'
 })
 
 describe('trackerDelay', () => {
-  it('видео придерживаем, только когда рамки идут от сервиса разметки', () => {
+  it('видео придерживаем, только когда идут рамки в реальном времени', () => {
     const tracker = { connected: true, videoDelayMs: 150, lastMessageAt: null }
     expect(trackerDelay({ tracker: { ...tracker, enabled: true } } as Meta)).toBe(150)
     expect(trackerDelay({ tracker: { ...tracker, enabled: false } } as Meta)).toBe(0)

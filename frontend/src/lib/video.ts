@@ -29,7 +29,7 @@ export function gatewayUrl(meta: Meta | undefined): string | null {
   return url.origin + url.pathname.replace(/\/$/, '')
 }
 
-/** На сколько придержать видео, чтобы рамки сервиса разметки совпадали с картинкой (0 — сервиса нет) */
+/** На сколько придержать видео, чтобы рамки в реальном времени совпадали с картинкой (0 — таких рамок нет) */
 export function trackerDelay(meta: Meta | undefined): number {
   // браузер принимает 0–4000 мс; за пределами присваивание бросает ошибку — страница с видео не должна из-за этого падать
   return meta?.tracker?.enabled ? Math.min(Math.max(meta.tracker.videoDelayMs, 0), 4000) : 0
@@ -127,7 +127,7 @@ export function useWhep(url: string | null, delayMs = 0) {
 
   const state: StreamState = !url ? 'idle' : status?.url === url && status.attempt === attempt ? status.state : 'connecting'
 
-  // Придержать видео: браузер показывает кадр на столько позже — как раз пока сервис разметки обрабатывает тот же кадр.
+  // Придержать видео: браузер показывает кадр на столько позже — как раз пока сервер разбирает тот же кадр.
   // jitterBufferTarget есть в Chrome, Edge и Firefox; где его нет — видео идёт без задержки, рамки чуть отстают.
   useEffect(() => {
     if (state !== 'playing') return

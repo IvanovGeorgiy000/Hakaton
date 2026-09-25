@@ -1,11 +1,13 @@
 /**
- * Рамки техники в реальном времени (сервис разметки → сервер → браузер по WebSocket /api/tracks).
+ * Рамки техники в реальном времени (своя модель на сервере или внешний сервис разметки → браузер по WebSocket /api/tracks).
  *
  * Одно подключение на вкладку, сколько бы плиток ни было открыто: каждая плитка подписывается на свою камеру,
  * а серверу уходит список камер «на экране» — лишние рамки по сети не гоняем.
  * Токен уходит первым сообщением, а не в адресе: адреса попадают в журналы сервера и nginx.
  * Трек, пропавший на одно-два сообщения, ещё немного держим — иначе рамка мигала бы.
  * Если по камере давно ничего нет, считаем, что данных нет (null), — тогда плитка покажет рамки из анализа кадров.
+ * «Давно» зависит от того, как часто идут сообщения: модель на сервере — 5–8 раз в секунду (на видеостене — реже,
+ * камер много), внешний сервис — 10–15, а пока видео камеры не разбирается — раз в 2 секунды.
  */
 import { useCallback, useSyncExternalStore } from 'react'
 import { getFreshToken, getToken, wsUrl } from '@/api'
@@ -31,8 +33,10 @@ function subjectOf(token: string | null): string | null {
   }
 }
 
-const HOLD_MS = 400  // трек не пришёл — держим рамку ещё столько
-const STALE_MS = 1500  // по камере ничего нет дольше — данных нет
+const HOLD_MS = 400  // трек не пришёл — держим рамку ещё столько (при редких сообщениях — полтора промежутка)
+const STALE_MS = 1500  // по камере ничего нет дольше — данных нет (при редких сообщениях — три промежутка)
+const STALE_MAX_MS = 8000
+const PACE_MS = 125  // промежуток между сообщениями, пока он не измерен
 const RETRY_MIN_MS = 1000, RETRY_MAX_MS = 30_000
 const LINGER_MS = 5000  // все плитки закрылись — подключение держим ещё немного: вдруг сразу откроют другую
 
@@ -44,12 +48,13 @@ class TrackHub {
   /** Камера → рамки. Нет записи — данных нет; пустой список — сервис сообщил, что техники в кадре нет */
   private frames = new Map<string, TrackObject[]>()
   private seen = new Map<string, Map<string, { obj: TrackObject; at: number }>>()
+  private pace = new Map<string, { at: number; ms: number }>()  // камера → прошлое сообщение и средний промежуток
   private staleTimers = new Map<string, number>()
   private retry = RETRY_MIN_MS
   private retryTimer: number | undefined
   private lingerTimer: number | undefined
-  private disabled = false  // сервер ответил «сервис разметки не подключён» — не стучимся зря
-  // 10–15 сообщений в секунду на камеру: перерисовываем плитку не чаще раза за кадр экрана, а не на каждое
+  private disabled = false  // сервер ответил «рамок в реальном времени нет» — не стучимся зря
+  // до 15 сообщений в секунду на камеру: перерисовываем плитку не чаще раза за кадр экрана, а не на каждое
   private dirty = new Set<string>()
   private frame: number | undefined
 
@@ -79,6 +84,11 @@ class TrackHub {
     return this.frames.get(cameraId) ?? null
   }
 
+  /** Средний промежуток между сообщениями камеры, мс */
+  paceOf(cameraId: string): number {
+    return this.pace.get(cameraId)?.ms ?? PACE_MS
+  }
+
   private ensureOpen() {
     if (this.ws || this.disabled || this.retryTimer !== undefined) return
     void this.open()
@@ -102,7 +112,7 @@ class TrackHub {
     ws.onclose = (e) => {
       if (this.ws !== ws) return
       this.ws = null
-      if (e.code === 4404) { this.disabled = true; return }  // сервис разметки не подключён
+      if (e.code === 4404) { this.disabled = true; return }  // рамок в реальном времени на сервере нет
       if (!this.wanted.size) return
       // 4401 — вход не действует (токен истёк, сотрудника отключили): при повторе возьмём свежий токен;
       // 4503 — сервер входа не отвечает: подождём подольше, пауза растёт до 30 с
@@ -128,20 +138,28 @@ class TrackHub {
   private receive(msg: TrackMessage) {
     if (!this.wanted.has(msg.cameraId)) return
     const now = performance.now()
+    // сообщения стали реже — сразу верим новому промежутку (иначе рамки мигали бы, пока среднее догонит), чаще —
+    // привыкаем постепенно; перерыв (камера молчала, вкладку не смотрели) — не промежуток между сообщениями
+    const prev = this.pace.get(msg.cameraId)
+    let ms = prev?.ms ?? PACE_MS
+    const gap = prev ? now - prev.at : 0
+    if (prev && gap <= STALE_MAX_MS) ms = gap > ms ? gap : ms * 0.8 + gap * 0.2
+    this.pace.set(msg.cameraId, { at: now, ms })
     const tracks = this.seen.get(msg.cameraId) ?? new Map()
     for (const obj of msg.objects) tracks.set(obj.trackId, { obj, at: now })
-    for (const [id, t] of tracks) if (now - t.at > HOLD_MS) tracks.delete(id)
+    for (const [id, t] of tracks) if (now - t.at > Math.max(HOLD_MS, ms * 1.5)) tracks.delete(id)
     this.seen.set(msg.cameraId, tracks)
     this.frames.set(msg.cameraId, [...tracks.values()].map((t) => t.obj))
     this.notify(msg.cameraId)
     window.clearTimeout(this.staleTimers.get(msg.cameraId))
-    this.staleTimers.set(msg.cameraId, window.setTimeout(() => this.drop(msg.cameraId), STALE_MS))
+    const stale = Math.min(Math.max(STALE_MS, ms * 3), STALE_MAX_MS)
+    this.staleTimers.set(msg.cameraId, window.setTimeout(() => this.drop(msg.cameraId), stale))
   }
 
   private drop(cameraId: string) {
     window.clearTimeout(this.staleTimers.get(cameraId))
     this.staleTimers.delete(cameraId)
-    this.seen.delete(cameraId)
+    this.seen.delete(cameraId)  // средний промежуток помним: рамки вернутся — будут идти так же часто
     if (this.frames.delete(cameraId)) this.notify(cameraId)
   }
 
@@ -158,8 +176,13 @@ class TrackHub {
 
 const hub = new TrackHub()
 
+/** Как часто сейчас приходят рамки камеры (средний промежуток, мс): за это время рамка доезжает до нового места */
+export function trackPace(cameraId: string): number {
+  return hub.paceOf(cameraId)
+}
+
 /**
- * Рамки камеры прямо сейчас: список (может быть пустым — техники нет) или null — от сервиса разметки данных нет.
+ * Рамки камеры прямо сейчас: список (может быть пустым — техники нет) или null — рамок в реальном времени по ней нет.
  * cameraId = null — не подписываться.
  */
 export function useTracks(cameraId: string | null): TrackObject[] | null {

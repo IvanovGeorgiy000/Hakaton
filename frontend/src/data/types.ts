@@ -262,12 +262,12 @@ export interface Meta {
   authMode: 'local' | 'keycloak'
   keycloak: { url: string; realm: string; clientId: string } | null
   video: { enabled: boolean; webrtcUrl: string; frameIntervalS: number; checkIntervalS: number }
-  /** Рамки в реальном времени от сервиса разметки (WebSocket /api/tracks) */
+  /** Рамки в реальном времени (WebSocket /api/tracks): модель на сервере разбирает видео или их шлёт внешний сервис разметки */
   tracker: {
     enabled: boolean
     connected: boolean
     videoDelayMs: number
-    /** Когда пришло последнее сообщение от сервиса разметки */
+    /** Когда пришло последнее сообщение с рамками */
     lastMessageAt: string | null
   }
   demoFeeds: DemoFeed[]
