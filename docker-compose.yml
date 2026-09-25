@@ -3,6 +3,8 @@
 # Порты можно сменить: WEB_PORT=8081 API_PORT=8101 VIDEO_PORT=8890 VIDEO_UDP_PORT=8190 docker compose up --build
 # Открываете стенд с другого устройства (телефон в той же сети) — укажите адрес этого компьютера:
 #   VIDEO_PUBLIC_HOST=192.168.1.10 docker compose up
+# Рамки техники в реальном времени с имитацией сервиса разметки (пока настоящего сервиса нет):
+#   SK_TRACKER_URL=ws://tracker:8200/stream SK_TRACKER_API_KEY=dev-tracker-key docker compose --profile tracker up --build
 
 services:
   db:
@@ -50,6 +52,9 @@ services:
       SK_ANALYSIS_API_URL: ${SK_ANALYSIS_API_URL:-}
       SK_ANALYSIS_API_KEY: ${SK_ANALYSIS_API_KEY:-}
       SK_INGEST_API_KEY: ${SK_INGEST_API_KEY:-}
+      SK_TRACKER_URL: ${SK_TRACKER_URL:-}  # WebSocket сервиса разметки; пусто — рамки из анализа раз в 2 с
+      SK_TRACKER_API_KEY: ${SK_TRACKER_API_KEY:-}
+      SK_TRACKER_VIDEO_DELAY_MS: ${SK_TRACKER_VIDEO_DELAY_MS:-150}
     volumes:
       - media:/app/data
     depends_on:
@@ -59,6 +64,18 @@ services:
         condition: service_started
     ports:
       - "${API_PORT:-8100}:8100"
+
+  # имитация сервиса разметки (детектор + трекер): рамки по демо-роликам 10 раз в секунду.
+  # Запускается только с профилем: docker compose --profile tracker up
+  tracker:
+    profiles: [tracker]
+    build: ./backend
+    command: ["/app/.venv/bin/uvicorn", "app.mock_tracker:app", "--host", "0.0.0.0", "--port", "8200"]
+    healthcheck:
+      disable: true
+    environment:
+      MOCK_TRACKER_BACKEND_URL: http://backend:8100
+      SK_TRACKER_API_KEY: ${SK_TRACKER_API_KEY:-}
 
   frontend:
     build: ./frontend

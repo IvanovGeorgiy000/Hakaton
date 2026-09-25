@@ -12,6 +12,7 @@
 
 import asyncio
 import hashlib
+import hmac
 import logging
 import re
 import shutil
@@ -30,6 +31,7 @@ CAMERA_PREFIX = "cam-"
 DEMO_PREFIX = "demo-feed-"
 PROBE_PREFIX = "probe-"
 INTERNAL_USER = "sk-internal"
+TRACKER_USER = "sk-tracker"  # сервис разметки: читает потоки камер, пароль — его ключ (SK_TRACKER_API_KEY)
 
 # подписи демо-роликов для формы «Добавить камеру» (файлы — assets/clips/<ключ>.mp4)
 CLIP_TITLES = {
@@ -58,6 +60,17 @@ def internal_password() -> str:
 
 def is_internal(user: str, password: str) -> bool:
     return user == INTERNAL_USER and bool(password) and password == internal_password()
+
+
+def is_tracker(user: str, password: str) -> bool:
+    key = settings.tracker_api_key
+    return user == TRACKER_USER and bool(key) and hmac.compare_digest(password.encode(), key.encode())
+
+
+def tracker_rtsp_url(camera_id: str) -> str:
+    """Адрес потока камеры для сервиса разметки (без пароля: логин sk-tracker, пароль — ключ сервиса)."""
+    base = urlsplit(settings.video_rtsp_url)
+    return f"rtsp://{base.hostname}:{base.port or 8554}/{camera_path(camera_id)}"
 
 
 def camera_path(camera_id: str) -> str:

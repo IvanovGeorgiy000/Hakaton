@@ -114,6 +114,34 @@ Authorization: Bearer {SK_ANALYSIS_API_KEY}    — если ключ задан
 результат: `POST /api/ingest/snapshots` (`camera_id`, `detections` — JSON, `image`, заголовок `X-API-Key: $SK_INGEST_API_KEY`).
 Кадр попадает туда же, куда результаты собственного конвейера, — в ближайшую сверку. Опоздавшие кадры отбрасываются.
 
+## Рамки техники в реальном времени (сервис разметки)
+
+Без сервиса разметки рамки на живом видео обновляются раз в 2 секунды — по кадрам анализа. С ним — 10–15 раз в секунду
+и едут за техникой. Сервис (детектор + трекер) сам читает видео камер из шлюза и отдаёт по WebSocket только координаты:
+видео не перекодируется, рамки рисует браузер поверх обычного потока.
+
+```
+камера ─RTSP─► шлюз ─WebRTC─► браузер: видео + слой рамок
+                 │                        ▲ WebSocket /api/tracks (только камеры, которые пользователю можно видеть)
+                 └─RTSP─► сервис разметки ─WebSocket─► сервер
+```
+
+- **Сервису:** `GET /api/tracker/cameras` (заголовок `X-Api-Key: $SK_TRACKER_API_KEY`) — какие потоки читать;
+  логин шлюза `sk-tracker`, пароль — тот же ключ (только чтение `cam-*`).
+  Сообщения его WebSocket: `{"camera_id", "ts", "objects": [{"track_id", "type", "confidence", "box"}]}`,
+  `box` — проценты от кадра, `ts` — время кадра с часовым поясом.
+- **Серверу:** `SK_TRACKER_URL=ws://…/stream`, `SK_TRACKER_API_KEY`, `SK_TRACKER_VIDEO_DELAY_MS` — на сколько браузер
+  придерживает видео, чтобы рамка попадала в машину (≈ задержка обработки кадра сервисом).
+- **Имитация сервиса**, пока настоящего нет — [app/mock_tracker.py](app/mock_tracker.py): рамки из разметки демо-роликов
+  плавно «плавают», 10 раз в секунду.
+
+  ```bash
+  SK_TRACKER_API_KEY=dev-tracker-key uv run uvicorn app.mock_tracker:app --port 8200     # имитация (в .claude/launch.json — «tracker»)
+  SK_TRACKER_URL=ws://127.0.0.1:8200/stream SK_TRACKER_API_KEY=dev-tracker-key uv run uvicorn app.main:app --port 8100
+  ```
+
+  В Docker: `SK_TRACKER_URL=ws://tracker:8200/stream SK_TRACKER_API_KEY=dev-tracker-key docker compose --profile tracker up --build`.
+
 ## Камеры по IP
 
 С камерой всегда работаем как с видеопотоком RTSP — так подключаются почти все IP-камеры.

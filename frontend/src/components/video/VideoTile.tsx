@@ -2,9 +2,9 @@ import type { ReactNode } from 'react'
 import { Loader2, Maximize2, VideoOff, WifiOff } from 'lucide-react'
 import { EQUIPMENT, type Camera, type EquipmentType, type LiveCamera } from '@/data'
 import { useApp } from '@/store/context'
-import { tileStatus, useInView, usePageVisible, useWhep, whepUrl, type TileStatus } from '@/lib/video'
+import { tileStatus, trackerDelay, useInView, usePageVisible, useWhep, whepUrl, type TileStatus } from '@/lib/video'
 import { cn, inkOn } from '@/lib/utils'
-import { DetectionBoxes } from './DetectionBoxes'
+import { LiveBoxes } from './TrackBoxes'
 
 interface Props {
   camera: Camera
@@ -23,7 +23,8 @@ export function VideoTile({ camera, live, showBoxes, paused, onOpen, actions }: 
   const { ref, inView } = useInView<HTMLElement>()
   const pageVisible = usePageVisible()
   const active = camera.enabled && inView && pageVisible && !paused
-  const { videoRef, state } = useWhep(active ? whepUrl(meta, camera.streamPath) : null)
+  // рамки идут от сервиса разметки — придерживаем видео на время его обработки, чтобы рамка попадала в машину
+  const { videoRef, state } = useWhep(active ? whepUrl(meta, camera.streamPath) : null, showBoxes ? trackerDelay(meta) : 0)
   const status = tileStatus(camera, live, state)
   const zone = byZone(camera.zoneId)
 
@@ -34,7 +35,7 @@ export function VideoTile({ camera, live, showBoxes, paused, onOpen, actions }: 
         className="group relative block w-full aspect-video bg-slate-950 overflow-hidden cursor-pointer"
       >
         <video ref={videoRef} autoPlay muted playsInline className={cn('absolute inset-0 w-full h-full object-contain', state !== 'playing' && 'opacity-0')} />
-        {state === 'playing' && showBoxes && live && <DetectionBoxes detections={live.detections} labels={false} />}
+        {state === 'playing' && showBoxes && <LiveBoxes cameraId={camera.id} live={live} labels={false} />}
         <Placeholder status={status} error={live?.error ?? camera.lastError} />
         <span className="absolute left-2 top-2"><LiveBadge status={status} /></span>
         <span className="absolute right-2 top-2 w-9 h-9 rounded-lg bg-black/55 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity" aria-hidden>

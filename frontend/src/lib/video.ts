@@ -29,14 +29,20 @@ export function gatewayUrl(meta: Meta | undefined): string | null {
   return url.origin + url.pathname.replace(/\/$/, '')
 }
 
+/** На сколько придержать видео, чтобы рамки сервиса разметки совпадали с картинкой (0 — сервиса нет) */
+export function trackerDelay(meta: Meta | undefined): number {
+  return meta?.tracker?.enabled ? meta.tracker.videoDelayMs : 0
+}
+
 export function whepUrl(meta: Meta | undefined, streamPath: string): string | null {
   const base = gatewayUrl(meta)
   return base ? `${base}/${streamPath}/whep` : null
 }
 
 /** Подключиться к потоку (url = null — отключиться). Возвращает ссылку для <video> и состояние. */
-export function useWhep(url: string | null) {
+export function useWhep(url: string | null, delayMs = 0) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const pcRef = useRef<RTCPeerConnection | null>(null)
   // состояние помнит, к какому адресу и какой попытке относится: сменился адрес или пошла новая попытка —
   // пока это «подключаемся» (раньше при повторе всё время переподключения висело «нет сигнала»)
   const [status, setStatus] = useState<{ url: string; attempt: number; state: StreamState } | null>(null)
@@ -71,6 +77,7 @@ export function useWhep(url: string | null) {
     async function connect(target: string) {
       const conn = new RTCPeerConnection()
       pc = conn
+      pcRef.current = conn
       conn.addTransceiver('video', { direction: 'recvonly' })
       conn.ontrack = (e) => {
         if (videoRef.current && e.streams[0]) videoRef.current.srcObject = e.streams[0]
@@ -118,6 +125,17 @@ export function useWhep(url: string | null) {
   }, [url, attempt])
 
   const state: StreamState = !url ? 'idle' : status?.url === url && status.attempt === attempt ? status.state : 'connecting'
+
+  // Придержать видео: браузер показывает кадр на столько позже — как раз пока сервис разметки обрабатывает тот же кадр.
+  // jitterBufferTarget есть в Chrome, Edge и Firefox; где его нет — видео идёт без задержки, рамки чуть отстают.
+  useEffect(() => {
+    if (state !== 'playing') return
+    for (const receiver of pcRef.current?.getReceivers() ?? []) {
+      const r = receiver as RTCRtpReceiver & { jitterBufferTarget?: number | null }
+      if ('jitterBufferTarget' in r) r.jitterBufferTarget = delayMs || null
+    }
+  }, [state, delayMs])
+
   return { videoRef, state }
 }
 

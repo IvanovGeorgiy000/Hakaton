@@ -252,6 +252,8 @@ export interface Meta {
   authMode: 'local' | 'keycloak'
   keycloak: { url: string; realm: string; clientId: string } | null
   video: { enabled: boolean; webrtcUrl: string; frameIntervalS: number; checkIntervalS: number }
+  /** Рамки в реальном времени от сервиса разметки (WebSocket /api/tracks) */
+  tracker: { enabled: boolean; connected: boolean; videoDelayMs: number }
   demoFeeds: DemoFeed[]
 }
 

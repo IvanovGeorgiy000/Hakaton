@@ -565,3 +565,15 @@ class WeeklyReportOut(ApiModel):
     by_site: list[SiteCount]
     by_kind: list[NamedCount]
     by_equipment: list[NamedCount]
+
+
+# ---------- рамки в реальном времени ----------
+class TrackerCameraOut(ApiModel):
+    """Камера для сервиса разметки: какой поток читать из шлюза."""
+
+    id: str
+    name: str
+    site_id: str
+    zone_kind: str  # work — рабочая зона, gate — въезд, storage — склад
+    rtsp_url: str  # логин шлюза sk-tracker, пароль — ключ сервиса
+    demo_clip: str | None  # камера смотрит демо-ролик (для имитации сервиса)

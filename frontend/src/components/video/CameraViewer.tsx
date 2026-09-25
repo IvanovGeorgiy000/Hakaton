@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight, ScanSearch, X } from 'lucide-react'
 import type { Camera, LiveCamera } from '@/data'
 import { useApp } from '@/store/context'
-import { tileStatus, usePageVisible, useWhep, whepUrl } from '@/lib/video'
+import { tileStatus, trackerDelay, usePageVisible, useWhep, whepUrl } from '@/lib/video'
 import { ago, cn } from '@/lib/utils'
 import { ViewerPanel } from '@/components/ui/ViewerPanel'
-import { DetectionBoxes } from './DetectionBoxes'
+import { LiveBoxes } from './TrackBoxes'
 import { LiveBadge, SeenNow } from './VideoTile'
 
 interface Props {
@@ -49,7 +49,7 @@ function Viewer({ camera, live, showBoxes, onShowBoxes, position, onPrev, onNext
 }) {
   const { meta, bySite, byZone } = useApp()
   const pageVisible = usePageVisible()
-  const { videoRef, state } = useWhep(camera.enabled && pageVisible ? whepUrl(meta, camera.streamPath) : null)
+  const { videoRef, state } = useWhep(camera.enabled && pageVisible ? whepUrl(meta, camera.streamPath) : null, showBoxes ? trackerDelay(meta) : 0)
   const status = tileStatus(camera, live, state)
   const [, tick] = useState(0) // «разобрано 2 с назад» обновляем раз в секунду
   useEffect(() => {
@@ -78,7 +78,7 @@ function Viewer({ camera, live, showBoxes, onShowBoxes, position, onPrev, onNext
       <div className="relative flex-1 min-h-0 flex items-center justify-center [container-type:size]">
         <div className="relative aspect-video w-[min(100cqw,calc(100cqh*16/9))]">
           <video ref={videoRef} autoPlay muted playsInline className={cn('absolute inset-0 w-full h-full object-contain', status !== 'live' && 'opacity-0')} />
-          {status === 'live' && showBoxes && live && <DetectionBoxes detections={live.detections} />}
+          {status === 'live' && showBoxes && <LiveBoxes cameraId={camera.id} live={live} />}
           {status !== 'live' && (
             <div className="absolute inset-0 flex items-center justify-center text-white/80 text-[16px] px-6 text-center">
               {status === 'connecting' ? 'Подключаемся к видео…' : status === 'disabled' ? 'Камера выключена' : live?.error ?? camera.lastError ?? 'Нет сигнала'}

@@ -37,6 +37,9 @@ async def gateway_auth(body: GatewayAuthIn, session: Session) -> Response:
     """200 — пустить, 401 — нет. Смотреть поток камеры может тот, кто видит её объект; публиковать — только сервер."""
     if video.is_internal(body.user, body.password):
         return Response(status_code=_ALLOW)  # сам сервер: публикует демо-ролики, берёт кадры на анализ
+    if video.is_tracker(body.user, body.password):  # сервис разметки: только читать потоки камер
+        allowed = body.action == "read" and body.path.startswith(video.CAMERA_PREFIX)
+        return Response(status_code=_ALLOW if allowed else _DENY)
     if body.action not in ("read", "playback"):
         return Response(status_code=_DENY)
     if body.path.startswith(video.DEMO_PREFIX):

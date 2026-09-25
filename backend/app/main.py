@@ -9,7 +9,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api import admin, alerts, analyze, audit, auth, cameras, catalog, ingest, reports, snapshots
+from app.api import admin, alerts, analyze, audit, auth, cameras, catalog, ingest, reports, snapshots, tracks
 from app.api import video as video_api
 from app.config import ASSETS_DIR, get_settings
 from app.db import SessionLocal, engine, utcnow
@@ -18,6 +18,7 @@ from app.seed import prepare_database
 from app.services import video
 from app.services.analysis import get_analyzer
 from app.services.pipeline import get_pipeline
+from app.services.tracks import get_relay
 
 VERSION = "0.10.0"
 settings = get_settings()
@@ -41,7 +42,10 @@ async def lifespan(_: FastAPI):
     if settings.video_enabled:
         feeds.start()  # демо-ролики → шлюз
         pipeline.start()  # потоки камер в шлюзе, кадры на анализ, сверка объектов
+    relay = get_relay()
+    relay.start()  # рамки в реальном времени — если подключён сервис разметки (SK_TRACKER_URL)
     yield
+    await relay.stop()
     await pipeline.stop()
     await feeds.stop()
     await engine.dispose()
@@ -64,6 +68,14 @@ class VideoOut(ApiModel):
     check_interval_s: int
 
 
+class TrackerOut(ApiModel):
+    """Рамки в реальном времени от сервиса разметки (WebSocket /api/tracks)."""
+
+    enabled: bool
+    connected: bool  # сервер сейчас получает рамки от сервиса
+    video_delay_ms: int  # на столько придержать видео, чтобы рамки совпадали с картинкой
+
+
 class DemoFeedOut(ApiModel):
     """Демо-ролик как RTSP-адрес — для быстрой настройки в форме «Добавить камеру»."""
 
@@ -84,6 +96,7 @@ class MetaOut(ApiModel):
     auth_mode: str  # local | keycloak
     keycloak: dict | None  # {url, realm, clientId} — когда включён Keycloak
     video: VideoOut
+    tracker: TrackerOut
     demo_feeds: list[DemoFeedOut]
 
 
@@ -119,11 +132,14 @@ async def meta() -> MetaOut:
             frame_interval_s=settings.frame_interval_s,
             check_interval_s=settings.check_interval_s,
         ),
+        tracker=TrackerOut(
+            enabled=get_relay().enabled, connected=get_relay().connected, video_delay_ms=settings.tracker_video_delay_ms
+        ),
         demo_feeds=feeds,
     )
 
 
-for module in (auth, catalog, cameras, snapshots, alerts, analyze, reports, ingest, video_api, audit, admin):
+for module in (auth, catalog, cameras, snapshots, alerts, analyze, reports, ingest, video_api, tracks, audit, admin):
     api.include_router(module.router)
 app.include_router(api)
 
