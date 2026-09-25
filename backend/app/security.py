@@ -172,8 +172,8 @@ def require_roles(*roles: str):
 CAMERA_ADDERS = ("admin", "manager")
 # Кто добавляет и настраивает объекты: карточка, зоны, календарный план. Удалить объект — только администратор.
 SITE_MANAGERS = ("admin", "manager")
-# Кто отмечает, сколько работ сделано по факту (прораб — на своём объекте)
-PROGRESS_REPORTERS = ("admin", "manager", "foreman")
+# Кто отмечает, сколько работ сделано по факту. Прораб — нет: он видит план и выполнение, но не отмечает его
+PROGRESS_REPORTERS = ("admin", "manager")
 
 
 def visible_site_ids(user: User) -> set[str] | None:

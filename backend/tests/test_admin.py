@@ -102,7 +102,7 @@ async def test_who_manages_sites_and_staff(client):
 
 
 async def test_fact_progress_of_stages(client):
-    """По графику — сколько должно быть сделано к сегодняшнему дню; по факту — что отметил прораб или руководитель."""
+    """По графику — сколько должно быть сделано к сегодняшнему дню; по факту — что отметил руководитель (прораб не отмечает)."""
     foreman = await login_as(client, "foreman")
     stages = {s["id"]: s for s in (await client.get("/api/stages?siteId=s1", headers=foreman)).json()}
     digging = stages["s1-excavation"]  # идёт сейчас, ЖК отстаёт от графика
@@ -110,20 +110,22 @@ async def test_fact_progress_of_stages(client):
     assert stages["s1-prep"]["factProgress"] == stages["s1-prep"]["planProgress"] == 100  # завершённая работа
     assert stages["s1-frame"]["factProgress"] == stages["s1-frame"]["planProgress"] == 0  # впереди
 
-    marked = await client.patch("/api/stages/s1-excavation/progress", headers=foreman, json={"factProgress": 80})
+    # прораб видит выполнение, но не отмечает его — даже на своём объекте
+    assert (
+        await client.patch("/api/stages/s1-excavation/progress", headers=foreman, json={"factProgress": 80})
+    ).status_code == 403
+    manager = await login_as(client, "manager")
+    marked = await client.patch("/api/stages/s1-excavation/progress", headers=manager, json={"factProgress": 80})
     assert marked.status_code == 200 and marked.json()["factProgress"] == 80
     assert (
-        await client.patch("/api/stages/s2-foundation/progress", headers=foreman, json={"factProgress": 5})
-    ).status_code == 404
-    assert (
-        await client.patch("/api/stages/s1-excavation/progress", headers=foreman, json={"factProgress": 101})
+        await client.patch("/api/stages/s1-excavation/progress", headers=manager, json={"factProgress": 101})
     ).status_code == 422
     inspector = await login_as(client, "inspector")
     assert (await client.patch("/api/stages/s1-soil/progress", headers=inspector, json={"factProgress": 10})).status_code == 403
 
     admin = await login_as(client, "admin")
     entry = (await _log(client, admin, "stage.progress"))[0]
-    assert entry["actorRole"] == "foreman" and "80% (было" in entry["summary"]
+    assert entry["actorRole"] == "manager" and "80% (было" in entry["summary"]
 
 
 def test_plan_progress_is_even_by_days():

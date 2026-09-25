@@ -146,7 +146,7 @@ class Stage(Base):
     end_date: Mapped[date] = mapped_column(Date)
     rule_key: Mapped[str | None] = mapped_column(ForeignKey("rules.key"))
     position: Mapped[int] = mapped_column(default=0)
-    # сколько сделано по факту, % — отмечают прораб, руководитель и администратор; у этапа с работами считается по работам
+    # сколько сделано по факту, % — отмечают руководитель и администратор; у этапа с работами считается по работам
     fact_progress: Mapped[int] = mapped_column(default=0, server_default="0")
     fact_updated_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 

@@ -1,7 +1,7 @@
 """Администрирование: объекты, зоны, календарный план, выполнение работ, сотрудники и их пароли.
 
 Объекты, зоны и план ведут администратор и руководитель проекта; удалить объект и управлять сотрудниками может только
-администратор; сколько сделано по факту, отмечает ещё и прораб своего объекта. Каждое действие пишется в журнал
+администратор; сколько сделано по факту, отмечают они же (прораб — нет). Каждое действие пишется в журнал
 (без паролей). Когда вход идёт через Keycloak, сотрудники, роли и пароли одновременно меняются и в Keycloak.
 """
 
@@ -383,7 +383,7 @@ async def set_stage_progress(
     stage = await session.get(Stage, stage_id)
     if stage is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Этап не найден")
-    ensure_site_access(user, stage.site_id)  # прораб — только на своём объекте
+    ensure_site_access(user, stage.site_id)
     before = stage.fact_progress
     _set_fact(stage, body.fact_progress)
     if stage.fact_progress != before:

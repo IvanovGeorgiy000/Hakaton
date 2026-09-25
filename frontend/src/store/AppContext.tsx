@@ -155,8 +155,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateAlert = useCallback((id: string, status: AlertStatus, comment: string, dueDate?: string) =>
     run(() => api.alertAction(id, status, comment, dueDate)), [run])
   const saveRule = useCallback((rule: Rule) => run(() => api.saveRule(rule), `Правило «${rule.stageName}» сохранено`), [run])
-  const setCameraEnabled = useCallback((camera: Camera, on: boolean) =>
-    run(() => api.patchCamera(camera.id, { enabled: on }), `${camera.name}: ${on ? 'включена' : 'выключена'}`), [run])
   const deleteCamera = useCallback((camera: Camera) => run(() => api.deleteCamera(camera.id), `${camera.name} удалена`), [run])
   const addCamera = useCallback(async (camera: NewCamera) => {
     try {
@@ -171,8 +169,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AppState>(() => ({
     user, role, ownSiteId: user?.role === 'foreman' ? user.siteIds[0] ?? null : null, base: role ? `/${role.id}` : '', authMode, meta,
     login, demoLogin, keycloakLogin, logout,
-    ...data, refresh, updateAlert, saveRule, setCameraEnabled, addCamera, deleteCamera, run, notify,
-  }), [user, role, authMode, meta, login, demoLogin, logout, data, refresh, updateAlert, saveRule, setCameraEnabled, addCamera, deleteCamera, run, notify])
+    ...data, refresh, updateAlert, saveRule, addCamera, deleteCamera, run, notify,
+  }), [user, role, authMode, meta, login, demoLogin, logout, data, refresh, updateAlert, saveRule, addCamera, deleteCamera, run, notify])
 
   // ---------- состояния загрузки ----------
   const failed = queries.find((q) => q.isError && !q.data)

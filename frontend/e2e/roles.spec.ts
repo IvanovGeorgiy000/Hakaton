@@ -40,6 +40,9 @@ test('прораб: свой объект, камеры, план; отклон�
   await expect(detail).toHaveCount(0)
   await visit(page, '/foreman/cameras', 'Камера 1 — котлован')
   await visit(page, '/foreman/plan', 'Разработка котлована')
+  // выполнение прораб видит, но не отмечает — это делает руководитель
+  await expect(page.getByText(/Сделано по факту|По факту/).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: /Отметить выполнение/ })).toHaveCount(0)
   expect(errors).toEqual([])
 })
 
@@ -59,6 +62,7 @@ test('руководитель: объекты, страница объекта 
   await page.getByRole('tab', { name: 'План работ' }).click()
   await expect(page.getByRole('tab', { name: 'План работ' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByText('Разработка котлована').first()).toBeVisible()
+  await expect(page.getByRole('button', { name: /Отметить выполнение/ }).first()).toBeVisible()  // руководитель отмечает
   await visit(page, '/manager/cameras', 'Камера 2 — въезд')
   await visit(page, '/manager/alerts', 'Нет самосвалов')
   await visit(page, '/manager/reports', 'Отчёт за неделю')
@@ -94,6 +98,10 @@ test('администратор: сотрудники с меню действ�
   await expect(menu.getByRole('menuitem', { name: 'Сменить пароль' })).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(menu).toHaveCount(0)
+  // камеры: изменить, проверить связь, удалить — а выключить нельзя никому
+  await visit(page, '/admin/cameras', 'Камера 1 — котлован')
+  await expect(page.getByRole('button', { name: /Изменить/ }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: /^Выключить|^Включить/ })).toHaveCount(0)
   await visit(page, '/admin/manage/rules', 'Правила: этап → техника')
   await visit(page, '/admin/manage/audit', 'Журнал действий')
   await visit(page, '/admin/site/s3', 'Этап сейчас')

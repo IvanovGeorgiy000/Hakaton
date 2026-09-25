@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Loader2, Pencil, PlugZap, Power, Trash2 } from 'lucide-react'
+import { Loader2, Pencil, PlugZap, Trash2 } from 'lucide-react'
 import { api, ApiError } from '@/api'
 import type { Camera } from '@/data'
 import { useApp } from '@/store/context'
@@ -10,19 +10,12 @@ import { EditCameraDialog } from './EditCameraDialog'
 // =====================================================================================
 //  Управление камерой (администратор): кнопки под видео камеры и их диалоги
 // =====================================================================================
-/** Адрес камеры и кнопки «Изменить», «Выключить», «Проверить связь», «Удалить» — прямо у камеры в списке */
+/** Адрес камеры и кнопки «Изменить», «Проверить связь», «Удалить» — прямо у камеры в списке. Выключать камеры нельзя */
 export function CameraAdminActions({ camera }: { camera: Camera }) {
-  const { setCameraEnabled, deleteCamera, notify, refresh } = useApp()
+  const { deleteCamera, notify, refresh } = useApp()
   const [editing, setEditing] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [deleting, setDeleting] = useState(false) // двойное нажатие не шлёт второй DELETE
-  const [toggling, setToggling] = useState(false) // и второй «выключить» тоже
-  const toggle = async () => {
-    if (toggling) return
-    setToggling(true)
-    await setCameraEnabled(camera, !camera.enabled)
-    setToggling(false)
-  }
   const [testing, setTesting] = useState(false)
 
   const test = async () => {
@@ -44,7 +37,6 @@ export function CameraAdminActions({ camera }: { camera: Camera }) {
         {camera.demo ? 'Демо-ролик' : <span className="font-mono">{camera.address}</span>}{camera.hasCredentials && ' · с паролем'}
       </div>
       <Button variant="outline" onClick={() => setEditing(true)}><Pencil className="w-4 h-4" /> Изменить</Button>
-      <Button variant="outline" disabled={toggling} onClick={() => void toggle()}><Power className="w-4 h-4" /> {camera.enabled ? 'Выключить' : 'Включить'}</Button>
       <Button variant="outline" disabled={testing} onClick={() => void test()}>
         {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlugZap className="w-4 h-4" />} Проверить связь
       </Button>

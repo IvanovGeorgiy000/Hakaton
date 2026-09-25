@@ -390,7 +390,7 @@ async def _catalog(session: AsyncSession, today: date) -> None:
                 stage.fact_progress = 100
             elif stage.start_date <= today:
                 stage.fact_progress = max(0, min(100, stage.plan_progress_on(today) + FACT_SHIFT[site]))
-                stage.fact_updated_at = utcnow() - _h(18)  # прораб отмечал вчера
+                stage.fact_updated_at = utcnow() - _h(18)  # руководитель отмечал вчера
         session.add(stage)
     await session.flush()
 
