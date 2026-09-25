@@ -114,8 +114,9 @@ export interface Stage {
   factUpdatedAt: string | null
 }
 
-export interface RuleRequirement { type: EquipmentType; min: number; why: string; risk?: string }
-export interface RuleForbidden { type: EquipmentType; why: string; risk?: string }
+/** risk — чем грозит нехватка; сервер всегда отдаёт строку (пустую, если не задано) */
+export interface RuleRequirement { type: EquipmentType; min: number; why: string; risk: string }
+export interface RuleForbidden { type: EquipmentType; why: string; risk: string }
 
 /** Правило методики: «этап работ → необходимая техника» */
 export interface Rule {
@@ -249,6 +250,9 @@ export interface Meta {
   demoMode: boolean
   analysisProvider: string
   timezone: string
+  /** Время сервера в ISO — по нему видно, не разошлись ли часы устройства и сервера */
+  serverTime: string
+  database: 'sqlite' | 'postgresql'
   authMode: 'local' | 'keycloak'
   keycloak: { url: string; realm: string; clientId: string } | null
   video: { enabled: boolean; webrtcUrl: string; frameIntervalS: number; checkIntervalS: number }

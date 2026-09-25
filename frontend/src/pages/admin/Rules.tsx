@@ -70,9 +70,9 @@ function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => 
   // пределы те же, что проверяет сервер: иначе «Сохранить» падало бы с невнятной ошибкой
   const setMin = (t: EquipmentType, d: number) => setDraft({ ...draft, required: draft.required.map((r) => r.type === t ? { ...r, min: clamp(r.min + d, 1, MAX_MIN) } : r) })
   const removeReq = (t: EquipmentType) => setDraft({ ...draft, required: draft.required.filter((r) => r.type !== t) })
-  const addReq = (t: EquipmentType) => setDraft({ ...draft, required: [...draft.required, { type: t, min: 1, why: 'Добавлено администратором' }] })
+  const addReq = (t: EquipmentType) => setDraft({ ...draft, required: [...draft.required, { type: t, min: 1, why: 'Добавлено администратором', risk: '' }] })
   const removeUnexp = (t: EquipmentType) => setDraft({ ...draft, unexpected: draft.unexpected.filter((u) => u.type !== t) })
-  const addUnexp = (t: EquipmentType) => setDraft({ ...draft, unexpected: [...draft.unexpected, { type: t, why: 'Не предусмотрено этапом' }] })
+  const addUnexp = (t: EquipmentType) => setDraft({ ...draft, unexpected: [...draft.unexpected, { type: t, why: 'Не предусмотрено этапом', risk: '' }] })
 
   return (
     <div className="border-t border-border p-4 sm:p-5 grid lg:grid-cols-2 gap-5">
