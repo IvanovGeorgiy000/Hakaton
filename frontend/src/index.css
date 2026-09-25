@@ -23,6 +23,7 @@
   --color-muted-foreground: #5B6675;
   --color-border: #E3E7ED;
   --color-border-strong: #CDD3DC;
+  --color-input: #8792A3;  /* граница полей ввода: 3.1:1 на белом (WCAG 1.4.11 — поле должно быть видно) */
   --color-primary: #1F5FD1;
   --color-primary-hover: #194FB2;
   --color-on-primary: #FFFFFF;
@@ -74,6 +75,7 @@
   --color-muted-foreground: #98A4B5;
   --color-border: #2A3441;
   --color-border-strong: #5C6B84;  /* границы полей ввода: ≥ 3:1 на карточке */
+  --color-input: #5C6B84;
   --color-primary: #6FA0F5;
   --color-primary-hover: #8DB3F8;
   --color-on-primary: #0B1220;

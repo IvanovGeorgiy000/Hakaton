@@ -181,7 +181,7 @@ function Body({ alert, onClose }: { alert: Alert; onClose: () => void }) {
           <textarea
             value={comment} onChange={(e) => setComment(e.target.value)} maxLength={1000} aria-label="Комментарий к ответу"
             placeholder={`Комментарий (необязательно), например: «${role.id === 'foreman' ? 'самосвалы будут к 14:00' : role.id === 'inspector' ? 'проверено на месте, нарушение подтверждается' : 'подрядчик обещал технику к вечеру'}»`}
-            className="w-full min-h-[80px] rounded-lg border border-border bg-card p-3 text-[16px] focus:border-primary outline-none"
+            className="w-full min-h-[80px] rounded-lg border border-input bg-card p-3 text-[16px] outline-none transition-shadow focus:border-primary focus:ring-4 focus:ring-primary/15"
           />
           <fieldset disabled={saving} className="flex flex-wrap gap-3 mt-3 disabled:opacity-60">
             {role.id === 'foreman' && (

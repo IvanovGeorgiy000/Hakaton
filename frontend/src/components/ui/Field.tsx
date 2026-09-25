@@ -2,7 +2,7 @@ import { useId, type ReactNode } from 'react'
 import { InfoTip } from './InfoTip'
 
 /** Оформление полей ввода (как в образцовом диалоге «Добавить камеру») */
-export const inputCls = 'w-full min-h-[46px] rounded-lg border border-border-strong bg-card px-3 text-[16px] outline-none transition-shadow focus:border-primary focus:ring-4 focus:ring-primary/15 aria-[invalid=true]:border-danger disabled:opacity-60'
+export const inputCls = 'w-full min-h-[46px] rounded-lg border border-input bg-card px-3 text-[16px] outline-none transition-shadow focus:border-primary focus:ring-4 focus:ring-primary/15 aria-[invalid=true]:border-danger disabled:opacity-60'
 
 /**
  * Поле формы: подпись над полем, пояснение — за значком «?» рядом с подписью (без лишнего текста на экране),
