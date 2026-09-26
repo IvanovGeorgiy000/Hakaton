@@ -59,6 +59,35 @@ async def test_migrations_build_the_same_schema_as_models():
     assert await _run(_schema_diff) == []
 
 
+async def test_reset_removes_tables_dropped_by_later_migrations():
+    """Сброс базы, отставшей на миграцию: таблица, которую поздняя миграция убрала из моделей (stage_estimates — в 0008),
+    не мешает удалить остальные, хотя ссылается на них внешними ключами."""
+    await seed._drop_everything()
+    await _run(lambda conn: command.upgrade(dbschema.alembic_config(conn), "0007"))
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "INSERT INTO sites (id, name, address, contractor, foreman_name, position, kind) VALUES ('s', 'Объект', '', '', '', 0, 'other')"
+            )
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO stages (id, site_id, level, name, start_date, end_date, position, fact_progress) "
+                "VALUES ('st', 's', 2, 'Работа', '2026-09-01', '2026-09-30', 0, 0)"
+            )
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO stage_estimates (id, site_id, at, trigger, request_id, stage_id) VALUES ('se', 's', '2026-09-25 10:00:00+00:00', 'manual', 'r', 'st')"
+            )
+        )
+    await seed.reset()
+    assert "stage_estimates" not in await _run(_tables)
+    assert await _run(dbschema.current_revision) == dbschema.head_revision()
+    async with SessionLocal() as session:
+        assert (await session.get(Site, "s1")).kind == "housing"  # демо-данные на месте
+
+
 async def test_start_keeps_existing_data():
     await seed.reset()
     async with SessionLocal() as session:

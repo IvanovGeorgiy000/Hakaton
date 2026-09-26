@@ -13,12 +13,12 @@ import shutil
 import sys
 from datetime import date, datetime, time, timedelta
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dbschema
 from app.config import get_settings
-from app.db import Base, SessionLocal, engine, utcnow
+from app.db import SessionLocal, engine, utcnow
 from app.mock_analytics import CATALOG_VERSION as MOCK_CATALOG_VERSION
 from app.models import (
     Alert,
@@ -769,10 +769,20 @@ async def seed_if_empty() -> bool:
 
 
 async def _drop_everything() -> None:
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        for table in dbschema.LEGACY_TABLES:
-            await conn.execute(text(f"DROP TABLE IF EXISTS {table}"))
+    """Удалить все таблицы, какие есть в базе, — и те, что поздние миграции убрали из моделей. По моделям удалять нельзя:
+    так в базе на 0007 оставалась stage_estimates (убрана в 0008), и её внешний ключ не давал удалить sites."""
+    async with engine.connect() as conn:
+        names = await conn.run_sync(lambda sync: inspect(sync).get_table_names())
+        if settings.is_sqlite:
+            # порядок удаления тогда не важен; прагма действует только вне транзакции — выполняем первой
+            await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            for name in names:
+                await conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{name}"')
+            await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+        else:
+            for name in names:
+                await conn.exec_driver_sql(f'DROP TABLE IF EXISTS "{name}" CASCADE')
+        await conn.commit()
 
 
 async def _migrate() -> None:

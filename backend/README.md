@@ -22,7 +22,7 @@ bash ../tools/video-gateway.sh                      # в соседнем тер
 Весь стенд в Docker (PostgreSQL + шлюз видео + API + интерфейс): из корня репозитория `docker compose up --build`,
 интерфейс — http://localhost:8080.
 
-Проверки: `uv run pytest` (114 тестов, сеть и шлюз не нужны; те же тесты на PostgreSQL — с переменной `SK_TEST_DATABASE_URL`
+Проверки: `uv run pytest` (115 тестов, сеть и шлюз не нужны; те же тесты на PostgreSQL — с переменной `SK_TEST_DATABASE_URL`
 и `uv run --extra postgres pytest`),
 `uv run ruff check . && uv run ruff format --check .`.
 
