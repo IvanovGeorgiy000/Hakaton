@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import dbschema
 from app.config import get_settings
 from app.db import SessionLocal, engine, utcnow
-from app.mock_analytics import CATALOG_VERSION as MOCK_CATALOG_VERSION
+from app.mock_analytics import CATALOG_VERSION as ANALYTICS_CATALOG_VERSION
 from app.models import (
     Alert,
     AlertEvent,
@@ -302,18 +302,18 @@ FACT_SHIFT = {"s1": -15, "s2": -6, "s3": -7, "s4": 4}
 # Сервис аналитики «по технике» покажет это как возможное отставание
 LATE = {"s3-base": 95}
 
-# Вид работ по справочнику имитации сервисов аналитики (app/mock_analytics.py) для работ демо-плана — по их правилу.
-# У настоящего сервиса справочник свой, другой версии: работы придётся сопоставить заново в редакторе плана
+# Вид работ по справочнику сервисов аналитики коллеги (0.2.0, catalog-cf435bba…; тот же у имитации) для работ
+# демо-плана — по их правилу. Выбран человеком: по названию и по технике в матрице коллеги, а не автоматически
 CATALOG_WORKS = {
-    "site_prep": 101,  # Обустройство строительной площадки
-    "excavation": 121,  # Выемка грунта котлована
-    "soil_removal": 121,  # отдельного вывоза грунта в справочнике нет — та же работа
-    "backfill": 123,  # Обратная засыпка грунтом
-    "foundation_concrete": 124,  # Устройство монолитной ж/б фундаментной плиты
-    "frame_assembly": 141,  # Каркас здания
-    "road_base": 125,  # Устройство нижнего слоя основания дорожной одежды
-    "asphalt": 143,  # Устройство нижнего слоя покрытия
-    "landscaping": 172,  # Озеленение
+    "site_prep": 368,  # Вертикальная планировка — расчистка и планировка площадки бульдозером
+    "excavation": 47,  # Устройство котлована
+    "soil_removal": 72,  # Выемка грунта котлована — отдельного вывоза грунта в справочнике нет
+    "backfill": 77,  # Обратная засыпка грунтом
+    "foundation_concrete": 85,  # Устройство монолитной ж/б фундаментной плиты
+    "frame_assembly": 182,  # Устройство ж/б конструкций (конкретная работа «Каркаса здания»)
+    "road_base": 80,  # Устройство нижнего слоя основания дорожной одежды
+    "asphalt": 149,  # Устройство нижнего слоя покрытия
+    "landscaping": 367,  # Установка МАФов — благоустройство краном-манипулятором
 }
 
 
@@ -405,7 +405,7 @@ async def _catalog(session: AsyncSession, today: date) -> None:
             end_date=date.fromisoformat(end) + shift,
         )
         if level == 2:  # у укрупнённых этапов выполнение считается по их работам
-            stage.catalog_stage_id, stage.catalog_version = CATALOG_WORKS[rule_key], MOCK_CATALOG_VERSION
+            stage.catalog_stage_id, stage.catalog_version = CATALOG_WORKS[rule_key], ANALYTICS_CATALOG_VERSION
             if stage.end_date < today and sid in LATE:
                 stage.fact_progress, stage.fact_updated_at = LATE[sid], utcnow() - _h(20)
             elif stage.end_date < today:

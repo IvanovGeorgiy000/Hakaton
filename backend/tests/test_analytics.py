@@ -11,10 +11,11 @@ from datetime import timedelta
 
 import httpx
 import pytest
+from jsonschema import Draft202012Validator
 from sqlalchemy import func, select
 
 from app import mock_analytics
-from app.config import get_settings
+from app.config import BASE_DIR, get_settings
 from app.db import SessionLocal, utcnow
 from app.models import AnalyticsRequest, AnalyticsResult, Camera, Observation, Site, Stage
 from app.services.analytics import client as client_module
@@ -28,7 +29,15 @@ from tests.conftest import check, feed, login_as
 
 pytestmark = pytest.mark.anyio
 settings = get_settings()
-CATALOG = parse_catalog(mock_analytics.CATALOG)
+CATALOG = parse_catalog(mock_analytics.CATALOG)  # справочник сервисов коллеги 0.2.0 — он же у имитации
+SCHEMA = json.loads((BASE_DIR / "docs" / "frame-analysis-v1.schema.json").read_text(encoding="utf-8"))
+
+
+def conforms(name: str, message: dict) -> list[str]:
+    """Нарушения JSON Schema контракта (раздел $defs.<name>, с проверкой date-time) — пусто, если всё по схеме."""
+    schema = {"$schema": SCHEMA["$schema"], "$defs": SCHEMA["$defs"], "$ref": f"#/$defs/{name}"}
+    validator = Draft202012Validator(schema, format_checker=Draft202012Validator.FORMAT_CHECKER)
+    return [f"{'/'.join(map(str, e.absolute_path))}: {e.message}" for e in validator.iter_errors(message)]
 
 
 @pytest.fixture
@@ -75,7 +84,7 @@ async def test_request_follows_contract(client):
     # техника — коды справочника и рамки в долях кадра
     cv = meta["cv"]
     assert cv["status"] == "ok" and cv["source_ref"] == "stroykontrol:analysis/mock"
-    assert {d["class_code"] for d in cv["detections"]} == {"excavator", "dump_truck"}
+    assert {d["class_code"] for d in cv["detections"]} == {"Excavator", "DumpTruck"}  # коды справочника коллеги
     for d in cv["detections"]:
         x0, y0, x1, y1 = d["bbox"]
         assert 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1 and d["detection_id"].startswith("d")
@@ -87,7 +96,7 @@ async def test_request_follows_contract(client):
     dig = plan["steps"][1]
     async with SessionLocal() as session:
         work = await session.get(Stage, "s1-excavation")
-    assert dig["stage_id"] == 121 and dig["planned_start_at"] == f"{work.start_date.isoformat()}T00:00:00+03:00"
+    assert dig["stage_id"] == 47 and dig["planned_start_at"] == f"{work.start_date.isoformat()}T00:00:00+03:00"
     assert dig["planned_end_at"] == f"{(work.end_date + timedelta(days=1)).isoformat()}T00:00:00+03:00"
     assert built.plan_note is None and plan["revision_id"].startswith("rev-")
     # история: без текущего кадра; отметки руководителя — подтверждённый ход без точных дат
@@ -101,7 +110,8 @@ async def test_request_follows_contract(client):
     # отпечаток входа: metadata как отправлена + 0x00 + кадр
     assert built.input_sha256 == hashlib.sha256(built.body + b"\x00" + built.image.data).hexdigest()
     assert json.loads(built.body) == meta
-    # строгая проверка имитации (схема контракта в миниатюре) — без замечаний
+    # схема контракта коллеги и строгая проверка имитации — без замечаний
+    assert conforms("request", meta) == []
     mock_analytics.validate(meta, built.image.data, "image/jpeg", {})
 
 
@@ -136,29 +146,29 @@ async def test_work_without_equipment_is_planned_for_deadlines_only(client, serv
     """no_class (без техники: геодезия, отселение) — пункт плана для сроков и отметок; по кадру его не называют."""
     async with SessionLocal() as session:
         work = await session.get(Stage, "s1-soil")
-        work.catalog_stage_id = 104  # «Устройство геодезических знаков»
+        work.catalog_stage_id = 39  # «Закупка оборудования» — работа без техники
         await session.commit()
     built = await _build()
     steps = {s["step_key"]: s["stage_id"] for s in built.metadata["plan"]["steps"]}
-    assert built.plan_note is None and steps["s1-soil"] == 104
+    assert built.plan_note is None and steps["s1-soil"] == 39
     mock_analytics.validate(built.metadata, built.image.data, "image/jpeg", {})  # сервис такой пункт принимает
     answer = mock_analytics.answer("deterministic", built.metadata, built.input_sha256)
     candidates = [c["step_key"] for g in answer["current_work"]["work_groups"] for c in g["candidates"]]
-    assert candidates == ["s1-excavation"]  # раньше тут была и «Вывоз грунта» — теперь это работа без техники
+    assert "s1-soil" not in candidates and candidates[0] == "s1-excavation"  # работу без техники по кадру не называют
     assert "s1-soil" in {i["step_key"] for i in answer["schedule"]["items"]}  # сроки по ней проверяются
     assert answer["transition"]["status"] == "not_distinguishable_by_equipment"  # у следующей работы нет техники
 
 
 async def test_equipment_missing_in_catalog_is_left_out_with_note(client):
     payload = json.loads(json.dumps(mock_analytics.CATALOG))
-    payload["equipment_classes"] = [c for c in payload["equipment_classes"] if c["code"] != "dump_truck"]
+    payload["equipment_classes"] = [c for c in payload["equipment_classes"] if c["code"] != "DumpTruck"]
     snapshot = await _pit_frame()
     async with SessionLocal() as session:
         built = await build_request(
             session, request_id="fa_x", site=await session.get(Site, "s1"), camera=await session.get(Camera, "c1"),
             snapshot=await session.merge(snapshot), catalog=parse_catalog(payload),
         )  # fmt: skip
-    assert {d["class_code"] for d in built.metadata["cv"]["detections"]} == {"excavator"}
+    assert {d["class_code"] for d in built.metadata["cv"]["detections"]} == {"Excavator"}
     assert any("dump_truck" in note for note in built.notes)
 
 
@@ -177,15 +187,21 @@ async def test_both_services_answer_and_are_shown_side_by_side(client, services)
     assert [c["cameraId"] for c in work["cameras"]] == ["c1"]  # въезд и склад сервисам не отправляются
     by_service = {a["service"]: a for a in camera["answers"]}
     rules, vision = by_service["deterministic"], by_service["vlm_llm"]
-    # «Разработка котлована» и «Вывоз грунта» — один вид работ справочника: неоднозначная группа из двух работ
+    # как у сервиса коллеги: одна группа — все работы плана, совместимые с техникой на кадре, по убыванию оценки
     group = rules["groups"][0]
-    assert group["match"] == "ambiguous" and [w["name"] for w in group["works"]] == ["Разработка котлована", "Вывоз грунта"]
+    names = [w["name"] for w in group["works"]]
+    assert group["match"] == "ambiguous" and names == [
+        "Разработка котлована",
+        "Вывоз грунта",
+        "Обратная засыпка",
+        "Подготовка площадки",
+    ]
     assert group["evidence"] and vision["groups"][0]["visualState"] == "operation_indicated"
     assert camera["matchesPlan"] is True  # котлован по графику сейчас и копают
     assert rules["transition"]["status"] == "not_distinguishable_by_equipment"  # следующая работа — та же техника
     assert rules["transition"]["current"]["name"] == "Разработка котлована"
     assert rules["schedule"]["status"] == "insufficient_evidence" and vision["schedule"] is None
-    assert camera["imageUrl"].startswith("/media/frames/c1/") and rules["model"].startswith("mock-0.1.0")
+    assert camera["imageUrl"].startswith("/media/frames/c1/") and rules["model"].startswith("mock-0.2.0")
 
 
 async def test_possible_delay_on_the_road(client, services):
@@ -200,7 +216,7 @@ async def test_possible_delay_on_the_road(client, services):
     ] > 0
     assert rules["schedule"]["status"] == "possible_delay"
     group = rules["current_work"]["work_groups"][0]
-    assert [c["step_key"] for c in group["candidates"]] == ["s3-base"]  # на кадре самосвал — это основание, а не асфальт
+    assert [c["step_key"] for c in group["candidates"]] == ["s3-base", "s3-asphalt", "s3-prep"]  # самосвал — у всех трёх
 
 
 async def test_service_failure_is_kept_apart(client, services, monkeypatch):
@@ -340,11 +356,14 @@ async def test_catalog_work_is_chosen_by_hand_and_checked(client, services):
     manager = await login_as(client, "manager")
     catalog = (await client.get("/api/analytics/catalog?siteId=s3", headers=manager)).json()
     assert catalog["enabled"] and catalog["version"] == mock_analytics.CATALOG_VERSION and catalog["objectType"] == "roads"
-    names = {w["name"] for w in catalog["works"]}
-    assert "Устройство нижнего слоя покрытия" in names and "Каркас здания" not in names  # каркас — не для дорог
-    assert all(w["stageId"] not in (100, 120, 140, 170) for w in catalog["works"])  # сводные этапы не выбираются
-    geodesy = next(w for w in catalog["works"] if w["stageId"] == 104)  # работа без техники — выбирается, с пометкой
-    assert geodesy["kind"] == "no_class" and geodesy["path"] == ["Подготовка территории"]
+    ids = {w["stageId"] for w in catalog["works"]}
+    # 149 «Устройство нижнего слоя покрытия» — для дорог; 182 «Устройство ж/б конструкций» (каркас здания) — нет.
+    # Одноимённая 104 (опоры) для дорог есть: названия в справочнике повторяются, поэтому список — по разделам
+    assert 149 in ids and 182 not in ids and 104 in ids
+    assert all(w["kind"] in ("concrete", "no_class") for w in catalog["works"])  # сводные этапы не выбираются
+    purchase = next(w for w in catalog["works"] if w["stageId"] == 39)  # работа без техники — выбирается, с пометкой
+    assert purchase["kind"] == "no_class" and purchase["name"] == "Закупка оборудования"
+    assert purchase["path"][0] == "Подготовка территории"  # stage_path у коллеги — строка «Раздел / … / Работа»
 
     def body(**extra) -> dict:  # noqa: ANN003
         return {
@@ -356,19 +375,19 @@ async def test_catalog_work_is_chosen_by_hand_and_checked(client, services):
             **extra,
         }
 
-    changed = await client.patch("/api/stages/s1-backfill", headers=manager, json=body(catalogStageId=121))
-    assert changed.status_code == 200 and changed.json()["catalogStageId"] == 121
+    changed = await client.patch("/api/stages/s1-backfill", headers=manager, json=body(catalogStageId=72))
+    assert changed.status_code == 200 and changed.json()["catalogStageId"] == 72
     assert changed.json()["catalogVersion"] == mock_analytics.CATALOG_VERSION
-    summary = await client.patch("/api/stages/s1-backfill", headers=manager, json=body(catalogStageId=120))
+    summary = await client.patch("/api/stages/s1-backfill", headers=manager, json=body(catalogStageId=27))
     assert summary.status_code == 422 and "сводный этап" in summary.json()["detail"]
-    roads_only = await client.patch("/api/stages/s1-backfill", headers=manager, json=body(catalogStageId=125))
+    roads_only = await client.patch("/api/stages/s1-backfill", headers=manager, json=body(catalogStageId=80))
     assert roads_only.status_code == 422 and "не относится" in roads_only.json()["detail"]
     kept = await client.patch("/api/stages/s1-backfill", headers=manager, json=body())  # поля нет — вид работ не трогаем
-    assert kept.json()["catalogStageId"] == 121
+    assert kept.json()["catalogStageId"] == 72
     cleared = await client.patch("/api/stages/s1-backfill", headers=manager, json=body(catalogStageId=None))
     assert cleared.json()["catalogStageId"] is None and cleared.json()["catalogVersion"] is None
-    no_class = await client.patch("/api/stages/s1-backfill", headers=manager, json=body(catalogStageId=104))
-    assert no_class.status_code == 200 and no_class.json()["catalogStageId"] == 104  # работа без техники — можно
+    no_class = await client.patch("/api/stages/s1-backfill", headers=manager, json=body(catalogStageId=39))
+    assert no_class.status_code == 200 and no_class.json()["catalogStageId"] == 39  # работа без техники — можно
 
     foreman = await login_as(client, "foreman")
     assert (await client.get("/api/analytics/catalog", headers=foreman)).status_code == 403
@@ -380,9 +399,9 @@ async def test_catalog_work_needs_connected_services(client):
         "enabled": False, "version": None, "objectType": None, "works": [], "error": None,
     }  # fmt: skip
     body = {"name": "Обратная засыпка", "level": 2, "parentId": "s1-l1-found", "start": "2026-11-09", "end": "2026-11-27"}
-    refused = await client.patch("/api/stages/s1-backfill", headers=manager, json={**body, "catalogStageId": 121})
+    refused = await client.patch("/api/stages/s1-backfill", headers=manager, json={**body, "catalogStageId": 72})
     assert refused.status_code == 503 and "недоступен" in refused.json()["detail"]
-    kept = await client.patch("/api/stages/s1-backfill", headers=manager, json={**body, "catalogStageId": 123})
+    kept = await client.patch("/api/stages/s1-backfill", headers=manager, json={**body, "catalogStageId": 77})
     assert kept.status_code == 200  # прежний вид работ сохранить можно и без сервисов — даты менять не мешает
     work = (await client.get("/api/sites/s1/work-analysis", headers=manager)).json()
     assert work["enabled"] is False and not work["canRun"] and all(c["answers"] == [] for c in work["cameras"])
@@ -452,6 +471,66 @@ async def test_pending_answers_after_restart_become_unknown(client, services):
         await runner.interrupt_pending(session)
         row = await session.get(AnalyticsResult, request.results[0].id, populate_existing=True)
     assert (row.state, row.error_code) == ("unknown", "interrupted")
+
+
+async def test_mock_answers_follow_the_contract_schema(client, services):
+    """Имитация отвечает по той же JSON Schema, что и сервисы коллеги: ответы, отказы, справочник, возможности."""
+    built = await _build()
+    for service in ("deterministic", "vlm_llm"):
+        assert conforms("result", mock_analytics.answer(service, built.metadata, built.input_sha256)) == []
+    refusal = mock_analytics._error(
+        "deterministic", mock_analytics.Problem(422, "unknown_stage", "сводный этап", "/plan/steps/0"), "fa_x"
+    )
+    assert conforms("error", json.loads(refusal.body)) == []
+    assert conforms("catalog", mock_analytics.CATALOG) == []
+    assert conforms("capabilities", await services.clients["vlm_llm"].get_json("/v1/capabilities")) == []
+
+
+async def test_real_service_answer_is_shown(client, services):
+    """Ответ настоящего сервиса коллеги (записан в его комплекте 0.2.0) читается и показывается: названия работ, которых
+    нет в нашем плане, берутся из справочника, сроки и следующая работа — как есть."""
+    real = json.loads(
+        (BASE_DIR / "tests" / "fixtures" / "analytics" / "real-deterministic-mixed.json").read_text(encoding="utf-8")
+    )
+    assert conforms("result", real) == []
+    now = utcnow()
+    async with SessionLocal() as session:
+        session.add(
+            AnalyticsRequest(
+                id="fa_real",
+                site_id="s1",
+                camera_id="c1",
+                at=now,
+                trigger="manual",
+                observed_at=now,
+                image_sha256="0" * 64,
+                input_sha256=real["context"]["input_sha256"],
+                catalog_version=real["context"]["catalog_version"],
+                plan_revision_id=real["context"]["plan_revision_id"],
+                notes=[],
+                results=[
+                    AnalyticsResult(service="deterministic", state="done", finished_at=now, result=real, outcome="assessed")
+                ],
+            )  # fmt: skip
+        )
+        await session.commit()
+    services.catalog._catalog = CATALOG  # справочник уже получен
+    manager = await login_as(client, "manager")
+    camera = (await client.get("/api/sites/s1/work-analysis", headers=manager)).json()["cameras"][0]
+    rules = next(a for a in camera["answers"] if a["service"] == "deterministic")
+    works = rules["groups"][0]["works"]
+    assert rules["state"] == "done" and works[0] == {
+        "stepKey": "demo-work-a",
+        "stageId": 47,
+        "name": "Устройство котлована",
+        "inPlan": False,
+    }
+    assert rules["schedule"]["status"] == real["schedule"]["status"] and rules["model"].startswith("0.2.0")
+    assert rules["transition"]["status"] == real["transition"]["status"]
+    # отставание в секундах у сервиса коллеги дробное — не теряется
+    late = next(i for i in real["schedule"]["items"] if i["status"] == "possible_delay")
+    shown = next(i for i in rules["schedule"]["items"] if i["status"] == "possible_delay")
+    assert shown["overdueS"] == round(late["overdue_seconds"]) and shown["overdueS"] > 0
 
 
 def test_contract_environment_names(monkeypatch):

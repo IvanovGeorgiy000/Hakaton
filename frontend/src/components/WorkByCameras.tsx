@@ -37,6 +37,24 @@ const TRANSITION: Record<string, (next: string) => string> = {
   no_next_stage: () => 'Идёт последняя работа плана.',
 }
 
+/** Почему нет ответа — по коду отказа сервиса (раздел 11 контракта); подробность от сервиса видят руководитель и админ */
+const REFUSAL: Record<string, string> = {
+  not_ready: 'Сервис не готов к работе',
+  dependency_unavailable: 'Сервису недоступна модель',
+  model_failure: 'Ошибка модели сервиса',
+  model_invalid_response: 'Модель сервиса ответила не по формату',
+  analysis_timeout: 'Сервис не успел ответить',
+  busy: 'Сервис занят',
+  unreachable: 'Нет связи с сервисом',
+  unauthorized: 'Сервис не принял токен доступа',
+  forbidden: 'Сервис не принял токен доступа',
+  catalog_version_mismatch: 'Справочник сервиса обновился — проверьте виды работ в плане',
+  invalid_result: 'Ответ сервиса не относится к этому кадру',
+  execution_uncertain: 'Неизвестно, выполнен ли анализ',
+}
+const refusal = (code: string | null, fallback: string) =>
+  code && REFUSAL[code] ? REFUSAL[code] : code && /^(invalid|unknown|image|idempotency|observation|plan|ambiguous)/.test(code) ? 'Сервис отклонил запрос' : fallback
+
 const days = (seconds: number) => plural(Math.max(1, Math.round(seconds / 86_400)), 'день', 'дня', 'дней')
 
 const works = (group: WorkGroup) =>
@@ -180,10 +198,10 @@ function Answer({ answer, canSeeErrors }: { answer: ServiceAnswer; canSeeErrors:
           <span className="inline-flex items-center gap-1.5 text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" aria-hidden />Ждём ответ…</span>
         )}
         {answer.state === 'error' && (
-          <span className="text-danger">Сервис не ответил{canSeeErrors && answer.error ? `: ${answer.error}` : ''}</span>
+          <span className="text-danger">{refusal(answer.errorCode, 'Сервис не ответил')}{canSeeErrors && answer.error ? `: ${answer.error}` : ''}</span>
         )}
         {answer.state === 'unknown' && (
-          <span className="text-warn">Неизвестно, выполнен ли анализ{canSeeErrors && answer.error ? `: ${answer.error}` : ''}</span>
+          <span className="text-warn">{refusal(answer.errorCode, 'Неизвестно, выполнен ли анализ')}{canSeeErrors && answer.error ? `: ${answer.error}` : ''}</span>
         )}
         {answer.state === 'done' && answer.outcome !== 'assessed' && (
           <span className={answer.outcome === 'outside_plan' ? 'text-warn' : 'text-muted-foreground'}>

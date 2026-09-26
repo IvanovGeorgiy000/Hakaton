@@ -35,6 +35,11 @@ RECENT = 10  # сколько последних отправок камеры �
 EVIDENCE = 6
 
 
+def _seconds(value: object) -> int | None:
+    """overdue_seconds — число (у сервиса коллеги дробное: 857392.682) или null."""
+    return round(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+
+
 def _moment(value: object) -> datetime | None:
     try:
         return datetime.fromisoformat(str(value)) if value else None
@@ -130,7 +135,7 @@ def _answer(
                     work=names.ref(item["step_key"], item.get("stage_id")),
                     status=str(item.get("status")),
                     reason=str(item.get("reason_code")),
-                    overdue_s=item.get("overdue_seconds") if isinstance(item.get("overdue_seconds"), int) else None,
+                    overdue_s=_seconds(item.get("overdue_seconds")),
                     evidence_at=_moment(item.get("evidence_at")),
                 )
                 for item in schedule.get("items") or []

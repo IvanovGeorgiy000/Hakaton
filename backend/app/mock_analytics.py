@@ -1,5 +1,5 @@
-"""Имитация двух сервисов аналитики коллеги (deterministic и vlm_llm) по контракту frame-analysis-v1 — для демо и
-тестов, пока нет их образов. Один процесс, два базовых адреса:
+"""Имитация двух сервисов аналитики коллеги (deterministic и vlm_llm) по контракту frame-analysis-v1 — для демо,
+тестов и e2e без Docker (настоящие сервисы — комплект коллеги 0.2.0, см. README бэкенда). Один процесс, два адреса:
 
     uv run uvicorn app.mock_analytics:app --port 8300
     DETERMINISTIC_SERVICE_URL=http://127.0.0.1:8300/deterministic
@@ -10,10 +10,10 @@
 (окно, повторы кадров, отметки выполнения), идемпотентность по request_id. Отвечает правдоподобно, но без моделей:
 «по технике» — по упрощённой матрице «класс техники → вид работ», с переходом к следующей работе и сроками
 (schedule-rules-v1); «по снимку» — те же группы от лица VLM: визуальные наблюдения строятся из рамок CV, картинку
-имитация не смотрит. Справочник — небольшой, с названиями из «Справочника видов работ» организаторов, а stage_id
-выдуманы: у настоящего сервиса они свои, и работы плана придётся сопоставить заново (версия справочника другая).
-Пункты плана — работы concrete и no_class (без техники: только сроки и отметки, в кандидаты по кадру не попадают —
-так договорились с коллегой 26.09); сводные этапы summary — отказ unknown_stage.
+имитация не смотрит. Справочник — тот же, что у сервисов коллеги 0.2.0 (assets/analytics/catalog.json), роли техники —
+выжимка их матрицы v2 (matrix-roles.json): план, сопоставленный для имитации, годится и для настоящих сервисов.
+Пункты плана — работы concrete и no_class (без техники: только сроки и отметки, в кандидаты по кадру не попадают;
+план только из них — insufficient_evidence); сводные этапы summary — отказ unknown_stage.
 
 MOCK_ANALYTICS_TOKEN — требовать этот Bearer (по умолчанию ANALYTICS_SERVICE_TOKEN, пусто — без проверки);
 MOCK_VLM_DELAY_S — сколько «думает» сервис по снимку (2 с); MOCK_ANALYTICS_FAULTS=vlm_llm=model_failure — отвечать
@@ -30,6 +30,7 @@ import uuid
 from collections import Counter
 from datetime import datetime, timedelta
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -37,8 +38,7 @@ from fastapi.responses import JSONResponse
 from PIL import Image
 from starlette.datastructures import UploadFile
 
-CATALOG_VERSION = "mock-2026-09-26"
-SERVICE_VERSION = "mock-0.1.0"
+SERVICE_VERSION = "mock-0.2.0"
 TOKEN = os.environ.get("MOCK_ANALYTICS_TOKEN", os.environ.get("ANALYTICS_SERVICE_TOKEN", ""))
 DELAYS_S = {"deterministic": 0.2, "vlm_llm": float(os.environ.get("MOCK_VLM_DELAY_S", "2"))}
 FAULTS: dict[str, str] = dict(
@@ -58,138 +58,19 @@ LIMITS = {
     "idempotency_retention_seconds": 7 * 24 * 3600,
 }
 
-# ---------- справочник ----------
-BUILDINGS = ("housing", "education", "healthcare", "sports", "culture", "administrative", "preschool", "office")
-ALL = (*BUILDINGS, "roads")
-PREP, SMR, UNDER, ABOVE, LAND = (
-    "Подготовка территории",
-    "Выполнение строительно-монтажных работ",
-    "Устройство подземной части",
-    "Устройство надземной части",
-    "Благоустройство территории",
-)
-EARTH, ROAD_BASE, ROAD_TOP = "Земляные работы", "Основание нижнего слоя дорожной одежды", "Покрытие дорожной одежды"
-
-CLASSES = [
-    ("excavator", "Экскаватор", ["Excavator", "экскаватор"]),
-    ("dump_truck", "Самосвал", ["Dump truck", "dumper", "самосвал"]),
-    ("road_roller", "Каток", ["roller", "compactor", "каток"]),
-    ("crane_manipulator", "Кран-манипулятор", ["manipulator", "loader crane"]),
-    ("concrete_mixer_truck", "Автобетоносмеситель", ["mixer", "concrete mixer"]),
-    ("bulldozer", "Бульдозер", ["Bulldozer"]),
-    ("truck", "Грузовой автомобиль", ["Truck", "lorry"]),
-    ("mobile_crane", "Автокран", ["crane", "truck crane"]),
-    ("concrete_pump", "Автобетононасос", ["concrete pump"]),
-]
-CLASS_NAMES = {code: name for code, name, _ in CLASSES}
-
-# stage_id, название, путь, вид, типы объектов, роли техники в матрице (класс → вес 1–3)
-WORKS: list[tuple[int, str, tuple[str, ...], str, tuple[str, ...], dict[str, int]]] = [
-    (100, PREP, (), "summary", ALL, {}),
-    (101, "Обустройство строительной площадки", (PREP,), "concrete", ALL, {"bulldozer": 2, "truck": 1, "crane_manipulator": 1}),
-    (102, "Вырубка зеленых насаждений", (PREP,), "concrete", ALL, {"bulldozer": 2, "excavator": 1, "truck": 1}),
-    (103, "Погрузка строительного мусора", (PREP,), "concrete", ALL, {"excavator": 2, "dump_truck": 3}),
-    (104, "Устройство геодезических знаков", (PREP,), "no_class", ALL, {}),
-    (105, "Отселение домов в пятне застройки", (PREP,), "no_class", ALL, {}),
-    (120, UNDER, (SMR,), "summary", ALL, {}),
-    (121, "Выемка грунта котлована", (SMR, UNDER, EARTH), "concrete", ALL, {"excavator": 3, "dump_truck": 3, "bulldozer": 1}),
-    (122, "Разработка грунта", (SMR, UNDER, EARTH), "concrete", (*BUILDINGS[1:], "roads"), {"excavator": 3, "dump_truck": 2}),
-    (
-        123,
-        "Обратная засыпка грунтом",
-        (SMR, UNDER, EARTH),
-        "concrete",
-        ALL,
-        {"bulldozer": 3, "road_roller": 2, "excavator": 1, "dump_truck": 1},
-    ),
-    (
-        124,
-        "Устройство монолитной ж/б фундаментной плиты",
-        (SMR, UNDER, "Монолитные работы ниже отметки «0»"),
-        "concrete",
-        BUILDINGS,
-        {"concrete_mixer_truck": 3, "concrete_pump": 3, "mobile_crane": 1},
-    ),
-    (
-        125,
-        "Устройство нижнего слоя основания дорожной одежды",
-        (SMR, UNDER, ROAD_BASE),
-        "concrete",
-        ("roads",),
-        {"dump_truck": 3, "bulldozer": 2, "road_roller": 2, "excavator": 1},
-    ),
-    (
-        126,
-        "Уплотнение нижнего слоя основания дорожной одежды",
-        (SMR, UNDER, ROAD_BASE),
-        "concrete",
-        ("roads",),
-        {"road_roller": 3},
-    ),
-    (140, ABOVE, (SMR,), "summary", ALL, {}),
-    (
-        141,
-        "Каркас здания",
-        (SMR, ABOVE),
-        "concrete",
-        BUILDINGS,
-        {"mobile_crane": 3, "crane_manipulator": 2, "concrete_mixer_truck": 2, "truck": 1},
-    ),
-    (
-        142,
-        "Устройство монолитных ж/б колонн",
-        (SMR, ABOVE, "Монолитные работы выше отметки «0»"),
-        "concrete",
-        BUILDINGS,
-        {"concrete_mixer_truck": 3, "concrete_pump": 2, "mobile_crane": 2},
-    ),
-    (
-        143,
-        "Устройство нижнего слоя покрытия",
-        (SMR, ABOVE, ROAD_TOP),
-        "concrete",
-        ("roads",),
-        {"road_roller": 3, "dump_truck": 2},
-    ),
-    (
-        144,
-        "Устройство верхнего слоя покрытия",
-        (SMR, ABOVE, ROAD_TOP),
-        "concrete",
-        ("roads",),
-        {"road_roller": 3, "dump_truck": 2},
-    ),
-    (
-        145,
-        "Установка дорожных знаков",
-        (SMR, ABOVE, "Обустройство"),
-        "concrete",
-        ("roads",),
-        {"crane_manipulator": 2, "truck": 1},
-    ),
-    (170, LAND, (), "summary", ALL, {}),
-    (
-        171,
-        "Устройство асфальтобетонного покрытия проездов, тротуаров, площадок",
-        (LAND,),
-        "concrete",
-        BUILDINGS,
-        {"road_roller": 3, "dump_truck": 2},
-    ),
-    (172, "Озеленение", (LAND,), "concrete", ALL, {"truck": 1, "crane_manipulator": 1}),
-]
-WORK = {w[0]: w for w in WORKS}
-ROLES = {w[0]: w[5] for w in WORKS}
-
-CATALOG = {
-    "schema_version": "frame-analysis-catalog-v1",
-    "catalog_version": CATALOG_VERSION,
-    "equipment_classes": [{"code": c, "name_ru": n, "aliases": a} for c, n, a in CLASSES],
-    "work_stages": [
-        {"stage_id": sid, "name_ru": name, "stage_path": [*path, name], "stage_kind": kind, "object_type_codes": list(types)}
-        for sid, name, path, kind, types, _ in WORKS
-    ],
-}
+# ---------- справочник и матрица — из комплекта коллеги 0.2.0 ----------
+ASSETS = Path(__file__).resolve().parent / "assets" / "analytics"
+CATALOG = json.loads((ASSETS / "catalog.json").read_text(encoding="utf-8"))
+CATALOG_VERSION = CATALOG["catalog_version"]
+_MATRIX = json.loads((ASSETS / "matrix-roles.json").read_text(encoding="utf-8"))
+MATRIX_VERSION = _MATRIX["matrix_version"]
+PROFILES_VERSION = "visual-profiles-708cb01523c740f39b8789aa"  # визуальные профили работ у сервиса по снимку (compose коллеги)
+CLASS_NAMES = {c["code"]: c["name_ru"] for c in CATALOG["equipment_classes"]}
+WORK = {w["stage_id"]: w for w in CATALOG["work_stages"]}
+# вид работ → класс техники → вес роли (1–3) и вес сигнала текущей активности (0–3)
+ROLES = {int(sid): {code: weights[0] for code, weights in classes.items()} for sid, classes in _MATRIX["roles"].items()}
+SIGNALS = {int(sid): {code: weights[1] for code, weights in classes.items()} for sid, classes in _MATRIX["roles"].items()}
+CLASS_GROUPS = _MATRIX["class_groups"]  # класс → группа свидетельств (earthmoving, logistics…)
 
 # ---------- проверка запроса ----------
 INPUT_KEYS = {
@@ -209,7 +90,7 @@ STEP_KEYS = {"step_key", "sequence_no", "stage_id", "planned_start_at", "planned
 OBSERVATION_KEYS = {"observation_id", "image_id", "camera_id", "observed_at", "source_ref", "image_sha256", "cv"}
 EVENT_KEYS = {"event_id", "step_key", "stage_id", "plan_revision_id", "state", "effective_at", "recorded_at", "source_ref",
               "actual_started_at", "actual_completed_at"}  # fmt: skip
-OBJECT_TYPES = set(ALL)
+OBJECT_TYPES = {"housing", "education", "healthcare", "sports", "culture", "administrative", "preschool", "office", "roads"}
 MEDIA = {"image/jpeg": "JPEG", "image/png": "PNG", "image/webp": "WEBP"}
 RFC3339 = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$")
 SHA = re.compile(r"^[0-9a-f]{64}$")
@@ -360,13 +241,13 @@ def validate(meta: Any, image: bytes, media_type: str, plans: dict) -> None:
                 raise _invalid(f"{where}/sequence_no", "sequence_no — положительное целое, без повторов")
             sid = step["stage_id"]
             work = WORK.get(sid) if isinstance(sid, int) and not isinstance(sid, bool) else None
-            if work is None or work[3] not in ("concrete", "no_class"):
+            if work is None or work["stage_kind"] not in ("concrete", "no_class"):
                 raise _invalid(
                     f"{where}/stage_id", f"{sid!r} — не работа справочника (сводный этап или неизвестный)", "unknown_stage"
                 )
-            if meta["object_type_code"] and meta["object_type_code"] not in work[4]:
+            if meta["object_type_code"] and meta["object_type_code"] not in work["object_type_codes"]:
                 raise _invalid(
-                    f"{where}/stage_id", f"«{work[1]}» не относится к типу {meta['object_type_code']}", "unknown_stage"
+                    f"{where}/stage_id", f"«{work['name_ru']}» не относится к типу {meta['object_type_code']}", "unknown_stage"
                 )
             start, end = (
                 _time(step["planned_start_at"], f"{where}/planned_start_at"),
@@ -468,6 +349,8 @@ def _current_work(meta: dict, service: str) -> tuple[str, list[dict], list[dict]
         return "scope_unknown", [], [], []
     if meta["plan"] is None:
         return "no_plan", [], [], []
+    if all(WORK[step["stage_id"]]["stage_kind"] != "concrete" for step in meta["plan"]["steps"]):
+        return "insufficient_evidence", [], [], []  # план только из работ без техники: по кадру назвать нечего
     cv = meta["cv"]
     usable = [(n, d) for n, d in enumerate(cv["detections"]) if (d["confidence"] or 0) >= 0.3] if cv["status"] == "ok" else []
     counts = Counter(d["class_code"] for _, d in usable)
@@ -475,26 +358,33 @@ def _current_work(meta: dict, service: str) -> tuple[str, list[dict], list[dict]
         return "insufficient_evidence", [], [], []
     scored = []
     for step in meta["plan"]["steps"]:
-        roles = ROLES.get(step["stage_id"], {})
+        roles, signals = ROLES.get(step["stage_id"], {}), SIGNALS.get(step["stage_id"], {})
         matches = {code: weight for code, weight in roles.items() if counts[code]}
-        if sum(matches.values()) >= 2:
-            scored.append((sum(matches.values()), step, matches))
+        if sum(matches.values()) >= 2:  # роли решают, сигналы текущей активности — при равных ролях
+            scored.append(((sum(matches.values()), sum(signals[c] for c in matches)), step, matches))
     if not scored:
         return "outside_plan", [], [], []
-    best = max(score for score, _, _ in scored)
-    top = [(step, matches) for score, step, matches in scored if score == best][:10]
-    matches = top[0][1]
+    scored.sort(key=lambda item: (-item[0][0], -item[0][1], item[1]["stage_id"]))  # при равных — по номеру вида работ
+    if service == "deterministic":  # как у сервиса коллеги: все совместимые с общим CV участка, по убыванию
+        top = [(step, matches) for _, step, matches in scored][:10]
+    else:
+        top = [(step, matches) for score, step, matches in scored if score == scored[0][0]][:10]
+    matches = {code: weight for _, step_matches in top for code, weight in step_matches.items()}
     support = [(n, d) for n, d in usable if d["class_code"] in matches]
     area = [min(d["bbox"][0] for _, d in support), min(d["bbox"][1] for _, d in support),
             max(d["bbox"][2] for _, d in support), max(d["bbox"][3] for _, d in support)]  # fmt: skip
     names = ", ".join(CLASS_NAMES[c].lower() for c in matches)
-    works = " или ".join(dict.fromkeys(f"«{WORK[step['stage_id']][1]}»" for step, _ in top[:3]))  # один вид работ — один раз
+    works = " или ".join(
+        dict.fromkeys(f"«{WORK[step['stage_id']]['name_ru']}»" for step, _ in top[:3])
+    )  # один вид работ — один раз
     observations, relations, evidence = [], [], []
     if service == "deterministic":
         for n, d in support[:24]:
             evidence.append({"source": "cv_detection", "ref": f"/cv/detections/{n}", "role": "supports",
-                             "explanation": f"{CLASS_NAMES[d['class_code']]} — техника этой работы по матрице"})  # fmt: skip
-        state, explanation = "not_evaluated", f"По технике на кадре ({names}) подходит {works}."
+                             "explanation": f"{CLASS_NAMES[d['class_code']]}: технологически совместим с кандидатами по матрице"})  # fmt: skip
+        state = "not_evaluated"
+        explanation = f"Совместимость техники на кадре ({names}) с планом: {works}. Параллельные операции не локализованы."
+        area = None  # общий CV участка: где идёт какая работа, матрица не говорит
     else:
         firsts = {}
         for _, d in support:
@@ -505,8 +395,8 @@ def _current_work(meta: dict, service: str) -> tuple[str, list[dict], list[dict]
             evidence.append({"source": "visual_observation", "ref": f"/visual_observations/{k}", "role": "supports",
                              "explanation": f"На снимке виден {CLASS_NAMES[code].lower()}"})  # fmt: skip
         ids = {code: f"vo{k + 1}" for k, code in enumerate(firsts)}
-        if "excavator" in ids and "dump_truck" in ids:
-            relations.append({"id": "vr1", "subject_id": ids["excavator"], "predicate": "adjacent_to", "object_id": ids["dump_truck"],
+        if "Excavator" in ids and "DumpTruck" in ids:
+            relations.append({"id": "vr1", "subject_id": ids["Excavator"], "predicate": "adjacent_to", "object_id": ids["DumpTruck"],
                               "certainty": "medium", "description": "Экскаватор рядом с самосвалом — похоже на погрузку грунта"})  # fmt: skip
             evidence.append({"source": "visual_relation", "ref": "/visual_relations/0", "role": "supports",
                              "explanation": "Экскаватор грузит самосвал"})  # fmt: skip
@@ -516,12 +406,21 @@ def _current_work(meta: dict, service: str) -> tuple[str, list[dict], list[dict]
     for step, step_matches in top:
         ranking = None
         if service == "deterministic":
+            signals = {c: min(w, SIGNALS[step["stage_id"]][c]) for c, w in step_matches.items()}
+            strong = [c for c, value in signals.items() if value >= 2]  # признак текущей работы, а не просто присутствия
             ranking = {
-                "status": "supported_candidate" if len(step_matches) >= 2 else "single_signal",
-                "signal_score": min(10, sum(min(w, counts[c]) for c, w in step_matches.items())),
-                "role_score": min(10, sum(step_matches.values())),
+                "status": "supported_candidate" if len(strong) >= 2 else "single_signal" if strong else "context_only",
+                "signal_score": min(
+                    10.0, round(sum(value**3 / 4 for value in signals.values()), 2)
+                ),  # как у коллеги: 1 → 0,25; 2 → 2
+                "role_score": float(min(10, sum(step_matches.values()))),
                 "matches": [
-                    {"class_code": c, "role_weight": w, "signal_weight": min(w, counts[c]), "evidence_group": "equipment"}
+                    {
+                        "class_code": c,
+                        "role_weight": w,
+                        "signal_weight": signals[c],
+                        "evidence_group": CLASS_GROUPS.get(c, "equipment"),
+                    }
                     for c, w in step_matches.items()
                 ],
             }
@@ -531,7 +430,7 @@ def _current_work(meta: dict, service: str) -> tuple[str, list[dict], list[dict]
         "match_status": "specific" if len(candidates) == 1 else "ambiguous",
         "candidates": candidates,
         "visual_state": state,
-        "area_bbox": [round(v, 6) for v in area],
+        "area_bbox": None if area is None else [round(v, 6) for v in area],
         "evidence": evidence[:24],
         "explanation": explanation[:1000],
     }
@@ -655,8 +554,8 @@ def answer(service: str, meta: dict, input_sha256: str) -> dict:
         },
         "versions": {
             "service_version": SERVICE_VERSION,
-            "matrix_version": "mock-matrix-v2" if deterministic else None,
-            "profiles_version": None,
+            "matrix_version": MATRIX_VERSION if deterministic else None,
+            "profiles_version": None if deterministic else PROFILES_VERSION,
             "vision_model": None if deterministic else "mock-vlm",
             "llm_model": None if deterministic else "mock-llm",
             "schedule_rules_version": "schedule-rules-v1" if deterministic else None,

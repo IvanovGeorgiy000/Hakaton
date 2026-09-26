@@ -15,6 +15,10 @@ os.environ.update(
         "SK_INGEST_API_KEY": "ingest-test-key",
         "SK_DEMO_PASSWORD": "stand-password",
         "SK_ANALYSIS_PROVIDER": "mock",
+        # сервисы аналитики в тестах подключают сами тесты (имитация без сокетов) — не те, что заданы в backend/.env
+        "DETERMINISTIC_SERVICE_URL": "",
+        "VLM_LLM_SERVICE_URL": "",
+        "ANALYTICS_SERVICE_TOKEN": "",
     }
 )
 

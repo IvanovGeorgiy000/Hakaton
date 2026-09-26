@@ -12,8 +12,11 @@
 # и должен знать адрес этого компьютера:
 #   SK_TRACKER_URL=ws://<адрес сервиса>:8200/stream SK_TRACKER_API_KEY=<ключ> SK_TRACKER_RTSP_URL=rtsp://192.168.1.10:8554 \
 #   SK_ANALYSIS_PROVIDER=push docker compose up --build
-# Работы по камерам — два сервиса аналитики коллеги (контракт frame-analysis-v1, backend/docs). Пока их образов нет —
-# имитация обоих (один контейнер, два адреса):
+# Работы по камерам — два сервиса аналитики коллеги (контракт frame-analysis-v1, backend/docs). Настоящие — его
+# Docker-комплект 0.2.0 (свой compose, порты 18001 и 18002 на этом компьютере):
+#   DETERMINISTIC_SERVICE_URL=http://host.docker.internal:18001 VLM_LLM_SERVICE_URL=http://host.docker.internal:18002 \
+#   ANALYTICS_SERVICE_TOKEN=<из .env комплекта> docker compose up --build
+# Без комплекта — имитация обоих (один контейнер, два адреса):
 #   DETERMINISTIC_SERVICE_URL=http://analytics:8300/deterministic VLM_LLM_SERVICE_URL=http://analytics:8300/vlm_llm \
 #   docker compose --profile analytics up --build
 
@@ -81,6 +84,8 @@ services:
       SK_ANALYTICS_INTERVAL_MIN: ${SK_ANALYTICS_INTERVAL_MIN:-20}
     volumes:
       - media:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # сервисы на этом компьютере (комплект аналитики коллеги) — и на Linux
     depends_on:
       db:
         condition: service_healthy

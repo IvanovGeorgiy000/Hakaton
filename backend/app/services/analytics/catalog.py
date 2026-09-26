@@ -1,8 +1,8 @@
 """Справочник сервисов аналитики (GET /v1/catalog): версия, классы техники и виды работ.
 
 В запросе stage_id — вид работ из справочника, а не наш id работы, а класс техники — код справочника. Работы плана
-сопоставляет человек в редакторе плана (по похожему названию нельзя — раздел 6 контракта). Технику — по кодам
-и синонимам (aliases) справочника или явно через SK_ANALYTICS_CLASSES.
+сопоставляет человек в редакторе плана (по похожему названию нельзя — раздел 6 контракта). Технику — по явной таблице
+соответствия CLASS_TABLE (раздел 5), а для других справочников — по кодам и синонимам (aliases) или SK_ANALYTICS_CLASSES.
 """
 
 import json
@@ -27,6 +27,19 @@ FRESH_S = 600.0  # справочник версионирован и меняе
 # Сводные этапы (summary) в план не идут — у нас это этапы плана уровня 1, группировки работ
 PLAN_KINDS = ("concrete", "no_class")
 KIND_NAMES = {"summary": "сводный этап справочника (у нас это этап плана, а не работа)"}
+
+# Явная таблица соответствия (раздел 5 контракта): наш тип техники → код класса в справочнике коллеги (0.2.0: коды
+# вида DumpTruck, синонимов почти нет). Код берётся, только если он есть в справочнике. Грузовика (truck) в справочнике
+# нет — такую технику не отправляем, а в запросе остаётся пометка
+CLASS_TABLE = {
+    "excavator": "Excavator",
+    "dump_truck": "DumpTruck",
+    "roller": "RoadRoller",
+    "manipulator": "TruckMountedCrane",
+    "mixer": "ConcreteMixerTruck",
+    "bulldozer": "Bulldozer",
+    "crane": "MobileCrane",
+}
 
 
 class CatalogError(Exception):
@@ -55,6 +68,8 @@ class Catalog:
         if equipment_type in overrides:
             code = overrides[equipment_type]
             return code if code in self.classes else None
+        if CLASS_TABLE.get(equipment_type) in self.classes:
+            return CLASS_TABLE[equipment_type]
         return self.aliases.get(_norm(equipment_type))
 
     def step_problem(self, stage_id: int, object_type: str | None) -> str | None:
@@ -86,6 +101,12 @@ def _norm(name: str) -> str:
     return re.sub(r"[\s\-_]+", "_", name.strip().lower())
 
 
+def _path(value: Any) -> tuple[str, ...]:
+    """stage_path — строка «Раздел / Подраздел / Работа» (так у сервиса коллеги) или список разделов."""
+    parts = value.split(" / ") if isinstance(value, str) else value if isinstance(value, list) else []
+    return tuple(str(p).strip() for p in parts if str(p).strip())
+
+
 def _text(value: Any, what: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise CatalogError(f"в справочнике {what} — не строка")
@@ -111,7 +132,7 @@ def parse_catalog(payload: Any) -> Catalog:
     for item in payload.get("work_stages") or []:
         if not isinstance(item, dict) or isinstance(item.get("stage_id"), bool) or not isinstance(item.get("stage_id"), int):
             raise CatalogError("в справочнике вид работ без целого stage_id")
-        path = tuple(str(p) for p in item.get("stage_path") or [] if str(p).strip())
+        path = _path(item.get("stage_path"))
         works[item["stage_id"]] = CatalogWork(
             stage_id=item["stage_id"],
             name=_text(item.get("name_ru"), f"название вида работ {item['stage_id']}"),
