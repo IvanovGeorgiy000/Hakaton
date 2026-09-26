@@ -148,6 +148,39 @@ export interface Rule {
 /** Новое правило: название этапа и описание, технику добавляют потом в редакторе */
 export interface RuleInput { stageName: string; description: string }
 
+/** Работа из файла плана: ошибки не дают загрузить план, пояснения — к сведению */
+export interface PlanImportWork {
+  /** Номер строки в файле — чтобы найти её в Excel */
+  line: number
+  name: string
+  start: string | null
+  end: string | null
+  ruleKey: string | null
+  catalogStageId: number | null
+  errors: string[]
+  notes: string[]
+}
+
+export interface PlanImportPhase {
+  line: number
+  name: string
+  start: string | null
+  end: string | null
+  errors: string[]
+  works: PlanImportWork[]
+}
+
+/** Что получится из файла плана (или что загрузилось — applied) */
+export interface PlanImport {
+  fileName: string
+  phases: PlanImportPhase[]
+  works: number
+  errors: number
+  /** Этапов и работ уже в плане объекта — при замене они удалятся */
+  existing: number
+  applied: boolean
+}
+
 export interface Detection {
   id: string
   type: EquipmentType

@@ -169,6 +169,35 @@ def zone_out(z: Zone) -> ZoneOut:
     return ZoneOut(id=z.id, site_id=z.site_id, name=z.name, kind=z.kind)
 
 
+class PlanImportWork(ApiModel):
+    line: int  # номер строки в файле
+    name: str
+    start: date | None
+    end: date | None
+    rule_key: str | None
+    catalog_stage_id: int | None
+    errors: list[str]  # из-за них план не загрузится
+    notes: list[str]  # пояснения: правило подобрано по названию, работа без правила…
+
+
+class PlanImportPhase(ApiModel):
+    line: int
+    name: str
+    start: date | None  # явные даты этапа или от начала первой его работы до конца последней
+    end: date | None
+    errors: list[str]
+    works: list[PlanImportWork]
+
+
+class PlanImportOut(ApiModel):
+    file_name: str
+    phases: list[PlanImportPhase]
+    works: int
+    errors: int  # сколько ошибок во всём файле: пока они есть, план не загружается
+    existing: int  # этапов и работ уже в плане объекта — при замене они удалятся
+    applied: bool  # false — только предпросмотр
+
+
 class StageOut(ApiModel):
     id: str
     site_id: str

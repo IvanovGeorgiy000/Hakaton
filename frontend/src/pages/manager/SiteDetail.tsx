@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, CalendarDays, Layers, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, CalendarDays, FileSpreadsheet, Layers, Pencil, Plus, Trash2 } from 'lucide-react'
 import { CAMERA_ADDERS, SITE_MANAGERS } from '@/data'
 import { useApp } from '@/store/context'
 import { SiteToday } from '@/components/SiteToday'
@@ -8,7 +8,7 @@ import { StageTimeline } from '@/components/StageTimeline'
 import { VideoWall } from '@/components/video/VideoWall'
 import { Button } from '@/components/ui/Button'
 import { AddCameraDialog, CameraAdminActions } from '@/components/camera'
-import { DeleteSiteDialog, PlanDialog, SiteDialog, ZonesDialog } from '@/components/site'
+import { DeleteSiteDialog, ImportPlanDialog, PlanDialog, SiteDialog, ZonesDialog } from '@/components/site'
 import { cn } from '@/lib/utils'
 
 const TABS = [
@@ -17,7 +17,7 @@ const TABS = [
   { id: 'plan', label: 'План работ' },
 ] as const
 
-type Dialog = 'edit' | 'zones' | 'plan' | 'delete' | 'camera' | null
+type Dialog = 'edit' | 'zones' | 'plan' | 'import' | 'delete' | 'camera' | null
 
 /** Объект глазами руководителя и администратора: вкладки «Сегодня», «Камеры», «План работ» — и настройка объекта здесь же */
 export function ManagerSite() {
@@ -74,7 +74,8 @@ export function ManagerSite() {
       {tab === 'plan' && (
         <>
           {canManage && (
-            <div className="flex justify-end mb-4">
+            <div className="flex flex-wrap justify-end gap-2 mb-4 [&>button]:grow sm:[&>button]:grow-0">
+              <Button variant="outline" onClick={() => setDialog('import')}><FileSpreadsheet className="w-5 h-5" /> Загрузить из Excel</Button>
               <Button onClick={() => setDialog('plan')}><CalendarDays className="w-5 h-5" /> Изменить план</Button>
             </div>
           )}
@@ -88,6 +89,7 @@ export function ManagerSite() {
           <SiteDialog site={dialog === 'edit' ? site : null} onClose={close} />
           <ZonesDialog site={dialog === 'zones' ? site : null} onClose={close} />
           <PlanDialog site={dialog === 'plan' ? site : null} onClose={close} />
+          <ImportPlanDialog site={dialog === 'import' ? site : null} onClose={close} />
         </>
       )}
       {isAdmin && <DeleteSiteDialog site={dialog === 'delete' ? site : null} onClose={close} onDeleted={() => navigate(base, { replace: true })} />}

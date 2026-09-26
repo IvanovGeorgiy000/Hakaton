@@ -8,7 +8,7 @@
  */
 import type {
   Alert, AlertEvent, AnalyzeResult, AuditEvent, Camera, CheckRow, Detection, Deviation, EquipmentCheckResult, ExtraRow,
-  AnalyticsCatalog, CameraWork, CatalogWork, LiveCamera, Meta, ProbeResult, Rule, Schedule, ScheduleItem, ServiceAnswer, Site, SiteWork,
+  AnalyticsCatalog, CameraWork, CatalogWork, LiveCamera, Meta, PlanImport, PlanImportPhase, PlanImportWork, ProbeResult, Rule, Schedule, ScheduleItem, ServiceAnswer, Site, SiteWork,
   Snapshot, Stage, Transition, User, WeeklyReport, WorkEvidence, WorkGroup, WorkRef, Zone,
 } from '@/data'
 import type { components } from './openapi'
@@ -55,4 +55,7 @@ export type Contract = [
   Check<Same<ScheduleItem, S['ScheduleItemOut']>>,
   Check<Same<AnalyticsCatalog, S['AnalyticsCatalogOut']>>,
   Check<Same<CatalogWork, S['CatalogWorkOut']>>,
+  Check<Same<PlanImport, S['PlanImportOut']>>,
+  Check<Same<PlanImportPhase, S['PlanImportPhase']>>,
+  Check<Same<PlanImportWork, S['PlanImportWork']>>,
 ]

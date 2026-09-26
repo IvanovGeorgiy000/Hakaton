@@ -9,7 +9,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api import admin, alerts, analyze, audit, auth, cameras, catalog, ingest, reports, snapshots, tracks, work
+from app.api import admin, alerts, analyze, audit, auth, cameras, catalog, ingest, plan, reports, snapshots, tracks, work
 from app.api import video as video_api
 from app.config import ASSETS_DIR, get_settings
 from app.db import SessionLocal, engine, utcnow
@@ -156,7 +156,7 @@ async def meta() -> MetaOut:
     )
 
 
-for module in (auth, catalog, cameras, snapshots, alerts, analyze, reports, ingest, video_api, tracks, work, audit, admin):
+for module in (auth, catalog, cameras, snapshots, alerts, analyze, reports, ingest, video_api, tracks, work, audit, admin, plan):
     api.include_router(module.router)
 app.include_router(api)
 

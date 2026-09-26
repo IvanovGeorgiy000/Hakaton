@@ -739,6 +739,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sites/{site_id}/plan/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Шаблон плана работ (Excel): списки правил и видов работ для этого объекта */
+        get: operations["plan_template_api_sites__site_id__plan_template_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sites/{site_id}/plan/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Загрузить план из Excel или CSV: без apply — только предпросмотр с ошибками по строкам */
+        post: operations["import_plan_api_sites__site_id__plan_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -922,6 +956,14 @@ export interface components {
             siteId?: string | null;
             /** Rulekey */
             ruleKey?: string | null;
+        };
+        /** Body_import_plan_api_sites__site_id__plan_import_post */
+        Body_import_plan_api_sites__site_id__plan_import_post: {
+            /**
+             * File
+             * @description Заполненный шаблон .xlsx или таблица .csv
+             */
+            file: string;
         };
         /** Body_ingest_snapshot_api_ingest_snapshots_post */
         Body_ingest_snapshot_api_ingest_snapshots_post: {
@@ -1365,6 +1407,55 @@ export interface components {
         PasswordIn: {
             /** Password */
             password: string;
+        };
+        /** PlanImportOut */
+        PlanImportOut: {
+            /** Filename */
+            fileName: string;
+            /** Phases */
+            phases: components["schemas"]["PlanImportPhase"][];
+            /** Works */
+            works: number;
+            /** Errors */
+            errors: number;
+            /** Existing */
+            existing: number;
+            /** Applied */
+            applied: boolean;
+        };
+        /** PlanImportPhase */
+        PlanImportPhase: {
+            /** Line */
+            line: number;
+            /** Name */
+            name: string;
+            /** Start */
+            start: string | null;
+            /** End */
+            end: string | null;
+            /** Errors */
+            errors: string[];
+            /** Works */
+            works: components["schemas"]["PlanImportWork"][];
+        };
+        /** PlanImportWork */
+        PlanImportWork: {
+            /** Line */
+            line: number;
+            /** Name */
+            name: string;
+            /** Start */
+            start: string | null;
+            /** End */
+            end: string | null;
+            /** Rulekey */
+            ruleKey: string | null;
+            /** Catalogstageid */
+            catalogStageId: number | null;
+            /** Errors */
+            errors: string[];
+            /** Notes */
+            notes: string[];
         };
         /** ProbeOut */
         ProbeOut: {
@@ -3632,6 +3723,77 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_template_api_sites__site_id__plan_template_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_plan_api_sites__site_id__plan_import_post: {
+        parameters: {
+            query?: {
+                /** @description Записать план; без него — только показать, что получится */
+                apply?: boolean;
+                /** @description Удалить прежний план объекта, а не дополнить его */
+                replace?: boolean;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_plan_api_sites__site_id__plan_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanImportOut"];
+                };
             };
             /** @description Validation Error */
             422: {

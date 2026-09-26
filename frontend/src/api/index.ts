@@ -1,7 +1,7 @@
-import { request } from './client'
+import { downloadFile, request } from './client'
 import type {
   Alert, AlertStatus, AnalyticsCatalog, AnalyzeResult, AuditEvent, Camera, CameraPatch, Connection, EquipmentCheckResult, LiveCamera, Meta, NewCamera,
-  ProbeResult, RoleId, Rule, RuleInput, Sample, Site, SiteInput, SiteWork, Snapshot, Stage, StageInput, User, UserInput, UserPatch, WeeklyReport, Zone,
+  PlanImport, ProbeResult, RoleId, Rule, RuleInput, Sample, Site, SiteInput, SiteWork, Snapshot, Stage, StageInput, User, UserInput, UserPatch, WeeklyReport, Zone,
   ZoneInput,
 } from '@/data'
 
@@ -80,6 +80,15 @@ export const api = {
   updateStage: (id: string, stage: StageInput) => request<Stage>('PATCH', `/stages/${id}`, stage),
   deleteStage: (id: string) => request<void>('DELETE', `/stages/${id}`),
   setStageProgress: (id: string, factProgress: number) => request<Stage>('PATCH', `/stages/${id}/progress`, { factProgress }),
+  /** Шаблон плана работ (Excel) со списками правил и видов работ этого объекта */
+  planTemplate: (siteId: string) => downloadFile(`/sites/${siteId}/plan/template`),
+  /** План из Excel или CSV: без apply — только предпросмотр, план не меняется */
+  importPlan: (siteId: string, file: File, options: { apply?: boolean; replace?: boolean } = {}) => {
+    const form = new FormData()
+    form.append('file', file)
+    const params = query({ apply: options.apply ? 'true' : null, replace: options.replace ? 'true' : null })
+    return request<PlanImport>('POST', `/sites/${siteId}/plan/import${params}`, form)
+  },
 
   users: () => request<User[]>('GET', '/users'),
   createUser: (user: UserInput) => request<User>('POST', '/users', user),

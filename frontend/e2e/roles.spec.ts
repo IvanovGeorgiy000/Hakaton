@@ -46,7 +46,7 @@ test('прораб: свой объект, камеры, план; отклон�
   expect(errors).toEqual([])
 })
 
-test('руководитель: объекты, страница объекта с вкладками, камеры, отклонения, отчёт, проверка фото', async ({ page }) => {
+test('руководитель: объекты, страница объекта с вкладками, план из CSV, камеры, отклонения, отчёт, проверка фото', async ({ page }) => {
   const errors = watchErrors(page)
   await enterAs(page, 'Руководитель проекта')
   await visit(page, '/manager', 'ЖК «Северный парк», корпус 3')
@@ -75,6 +75,19 @@ test('руководитель: объекты, страница объекта 
   await expect(kind).toBeVisible()
   await expect(kind.locator('option', { hasText: 'Обратная засыпка грунтом' })).toHaveCount(1)
   await page.keyboard.press('Escape')
+  // план из Excel или CSV: предпросмотр с ошибками по строкам; загрузить можно, только когда ошибок нет
+  await page.getByRole('button', { name: 'Загрузить из Excel' }).click()
+  const upload = page.getByRole('dialog', { name: /План из Excel/ })
+  const csv = (end: string) => ({
+    name: 'план.csv', mimeType: 'text/csv', buffer: Buffer.from(`Этап;Работа;Начало;Окончание\nОтделка;Внутренняя отделка;01.06.2027;${end}\n`),
+  })
+  await upload.locator('input[type=file]').setInputFiles(csv('01.05.2027'))
+  await expect(upload.getByText('Окончание раньше начала')).toBeVisible()
+  await expect(upload.getByRole('button', { name: 'Загрузить план' })).toBeDisabled()
+  await upload.locator('input[type=file]').setInputFiles(csv('31.08.2027'))
+  await upload.getByRole('button', { name: 'Загрузить 1 работу' }).click()
+  await expect(upload).toHaveCount(0)
+  await expect(page.getByText('План загружен: 1 этап, 1 работа')).toBeVisible()
   await visit(page, '/manager/cameras', 'Камера 2 — въезд')
   await visit(page, '/manager/alerts', 'Нет самосвалов')
   await visit(page, '/manager/reports', 'Отчёт за неделю')

@@ -89,6 +89,19 @@ export async function request<T>(method: string, path: string, body?: unknown): 
   return payload as T
 }
 
+/** Файл с сервера (шаблон Excel) — с тем же входом, что и остальные запросы: простая ссылка токен не передаст */
+export async function downloadFile(path: string): Promise<Blob> {
+  if (ensureFreshToken && token) await ensureFreshToken().catch(() => {})
+  let response: Response
+  try {
+    response = await fetch(`${API_URL}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  } catch {
+    throw new ApiError(0, 'Нет связи с сервером. Проверьте, что он запущен, и попробуйте ещё раз.')
+  }
+  if (!response.ok) throw new ApiError(response.status, messageOf(await response.json().catch(() => null), response.status))
+  return response.blob()
+}
+
 /** Адрес картинки: кадры лежат на бэкенде (/media/…), предпросмотр приходит как data: */
 export function mediaUrl(path: string): string {
   return /^(data:|blob:|https?:)/.test(path) ? path : `${MEDIA_ORIGIN}${path}`

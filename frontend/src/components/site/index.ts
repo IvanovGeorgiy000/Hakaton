@@ -5,5 +5,6 @@
  */
 export { SiteDialog } from './SiteDialog'
 export { PlanDialog } from './PlanDialog'
+export { ImportPlanDialog } from './ImportPlanDialog'
 export { ZonesDialog } from './ZonesDialog'
 export { DeleteSiteDialog } from './DeleteSiteDialog'
