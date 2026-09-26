@@ -9,7 +9,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api import admin, alerts, analyze, audit, auth, cameras, catalog, ingest, reports, snapshots, stage, tracks
+from app.api import admin, alerts, analyze, audit, auth, cameras, catalog, ingest, reports, snapshots, tracks, work
 from app.api import video as video_api
 from app.config import ASSETS_DIR, get_settings
 from app.db import SessionLocal, engine, utcnow
@@ -17,9 +17,9 @@ from app.schemas import ApiModel
 from app.seed import prepare_database
 from app.services import video
 from app.services.analysis import LocalAnalyzer, get_analyzer, provider_name
+from app.services.analytics.runner import get_analytics
 from app.services.pipeline import get_pipeline
 from app.services.realtime import LiveTracking
-from app.services.stage import get_scheduler
 from app.services.tracks import get_relay
 
 VERSION = "0.10.0"
@@ -50,10 +50,10 @@ async def lifespan(_: FastAPI):
         feeds.start()  # демо-ролики → шлюз
         pipeline.start()  # потоки камер в шлюзе, кадры на анализ, сверка объектов
     relay.start()  # рамки в реальном времени: своя модель или внешний сервис разметки (SK_TRACKER_URL)
-    stages = get_scheduler()
-    stages.start()  # этап по кадрам — если подключён сервис этапов (SK_STAGE_URL)
+    analytics = get_analytics()
+    await analytics.start()  # какая работа идёт на кадре — если подключены сервисы аналитики (DETERMINISTIC_SERVICE_URL…)
     yield
-    await stages.stop()
+    await analytics.stop()
     await relay.stop()
     await pipeline.stop()
     await feeds.stop()
@@ -153,7 +153,7 @@ async def meta() -> MetaOut:
     )
 
 
-for module in (auth, catalog, cameras, snapshots, alerts, analyze, reports, ingest, video_api, tracks, stage, audit, admin):
+for module in (auth, catalog, cameras, snapshots, alerts, analyze, reports, ingest, video_api, tracks, work, audit, admin):
     api.include_router(module.router)
 app.include_router(api)
 

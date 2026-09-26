@@ -1,0 +1,451 @@
+"""Сервисы аналитики коллеги (контракт frame-analysis-v1): запрос из нашей базы, вызов обоих сервисов, повторы и
+потерянный ответ, хранение и показ ответов, сопоставление работ плана со справочником, журнал наблюдений.
+
+Сервисы — имитация app.mock_analytics, подключённая напрямую (без сокетов). Она проверяет запрос строго по контракту,
+поэтому «имитация ответила» здесь значит и «запрос собран по контракту»."""
+
+import asyncio
+import hashlib
+import json
+from datetime import timedelta
+
+import httpx
+import pytest
+from sqlalchemy import func, select
+
+from app import mock_analytics
+from app.config import get_settings
+from app.db import SessionLocal, utcnow
+from app.models import AnalyticsRequest, AnalyticsResult, Camera, Observation, Site, Stage
+from app.services.analytics import client as client_module
+from app.services.analytics import runner
+from app.services.analytics.catalog import parse_catalog
+from app.services.analytics.client import ServiceClient
+from app.services.analytics.request import build_request
+from app.services.analytics.result import check_result
+from app.services.analytics.runner import fresh_snapshot
+from tests.conftest import check, feed, login_as
+
+pytestmark = pytest.mark.anyio
+settings = get_settings()
+CATALOG = parse_catalog(mock_analytics.CATALOG)
+
+
+@pytest.fixture
+def services(monkeypatch):
+    """Оба сервиса подключены — это имитация, без задержек."""
+    monkeypatch.setattr(settings, "deterministic_service_url", "http://analytics.test/deterministic")
+    monkeypatch.setattr(settings, "vlm_llm_service_url", "http://analytics.test/vlm_llm")
+    monkeypatch.setitem(mock_analytics.DELAYS_S, "deterministic", 0)
+    monkeypatch.setitem(mock_analytics.DELAYS_S, "vlm_llm", 0)
+    analytics = runner.Analytics(transport=httpx.ASGITransport(app=mock_analytics.app))
+    monkeypatch.setattr(runner, "_analytics", analytics)
+    return analytics
+
+
+async def _pit_frame():  # noqa: ANN202
+    """Камера котлована ЖК только что прислала кадр: экскаватор грузит самосвал."""
+    await feed("c1", "pit-loading")
+    await check("s1")
+    async with SessionLocal() as session:
+        return await fresh_snapshot(session, "c1", utcnow())
+
+
+async def _build(request_id: str = "fa_test"):  # noqa: ANN202
+    snapshot = await _pit_frame()
+    async with SessionLocal() as session:
+        site, camera = await session.get(Site, "s1"), await session.get(Camera, "c1")
+        snapshot = await session.merge(snapshot)
+        return await build_request(session, request_id=request_id, site=site, camera=camera, snapshot=snapshot, catalog=CATALOG)
+
+
+async def test_request_follows_contract(client):
+    built = await _build()
+    meta = built.metadata
+    assert list(meta) == ["schema_version", "request_id", "site_id", "object_type_code", "catalog_version", "frame", "scope",
+                          "cv", "plan", "history"]  # fmt: skip
+    assert meta["schema_version"] == "frame-analysis-input-v1" and meta["object_type_code"] == "housing"
+    assert meta["catalog_version"] == mock_analytics.CATALOG_VERSION
+    # кадр: те же байты, их sha256 и размеры; время — с поясом объекта, оно же — граница истории
+    frame = meta["frame"]
+    assert frame["image_sha256"] == hashlib.sha256(built.image.data).hexdigest() == built.image.sha256
+    assert (frame["width"], frame["height"], frame["media_type"]) == (1280, 720, "image/jpeg")
+    assert frame["observed_at"].endswith("+03:00") and meta["history"]["as_of"] == frame["observed_at"]
+    assert meta["scope"] == {"plan_stream_code": "main", "roi_bbox": None, "source_ref": "stroykontrol:cameras/c1/zones/z1-pit"}
+    # техника — коды справочника и рамки в долях кадра
+    cv = meta["cv"]
+    assert cv["status"] == "ok" and cv["source_ref"] == "stroykontrol:analysis/mock"
+    assert {d["class_code"] for d in cv["detections"]} == {"excavator", "dump_truck"}
+    for d in cv["detections"]:
+        x0, y0, x1, y1 = d["bbox"]
+        assert 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1 and d["detection_id"].startswith("d")
+    # план: только работы, по графику; stage_id — справочника; конец — полночь после даты окончания
+    plan = meta["plan"]
+    keys = [s["step_key"] for s in plan["steps"]]
+    assert keys == ["s1-prep", "s1-excavation", "s1-soil", "s1-found", "s1-backfill", "s1-frame"]
+    assert [s["sequence_no"] for s in plan["steps"]] == [1, 2, 3, 4, 5, 6]
+    dig = plan["steps"][1]
+    async with SessionLocal() as session:
+        work = await session.get(Stage, "s1-excavation")
+    assert dig["stage_id"] == 121 and dig["planned_start_at"] == f"{work.start_date.isoformat()}T00:00:00+03:00"
+    assert dig["planned_end_at"] == f"{(work.end_date + timedelta(days=1)).isoformat()}T00:00:00+03:00"
+    assert built.plan_note is None and plan["revision_id"].startswith("rev-")
+    # история: без текущего кадра; отметки руководителя — подтверждённый ход без точных дат
+    history = meta["history"]
+    assert history["complete"] is True and all(o["image_id"] != frame["image_id"] for o in history["observations"])
+    assert history["observations"], "журнал наблюдений демо-данных пуст"
+    events = {e["step_key"]: e for e in history["progress_events"]}
+    assert events["s1-prep"]["state"] == "completed" and events["s1-excavation"]["state"] == "in_progress"
+    assert all(e["actual_started_at"] is None and e["actual_completed_at"] is None for e in events.values())
+    assert all(e["plan_revision_id"] == plan["revision_id"] for e in events.values())
+    # отпечаток входа: metadata как отправлена + 0x00 + кадр
+    assert built.input_sha256 == hashlib.sha256(built.body + b"\x00" + built.image.data).hexdigest()
+    assert json.loads(built.body) == meta
+    # строгая проверка имитации (схема контракта в миниатюре) — без замечаний
+    mock_analytics.validate(meta, built.image.data, "image/jpeg", {})
+
+
+async def test_plan_revision_follows_plan_content(client):
+    first, again = await _build("fa_1"), await _build("fa_2")
+    assert first.plan_revision_id == again.plan_revision_id  # план тот же — версия та же
+    async with SessionLocal() as session:
+        work = await session.get(Stage, "s1-frame")
+        work.end_date += timedelta(days=7)
+        await session.commit()
+    assert (await _build("fa_3")).plan_revision_id != first.plan_revision_id
+
+
+async def test_plan_is_not_sent_without_catalog_work(client):
+    async with SessionLocal() as session:
+        work = await session.get(Stage, "s1-backfill")
+        work.catalog_stage_id = None
+        await session.commit()
+    built = await _build()
+    assert built.metadata["plan"] is None and built.metadata["history"]["progress_events"] == []
+    assert "не выбран вид работ по справочнику" in built.plan_note and "Обратная засыпка" in built.plan_note
+
+    async with SessionLocal() as session:  # сопоставлено по старой версии справочника — тоже не отправляем
+        work = await session.get(Stage, "s1-backfill")
+        work.catalog_stage_id, work.catalog_version = 123, "old-version"
+        await session.commit()
+    built = await _build("fa_2")
+    assert built.metadata["plan"] is None and "обновился до версии" in built.plan_note
+
+
+async def test_equipment_missing_in_catalog_is_left_out_with_note(client):
+    payload = json.loads(json.dumps(mock_analytics.CATALOG))
+    payload["equipment_classes"] = [c for c in payload["equipment_classes"] if c["code"] != "dump_truck"]
+    snapshot = await _pit_frame()
+    async with SessionLocal() as session:
+        built = await build_request(
+            session, request_id="fa_x", site=await session.get(Site, "s1"), camera=await session.get(Camera, "c1"),
+            snapshot=await session.merge(snapshot), catalog=parse_catalog(payload),
+        )  # fmt: skip
+    assert {d["class_code"] for d in built.metadata["cv"]["detections"]} == {"excavator"}
+    assert any("dump_truck" in note for note in built.notes)
+
+
+async def test_both_services_answer_and_are_shown_side_by_side(client, services):
+    await _pit_frame()
+    request = await services.analyze_camera("c1", trigger="manual", only_new=False)
+    results = {r.service: r for r in request.results}
+    assert {s: r.state for s, r in results.items()} == {"deterministic": "done", "vlm_llm": "done"}
+    assert results["deterministic"].outcome == "assessed" and results["deterministic"].analysis_id.startswith("an-deterministic")
+    assert request.plan_revision_id and request.metadata_json and request.catalog_version == mock_analytics.CATALOG_VERSION
+
+    manager = await login_as(client, "manager")
+    work = (await client.get("/api/sites/s1/work-analysis", headers=manager)).json()
+    assert work["enabled"] and work["canRun"] and work["services"] == ["deterministic", "vlm_llm"] and not work["planIssue"]
+    camera = next(c for c in work["cameras"] if c["cameraId"] == "c1")
+    assert [c["cameraId"] for c in work["cameras"]] == ["c1"]  # въезд и склад сервисам не отправляются
+    by_service = {a["service"]: a for a in camera["answers"]}
+    rules, vision = by_service["deterministic"], by_service["vlm_llm"]
+    # «Разработка котлована» и «Вывоз грунта» — один вид работ справочника: неоднозначная группа из двух работ
+    group = rules["groups"][0]
+    assert group["match"] == "ambiguous" and [w["name"] for w in group["works"]] == ["Разработка котлована", "Вывоз грунта"]
+    assert group["evidence"] and vision["groups"][0]["visualState"] == "operation_indicated"
+    assert camera["matchesPlan"] is True  # котлован по графику сейчас и копают
+    assert rules["transition"]["status"] == "not_distinguishable_by_equipment"  # следующая работа — та же техника
+    assert rules["transition"]["current"]["name"] == "Разработка котлована"
+    assert rules["schedule"]["status"] == "insufficient_evidence" and vision["schedule"] is None
+    assert camera["imageUrl"].startswith("/media/frames/c1/") and rules["model"].startswith("mock-0.1.0")
+
+
+async def test_possible_delay_on_the_road(client, services):
+    await feed("c7", "road-dumptruck")
+    await check("s3")
+    request = await services.analyze_camera("c7", trigger="manual")
+    rules = next(r for r in request.results if r.service == "deterministic").result
+    late = next(i for i in rules["schedule"]["items"] if i["step_key"] == "s3-base")
+    # основание дороги по отметке руководителя ещё не закончено, а срок прошёл
+    assert (late["status"], late["reason_code"]) == ("possible_delay", "open_state_after_deadline") and late[
+        "overdue_seconds"
+    ] > 0
+    assert rules["schedule"]["status"] == "possible_delay"
+    group = rules["current_work"]["work_groups"][0]
+    assert [c["step_key"] for c in group["candidates"]] == ["s3-base"]  # на кадре самосвал — это основание, а не асфальт
+
+
+async def test_service_failure_is_kept_apart(client, services, monkeypatch):
+    monkeypatch.setitem(mock_analytics.FAULTS, "vlm_llm", "model_failure")
+    await _pit_frame()
+    request = await services.analyze_camera("c1", trigger="manual", only_new=False)
+    results = {r.service: r for r in request.results}
+    assert results["deterministic"].state == "done"  # отказ одного не мешает ответу другого
+    failed = results["vlm_llm"]
+    assert (failed.state, failed.http_status, failed.error_code, failed.result) == ("error", 502, "model_failure", None)
+    manager = await login_as(client, "manager")
+    camera = (await client.get("/api/sites/s1/work-analysis", headers=manager)).json()["cameras"][0]
+    vision = next(a for a in camera["answers"] if a["service"] == "vlm_llm")
+    assert vision["state"] == "error" and vision["errorCode"] == "model_failure" and vision["groups"] == []
+    assert "имитация отказа" in vision["error"]
+    foreman = await login_as(client, "foreman")  # прорабу — суть без технических подробностей
+    camera = (await client.get("/api/sites/s1/work-analysis", headers=foreman)).json()["cameras"][0]
+    vision = next(a for a in camera["answers"] if a["service"] == "vlm_llm")
+    assert vision["state"] == "error" and vision["error"] is None
+
+
+async def test_repeat_of_the_same_request_returns_the_same_analysis(client, services):
+    built = await _build()
+    service = services.clients["deterministic"]
+    kwargs = {
+        "request_id": built.request_id,
+        "site_id": "s1",
+        "metadata": built.body,
+        "image": built.image.data,
+        "media_type": "image/jpeg",
+    }
+    first, again = await service.analyze(**kwargs), await service.analyze(**kwargs)
+    assert first.state == again.state == "done" and first.result["analysis_id"] == again.result["analysis_id"]
+    changed = await service.analyze(**{**kwargs, "metadata": built.body.replace(b'"main"', b'"main-2"')})
+    assert (changed.state, changed.code) == ("error", "idempotency_conflict")  # тот же request_id с другим входом
+
+
+def _answer(request: httpx.Request) -> dict:
+    """Ответ «как у сервиса» на запрос нашего клиента: context — из его metadata."""
+    body = request.content
+    boundary = request.headers["content-type"].split("boundary=")[1].encode()
+    parts = {}
+    for part in body.split(b"--" + boundary)[1:-1]:
+        head, _, content = part.strip(b"\r\n").partition(b"\r\n\r\n")
+        parts[head.split(b'name="')[1].split(b'"')[0].decode()] = content
+    meta = json.loads(parts["metadata"])
+    return mock_analytics.answer("deterministic", meta, hashlib.sha256(parts["metadata"] + b"\x00" + parts["image"]).hexdigest())
+
+
+async def test_client_retries_only_retryable_refusals(client, monkeypatch):
+    monkeypatch.setattr(client_module, "RETRY_DELAYS_S", (0, 0))
+    built = await _build()
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.headers["idempotency-key"])
+        if len(calls) < 3:
+            error = {"schema_version": "frame-analysis-error-v1", "request_id": built.request_id, "service": "deterministic",
+                     "code": "busy", "message": "занят", "details": [], "retryable": True, "execution_state": "not_started"}  # fmt: skip
+            return httpx.Response(429, json=error, headers={"Retry-After": "0"})
+        return httpx.Response(200, json=_answer(request))
+
+    service = ServiceClient("deterministic", "http://d.test", "token", 30, transport=httpx.MockTransport(handler))
+    reply = await service.analyze(
+        request_id=built.request_id, site_id="s1", metadata=built.body, image=built.image.data, media_type="image/jpeg"
+    )
+    assert reply.state == "done" and calls == [built.request_id] * 3  # два повтора с тем же ключом
+    assert check_result(reply.result, service="deterministic", metadata=built.metadata, input_sha256=built.input_sha256) is None
+
+    calls.clear()
+
+    def invalid(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        error = {"schema_version": "frame-analysis-error-v1", "request_id": built.request_id, "service": "deterministic",
+                 "code": "unknown_class", "message": "нет класса", "retryable": False, "execution_state": "not_started",
+                 "details": [{"path": "/cv/detections/0/class_code", "code": "unknown_class", "message": "нет в справочнике"}]}  # fmt: skip
+        return httpx.Response(422, json=error)
+
+    service = ServiceClient("deterministic", "http://d.test", None, 30, transport=httpx.MockTransport(invalid))
+    reply = await service.analyze(
+        request_id=built.request_id, site_id="s1", metadata=built.body, image=built.image.data, media_type="image/jpeg"
+    )
+    assert (reply.state, reply.code, len(calls)) == ("error", "unknown_class", 1)  # неповторяемое — без повторов
+    assert "/cv/detections/0/class_code" in reply.message
+
+
+async def test_lost_response_is_looked_up_not_repeated(client):
+    built = await _build()
+    posts, lookups = [], []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            posts.append(request)
+            raise httpx.ReadTimeout("нет ответа", request=request)
+        lookups.append(str(request.url))
+        return httpx.Response(200, json=_answer(posts[0]))
+
+    service = ServiceClient("deterministic", "http://d.test", None, 30, transport=httpx.MockTransport(handler))
+    reply = await service.analyze(
+        request_id=built.request_id, site_id="s1", metadata=built.body, image=built.image.data, media_type="image/jpeg"
+    )
+    assert reply.state == "done" and len(posts) == 1  # анализ заново не запускали — узнали результат
+    assert lookups == [f"http://d.test/v1/analyses/by-request/{built.request_id}?site_id=s1"]
+
+    def not_found(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            raise httpx.RemoteProtocolError("оборвалось", request=request)
+        return httpx.Response(404, json={"code": "analysis_not_found", "message": "нет", "retryable": False})
+
+    service = ServiceClient("deterministic", "http://d.test", None, 30, transport=httpx.MockTransport(not_found))
+    reply = await service.analyze(
+        request_id=built.request_id, site_id="s1", metadata=built.body, image=built.image.data, media_type="image/jpeg"
+    )
+    assert reply.state == "unknown" and "неизвестно" in reply.message  # повторять автоматически нельзя
+
+
+async def test_answer_about_another_frame_is_rejected(client):
+    built = await _build()
+    result = mock_analytics.answer("deterministic", built.metadata, built.input_sha256)
+    assert check_result(result, service="deterministic", metadata=built.metadata, input_sha256=built.input_sha256) is None
+    wrong = json.loads(json.dumps(result))
+    wrong["context"]["image_sha256"] = "0" * 64
+    assert "не к этому кадру" in check_result(
+        wrong, service="deterministic", metadata=built.metadata, input_sha256=built.input_sha256
+    )
+    wrong = json.loads(json.dumps(result))
+    wrong["current_work"]["work_groups"][0]["candidates"][0]["stage_id"] = 999
+    assert "не пункт отправленного плана" in check_result(
+        wrong, service="deterministic", metadata=built.metadata, input_sha256=built.input_sha256
+    )
+    assert "подписан сервисом" in check_result(
+        result, service="vlm_llm", metadata=built.metadata, input_sha256=built.input_sha256
+    )
+
+
+async def test_catalog_work_is_chosen_by_hand_and_checked(client, services):
+    manager = await login_as(client, "manager")
+    catalog = (await client.get("/api/analytics/catalog?siteId=s3", headers=manager)).json()
+    assert catalog["enabled"] and catalog["version"] == mock_analytics.CATALOG_VERSION and catalog["objectType"] == "roads"
+    names = {w["name"] for w in catalog["works"]}
+    assert "Устройство нижнего слоя покрытия" in names and "Каркас здания" not in names  # каркас — не для дорог
+    assert all(w["stageId"] not in (100, 120, 140, 170) for w in catalog["works"])  # сводные этапы не выбираются
+
+    def body(**extra) -> dict:  # noqa: ANN003
+        return {
+            "name": "Обратная засыпка",
+            "level": 2,
+            "parentId": "s1-l1-found",
+            "start": "2026-11-09",
+            "end": "2026-11-27",
+            **extra,
+        }
+
+    changed = await client.patch("/api/stages/s1-backfill", headers=manager, json=body(catalogStageId=121))
+    assert changed.status_code == 200 and changed.json()["catalogStageId"] == 121
+    assert changed.json()["catalogVersion"] == mock_analytics.CATALOG_VERSION
+    summary = await client.patch("/api/stages/s1-backfill", headers=manager, json=body(catalogStageId=120))
+    assert summary.status_code == 422 and "сводный этап" in summary.json()["detail"]
+    roads_only = await client.patch("/api/stages/s1-backfill", headers=manager, json=body(catalogStageId=125))
+    assert roads_only.status_code == 422 and "не относится" in roads_only.json()["detail"]
+    kept = await client.patch("/api/stages/s1-backfill", headers=manager, json=body())  # поля нет — вид работ не трогаем
+    assert kept.json()["catalogStageId"] == 121
+    cleared = await client.patch("/api/stages/s1-backfill", headers=manager, json=body(catalogStageId=None))
+    assert cleared.json()["catalogStageId"] is None and cleared.json()["catalogVersion"] is None
+
+    foreman = await login_as(client, "foreman")
+    assert (await client.get("/api/analytics/catalog", headers=foreman)).status_code == 403
+
+
+async def test_catalog_work_needs_connected_services(client):
+    manager = await login_as(client, "manager")
+    assert (await client.get("/api/analytics/catalog", headers=manager)).json() == {
+        "enabled": False, "version": None, "objectType": None, "works": [], "error": None,
+    }  # fmt: skip
+    body = {"name": "Обратная засыпка", "level": 2, "parentId": "s1-l1-found", "start": "2026-11-09", "end": "2026-11-27"}
+    refused = await client.patch("/api/stages/s1-backfill", headers=manager, json={**body, "catalogStageId": 121})
+    assert refused.status_code == 503 and "недоступен" in refused.json()["detail"]
+    kept = await client.patch("/api/stages/s1-backfill", headers=manager, json={**body, "catalogStageId": 123})
+    assert kept.status_code == 200  # прежний вид работ сохранить можно и без сервисов — даты менять не мешает
+    work = (await client.get("/api/sites/s1/work-analysis", headers=manager)).json()
+    assert work["enabled"] is False and not work["canRun"] and all(c["answers"] == [] for c in work["cameras"])
+
+
+async def test_manual_run_and_schedule(client, services):
+    manager, foreman = await login_as(client, "manager"), await login_as(client, "foreman")
+    assert (await client.post("/api/sites/s1/work-analysis", headers=foreman)).status_code == 403
+    stale = await client.post("/api/sites/s1/work-analysis", headers=manager)
+    assert stale.status_code == 409 and "свежих кадров" in stale.json()["detail"]  # демо-кадры 10-минутной давности
+
+    await _pit_frame()
+    started = await client.post("/api/sites/s1/work-analysis", headers=manager)
+    assert started.status_code == 202 and started.json()["running"] is True
+    await asyncio.gather(*services._manual.values())
+    work = (await client.get("/api/sites/s1/work-analysis", headers=manager)).json()
+    assert not work["running"] and {a["state"] for a in work["cameras"][0]["answers"]} == {"done"}
+    assert work["nextAt"]
+
+    # расписание: кадр c1 уже отправлен — не повторяет; новые кадры других объектов — отправляет по одному разу
+    await feed("c8", "yard-bulldozer")
+    await check("s4")
+    await services.round()
+    await services.round()
+    async with SessionLocal() as session:
+        sent = list(await session.scalars(select(AnalyticsRequest.camera_id).order_by(AnalyticsRequest.at)))
+    assert sent == ["c1", "c8"]
+
+
+async def test_observations_are_logged_every_20_minutes(client):
+    async def logged() -> list[Observation]:
+        async with SessionLocal() as session:
+            return list(
+                await session.scalars(select(Observation).where(Observation.camera_id == "c1").order_by(Observation.observed_at))
+            )
+
+    before = await logged()
+    now = utcnow()  # сид записал кадр c1 в журнал 10 минут назад
+    for minutes in (0, 15, 20, 36):  # 10 минут с прошлой записи — рано; 25 — пора; 5 — рано; 21 — пора
+        await feed("c1", "pit-loading", at=now + timedelta(minutes=minutes))
+        await check("s1", at=now + timedelta(minutes=minutes))
+    rows = await logged()
+    assert len(rows) - len(before) == 2
+    fresh = rows[-1]
+    assert fresh.zone_kind == "work" and fresh.analyzed and {d["type"] for d in fresh.detections} == {"excavator", "dump_truck"}
+    assert len(fresh.image_sha256) == 64 and fresh.provider == "mock"
+
+
+async def test_cleanup_keeps_metadata_of_the_latest_request_only(client, services):
+    await _pit_frame()
+    first = await services.analyze_camera("c1", trigger="manual", only_new=False)
+    second = await services.analyze_camera("c1", trigger="manual", only_new=False)
+    async with SessionLocal() as session:
+        await runner.cleanup(session)
+        old, new = await session.get(AnalyticsRequest, first.id), await session.get(AnalyticsRequest, second.id)
+        assert old.metadata_json is None and old.input_sha256 and new.metadata_json
+        assert await session.scalar(select(func.count()).select_from(AnalyticsResult)) == 4  # ответы остаются
+
+
+async def test_pending_answers_after_restart_become_unknown(client, services):
+    await _pit_frame()
+    request = await services.analyze_camera("c1", trigger="manual", only_new=False)
+    async with SessionLocal() as session:
+        row = await session.get(AnalyticsResult, request.results[0].id)
+        row.state = "pending"
+        await session.commit()
+        await runner.interrupt_pending(session)
+        row = await session.get(AnalyticsResult, request.results[0].id, populate_existing=True)
+    assert (row.state, row.error_code) == ("unknown", "interrupted")
+
+
+def test_contract_environment_names(monkeypatch):
+    from app.config import Settings
+
+    monkeypatch.setenv("DETERMINISTIC_SERVICE_URL", "http://analytics-deterministic:8000/")
+    monkeypatch.setenv("VLM_LLM_SERVICE_URL", "http://analytics-vlm:8000")
+    monkeypatch.setenv("ANALYTICS_SERVICE_TOKEN", "secret")
+    monkeypatch.setenv("ANALYTICS_HTTP_TIMEOUT_SECONDS", "300")
+    loaded = Settings()
+    assert loaded.analytics_services == {
+        "deterministic": "http://analytics-deterministic:8000",
+        "vlm_llm": "http://analytics-vlm:8000",
+    }
+    assert (loaded.analytics_service_token, loaded.analytics_http_timeout_seconds) == ("secret", 300)
+    monkeypatch.setenv("DETERMINISTIC_SERVICE_URL", "http://analytics:8000/v1/analyze/frame")
+    with pytest.raises(ValueError, match="без пути метода"):
+        Settings()

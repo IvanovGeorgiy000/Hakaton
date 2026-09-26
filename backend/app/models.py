@@ -13,7 +13,23 @@ def new_id(prefix: str) -> str:
     return f"{prefix}_{secrets.token_hex(5)}"
 
 
-SITE_KINDS = ("residential", "public", "road", "industrial", "other")  # жилой дом, соцобъект, дорога, промышленный, другое
+# Вид объекта — как в «Справочнике видов работ» организаторов (у дороги и у школы разные работы и техника); уходит
+# сервисам аналитики как object_type_code. public — социальный объект, вид которого не уточнили; industrial и other
+# в справочнике нет — сервисам уходит «вид неизвестен»
+SITE_KINDS = (
+    "housing",  # жильё
+    "education",  # школа, колледж
+    "preschool",  # детский сад
+    "healthcare",  # больница, поликлиника
+    "sports",
+    "culture",
+    "administrative",
+    "office",  # офисно-деловой центр
+    "roads",
+    "public",
+    "industrial",
+    "other",
+)
 
 # Структура таблиц меняется только вместе с миграцией: uv run alembic revision --autogenerate -m "…" (см. alembic.ini)
 
@@ -149,6 +165,10 @@ class Stage(Base):
     # сколько сделано по факту, % — отмечают руководитель и администратор; у этапа с работами считается по работам
     fact_progress: Mapped[int] = mapped_column(default=0, server_default="0")
     fact_updated_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # вид работ по справочнику сервисов аналитики (stage_id) и версия справочника, по которой его выбрали. Сопоставляет
+    # человек: по похожему названию автоматически нельзя. Не у всех работ плана — план сервисам не отправляется
+    catalog_stage_id: Mapped[int | None]
+    catalog_version: Mapped[str | None] = mapped_column(String(64))
 
     def status_on(self, day: date) -> str:
         if day > self.end_date:
@@ -193,6 +213,7 @@ class Snapshot(Base):
     source: Mapped[str] = mapped_column(String(10), default="capture")  # seed | capture | ingest
     analyzed: Mapped[bool] = mapped_column(default=True)  # False — анализ не удался или кадр незнаком демо-анализатору
     provider: Mapped[str | None] = mapped_column(String(40))
+    model: Mapped[str | None] = mapped_column(String(80))  # какая модель нашла технику — уходит сервисам аналитики
     analysis_ms: Mapped[int | None]
     note: Mapped[str | None] = mapped_column(Text)
 
@@ -226,29 +247,87 @@ class EquipmentUsage(Base):
     )
 
 
-class StageEstimate(Base):
-    """Какой этап идёт по кадрам — ответ сервиса этапов (запрос раз в stage_interval_min и по кнопке).
+class Observation(Base):
+    """Журнал наблюдений для сервисов аналитики: кадр камеры раз в analytics_observation_min минут — без картинки.
 
-    stage_name — копией: этап могут переименовать или удалить, а ответ должен читаться. stage_id и stage_name пустые,
-    а error пустой — сервис ответил «по кадрам не понять»; error заполнен — запрос не удался (сервис молчал или ответил
-    не по формату)."""
+    Кадры с картинками чистятся через несколько часов (keep_frames_per_camera), а сервисам нужна история за неделю:
+    какая техника была видна и когда. Отпечаток кадра (sha256) остаётся — по нему сервис сверяет, что это тот же кадр.
+    detections — техника в наших типах: [{"id", "type", "confidence", "box": [x, y, w, h] в процентах кадра}]."""
 
-    __tablename__ = "stage_estimates"
+    __tablename__ = "observations"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    site_id: Mapped[str] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    camera_id: Mapped[str] = mapped_column(ForeignKey("cameras.id", ondelete="CASCADE"))
+    image_id: Mapped[str] = mapped_column(String(40))  # id снимка: сам снимок удалят раньше
+    zone_kind: Mapped[str] = mapped_column(String(16))  # вид зоны камеры на момент записи
+    observed_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    image_sha256: Mapped[str] = mapped_column(String(64))
+    analyzed: Mapped[bool] = mapped_column(default=True)  # False — анализ кадра не удался: CV «failed»
+    provider: Mapped[str | None] = mapped_column(String(40))
+    model: Mapped[str | None] = mapped_column(String(80))
+    detections: Mapped[list] = mapped_column(JSON, default=list)
+
+    __table_args__ = (
+        UniqueConstraint("camera_id", "image_id", name="uq_observations_camera_image"),
+        Index("ix_observations_site_observed", "site_id", "observed_at"),
+    )
+
+
+class AnalyticsRequest(Base):
+    """Кадр одной камеры, отправленный сервисам аналитики (контракт frame-analysis-v1): что идёт на нём по плану.
+
+    id — request_id: одинаковый для обоих сервисов и для повторов. metadata_json — JSON ровно в том виде, как ушёл
+    (по нему считается input_sha256, с ним же повторяют запрос); у старых запросов стирается — остаётся отпечаток."""
+
+    __tablename__ = "analytics_requests"
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     site_id: Mapped[str] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
-    at: Mapped[datetime] = mapped_column(UTCDateTime)
+    camera_id: Mapped[str] = mapped_column(ForeignKey("cameras.id", ondelete="CASCADE"))
+    snapshot_id: Mapped[str | None] = mapped_column(ForeignKey("snapshots.id", ondelete="SET NULL"))  # кадр чистится раньше
+    at: Mapped[datetime] = mapped_column(UTCDateTime)  # когда отправлен
     trigger: Mapped[str] = mapped_column(String(10))  # schedule | manual
-    request_id: Mapped[str] = mapped_column(String(40))
-    stage_id: Mapped[str | None] = mapped_column(ForeignKey("stages.id", ondelete="SET NULL"))
-    stage_name: Mapped[str | None] = mapped_column(String(200))
-    confidence: Mapped[float | None]
-    reason: Mapped[str | None] = mapped_column(Text)  # почему так решено — показывается людям
-    model: Mapped[str | None] = mapped_column(String(80))
-    error: Mapped[str | None] = mapped_column(Text)
-    elapsed_ms: Mapped[int | None]
+    observed_at: Mapped[datetime] = mapped_column(UTCDateTime)  # когда снят кадр
+    image_sha256: Mapped[str] = mapped_column(String(64))
+    input_sha256: Mapped[str] = mapped_column(String(64))
+    catalog_version: Mapped[str] = mapped_column(String(64))
+    plan_revision_id: Mapped[str | None] = mapped_column(String(100))  # None — план не отправлен
+    plan_note: Mapped[str | None] = mapped_column(Text)  # почему план не отправлен (для администратора)
+    notes: Mapped[list] = mapped_column(JSON, default=list)  # что ещё не попало в запрос: технику нет в справочнике и т. п.
+    metadata_json: Mapped[str | None] = mapped_column(Text)
 
-    __table_args__ = (Index("ix_stage_estimates_site_at", "site_id", "at"),)
+    results: Mapped[list["AnalyticsResult"]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", order_by="AnalyticsResult.service"
+    )
+
+    __table_args__ = (
+        Index("ix_analytics_requests_camera_at", "camera_id", "at"),
+        Index("ix_analytics_requests_site_at", "site_id", "at"),
+    )
+
+
+class AnalyticsResult(Base):
+    """Ответ одного сервиса на запрос. state: pending — ждём; done — анализ выполнен (result — ответ сервиса целиком);
+    error — сервис отказал или не ответил (error_code, error — почему); unknown — неизвестно, выполнен ли анализ."""
+
+    __tablename__ = "analytics_results"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    request_id: Mapped[str] = mapped_column(ForeignKey("analytics_requests.id", ondelete="CASCADE"), index=True)
+    service: Mapped[str] = mapped_column(String(16))  # deterministic | vlm_llm
+    state: Mapped[str] = mapped_column(String(10), default="pending")
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    elapsed_ms: Mapped[int | None]
+    http_status: Mapped[int | None]
+    analysis_id: Mapped[str | None] = mapped_column(String(100))
+    outcome: Mapped[str | None] = mapped_column(String(24))  # current_work.status: assessed, insufficient_evidence…
+    result: Mapped[dict | None] = mapped_column(JSON)
+    error_code: Mapped[str | None] = mapped_column(String(40))
+    error: Mapped[str | None] = mapped_column(Text)
+    retryable: Mapped[bool | None]
+
+    __table_args__ = (UniqueConstraint("request_id", "service", name="uq_analytics_results_request_service"),)
 
 
 class Detection(Base):

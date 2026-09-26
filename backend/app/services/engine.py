@@ -44,6 +44,7 @@ from app.models import (
 from app.security import decrypt_secret
 from app.services import texts
 from app.services.analysis import AnalysisError, AnalysisResult, get_analyzer
+from app.services.analytics.observations import cleanup_observations, record_observations
 from app.services.camera_client import CameraAddress
 from app.services.texts import plural
 from app.services.usage import cleanup_usage
@@ -144,6 +145,7 @@ async def process_frame(
         image_url=image_url or _store_frame(camera.id, jpeg, at),
         analyzed=analyzed,
         provider=provider,
+        model=result.model,
         analysis_ms=elapsed,
         note=note,
     )
@@ -174,13 +176,14 @@ async def check_site(session: AsyncSession, site_id: str, *, at: datetime, trigg
     """
     async with _site_locks[site_id]:
         cameras = {c.id: c for c in await site_cameras(session, site_id)}
-        snapshots = []
+        saved: list[tuple[Camera, Snapshot]] = []
         for camera_id, frame in frames.items():
             if camera := cameras.get(camera_id):
-                snapshots.append(
-                    await process_frame(session, camera, frame.jpeg, at=frame.at, source="live", result=frame.result)
-                )
+                snapshot = await process_frame(session, camera, frame.jpeg, at=frame.at, source="live", result=frame.result)
+                saved.append((camera, snapshot))
         await session.flush()
+        await record_observations(session, saved)  # история для сервисов аналитики — раз в 20 минут на камеру
+        snapshots = [snapshot for _, snapshot in saved]
         check = await run_check(session, site_id, at=at, trigger=trigger)
         for snapshot in snapshots:
             snapshot.check_id = check.id
@@ -608,11 +611,12 @@ KEEP_CHECKS_PER_SITE = 600
 
 
 async def cleanup_frames(session: AsyncSession) -> int:
-    """Удалить старые кадры сверх лимита на камеру, старые записи проверок и учёт работы техники старше
-    keep_usage_days. Кадры-доказательства не трогаем."""
+    """Удалить старые кадры сверх лимита на камеру, старые записи проверок, учёт работы техники старше
+    keep_usage_days и журнал наблюдений старше окна истории. Кадры-доказательства не трогаем."""
     removed = 0
     evidence_ids = select(alert_evidence.c.snapshot_id)
     await cleanup_usage(session)
+    await cleanup_observations(session)
     for site_id in await session.scalars(select(Site.id)):
         stale = select(CheckRun.id).where(CheckRun.site_id == site_id).order_by(CheckRun.at.desc()).offset(KEEP_CHECKS_PER_SITE)
         await session.execute(delete(CheckRun).where(CheckRun.id.in_(stale)))

@@ -1,7 +1,7 @@
 import { request } from './client'
 import type {
-  Alert, AlertStatus, AnalyzeResult, AuditEvent, Camera, CameraPatch, Connection, EquipmentCheckResult, LiveCamera, Meta, NewCamera,
-  ProbeResult, RoleId, Rule, Sample, Site, SiteInput, SiteStage, Snapshot, Stage, StageInput, User, UserInput, UserPatch, WeeklyReport, Zone,
+  Alert, AlertStatus, AnalyticsCatalog, AnalyzeResult, AuditEvent, Camera, CameraPatch, Connection, EquipmentCheckResult, LiveCamera, Meta, NewCamera,
+  ProbeResult, RoleId, Rule, Sample, Site, SiteInput, SiteWork, Snapshot, Stage, StageInput, User, UserInput, UserPatch, WeeklyReport, Zone,
   ZoneInput,
 } from '@/data'
 
@@ -52,10 +52,12 @@ export const api = {
     request<Alert>('POST', `/alerts/${id}/actions`, { status, comment, dueDate }),
 
   equipmentCheck: (siteId: string) => request<EquipmentCheckResult>('GET', `/sites/${siteId}/equipment-check`),
-  /** Этап по камерам: последний ответ сервиса этапов рядом с этапом по графику */
-  siteStage: (siteId: string) => request<SiteStage>('GET', `/sites/${siteId}/stage-estimate`),
-  /** Спросить сервис этапов сейчас — ответ до минуты */
-  runSiteStage: (siteId: string) => request<SiteStage>('POST', `/sites/${siteId}/stage-estimate`),
+  /** Работы по камерам: последние ответы сервисов аналитики по кадрам камер рабочих зон */
+  siteWork: (siteId: string) => request<SiteWork>('GET', `/sites/${siteId}/work-analysis`),
+  /** Отправить свежие кадры сервисам сейчас — ответы придут в фоне (по снимку — до нескольких минут) */
+  runSiteWork: (siteId: string) => request<SiteWork>('POST', `/sites/${siteId}/work-analysis`),
+  /** Виды работ справочника сервисов аналитики — для плана объекта */
+  analyticsCatalog: (siteId: string) => request<AnalyticsCatalog>('GET', `/analytics/catalog${query({ siteId })}`),
   weeklyReport: () => request<WeeklyReport>('GET', '/reports/weekly'),
 
   samples: () => request<Sample[]>('GET', '/analyze/samples'),

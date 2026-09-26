@@ -41,8 +41,11 @@ export interface User {
 
 export type SiteStatus = 'ok' | 'warning' | 'critical'
 
-/** Вид объекта: у дороги и у дома разные этапы и техника — подсказка сервису, который определяет этап по кадрам */
-export type SiteKind = 'residential' | 'public' | 'road' | 'industrial' | 'other'
+/** Вид объекта — как в «Справочнике видов работ»: у дороги и у школы разные работы и техника. Уходит сервисам аналитики;
+ *  public (соцобъект без уточнения), industrial и other в справочнике нет — для сервисов это «вид неизвестен» */
+export type SiteKind =
+  | 'housing' | 'education' | 'preschool' | 'healthcare' | 'sports' | 'culture' | 'administrative' | 'office' | 'roads'
+  | 'public' | 'industrial' | 'other'
 
 export interface Site {
   id: string
@@ -116,6 +119,9 @@ export interface Stage {
   /** Сколько сделано по факту, % (у этапа с работами считается по работам) */
   factProgress: number
   factUpdatedAt: string | null
+  /** Вид работ по справочнику сервисов аналитики и версия справочника, по которой его выбрали (только у работ) */
+  catalogStageId: number | null
+  catalogVersion: string | null
 }
 
 /** risk — чем грозит нехватка; сервер всегда отдаёт строку (пустую, если не задано) */
@@ -204,36 +210,91 @@ export interface EquipmentCheckResult {
   arriving: Partial<Record<EquipmentType, number>>
 }
 
-/** Ответ сервиса этапов: какой этап идёт по кадрам */
-export interface StageEstimate {
-  at: string
-  /** Этап или работа из плана; null — «по кадрам не понять» (или этап уже удалили из плана) */
-  stageId: string | null
-  stageName: string | null
-  /** 0–1 */
-  confidence: number | null
-  /** Почему так решено — для людей */
-  reason: string | null
-  model: string | null
+// ---------- работы по камерам: ответы сервисов аналитики (контракт frame-analysis-v1) ----------
+/** deterministic — «по технике» (матрица техники, история, сроки), vlm_llm — «по снимку» (нейросеть смотрит кадр) */
+export type AnalyticsService = 'deterministic' | 'vlm_llm'
+
+/** Работа плана в ответе сервиса; удалённая из плана — с названием вида работ из справочника */
+export interface WorkRef { stepKey: string; stageId: number | null; name: string; inPlan: boolean }
+
+export interface WorkEvidence { source: string; role: string; explanation: string }
+
+/** Одна операция на кадре: specific — одна работа, ambiguous — одна из нескольких */
+export interface WorkGroup {
+  match: string
+  works: WorkRef[]
+  /** operation_indicated — видно, что работа идёт; presence_or_result_only — только техника или результат; not_evaluated */
+  visualState: string
+  explanation: string
+  evidence: WorkEvidence[]
+  area: number[] | null
 }
 
-/** Этап по камерам рядом с этапом по графику (GET /sites/{id}/stage-estimate) */
-export interface SiteStage {
-  /** Подключён ли сервис этапов */
-  enabled: boolean
-  /** Может ли пользователь спросить сервис сейчас (руководитель, администратор) */
-  canRun: boolean
-  plannedStageId: string | null
-  plannedStageName: string | null
-  latest: StageEstimate | null
-  /** Совпал ли ответ с графиком; null — не с чем сравнить */
-  matchesPlan: boolean | null
-  /** Последний запрос не удался */
+/** Следующая работа по технике: possible_start — похоже, началась */
+export interface Transition {
+  status: string
+  current: WorkRef | null
+  next: WorkRef | null
+  firstAt: string | null
+  lastAt: string | null
+  points: number
+}
+
+export interface ScheduleItem { work: WorkRef; status: string; reason: string; overdueS: number | null; evidenceAt: string | null }
+export interface Schedule { status: string; items: ScheduleItem[] }
+
+/** Последний ответ одного сервиса по кадру камеры (или почему его нет) */
+export interface ServiceAnswer {
+  service: AnalyticsService
+  state: 'pending' | 'done' | 'error' | 'unknown'
+  at: string | null
+  observedAt: string | null
+  /** assessed | insufficient_evidence | outside_plan | no_plan | scope_unknown */
+  outcome: string | null
+  groups: WorkGroup[]
+  transition: Transition | null
+  schedule: Schedule | null
+  limitations: string[]
+  model: string | null
+  errorCode: string | null
   error: string | null
-  errorAt: string | null
-  /** Когда следующий запрос по расписанию */
+  /** По более свежему кадру уже спросили — ждём ответ */
+  newerPending: boolean
+}
+
+export interface CameraWork {
+  cameraId: string
+  cameraName: string
+  zoneName: string
+  sentAt: string | null
+  imageUrl: string | null
+  answers: ServiceAnswer[]
+  /** Хоть один кандидат — работа, которая идёт сегодня по графику; null — не с чем сравнить */
+  matchesPlan: boolean | null
+}
+
+/** Какая работа идёт на кадрах камер рабочих зон (GET /sites/{id}/work-analysis) */
+export interface SiteWork {
+  /** Подключён хоть один сервис аналитики */
+  enabled: boolean
+  services: AnalyticsService[]
+  canRun: boolean
+  running: boolean
+  /** Работы, которые сегодня идут по графику */
+  planned: string[]
+  /** Почему план не уходит сервисам */
+  planIssue: string | null
+  /** Почему последний кадр не ушёл */
+  problem: string | null
+  cameras: CameraWork[]
+  catalogVersion: string | null
   nextAt: string | null
 }
+
+export interface CatalogWork { stageId: number; name: string; path: string[] }
+
+/** Виды работ справочника сервисов аналитики — для поля «Вид работ по справочнику» */
+export interface AnalyticsCatalog { enabled: boolean; version: string | null; objectType: string | null; works: CatalogWork[]; error: string | null }
 
 export interface Deviation { kind: 'missing' | 'count_below' | 'unexpected'; type: EquipmentType; need: number | null; have: number; title: string; why: string }
 
@@ -314,7 +375,11 @@ export interface SiteInput {
 
 export interface ZoneInput { name: string; kind: ZoneKind }
 
-export interface StageInput { name: string; level: 1 | 2; parentId: string | null; start: string; end: string; ruleKey: string | null; factProgress?: number | null }
+export interface StageInput {
+  name: string; level: 1 | 2; parentId: string | null; start: string; end: string; ruleKey: string | null; factProgress?: number | null
+  /** Вид работ по справочнику сервисов аналитики; null — снять; поля нет — не менять */
+  catalogStageId?: number | null
+}
 
 export interface UserInput { login: string; name: string; role: RoleId; phone: string; siteIds: string[]; password: string }
 

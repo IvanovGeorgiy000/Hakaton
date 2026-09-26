@@ -527,18 +527,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/sites/{site_id}/stage-estimate": {
+    "/api/sites/{site_id}/work-analysis": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Этап по камерам: последний ответ сервиса этапов рядом с этапом по графику */
-        get: operations["get_site_stage_api_sites__site_id__stage_estimate_get"];
+        /** Работы по камерам: последние ответы сервисов аналитики по кадрам камер рабочих зон */
+        get: operations["get_site_work_api_sites__site_id__work_analysis_get"];
         put?: never;
-        /** Определить этап по камерам сейчас (руководитель, администратор); ответ сервиса — до минуты */
-        post: operations["run_site_stage_api_sites__site_id__stage_estimate_post"];
+        /** Отправить свежие кадры объекта сервисам аналитики сейчас (руководитель, администратор); ответ — в фоне */
+        post: operations["run_site_work_api_sites__site_id__work_analysis_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/analytics/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Виды работ из справочника сервисов аналитики — для сопоставления с работами плана */
+        get: operations["analytics_catalog_api_analytics_catalog_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -818,6 +835,22 @@ export interface components {
             history: components["schemas"]["AlertEventOut"][];
         };
         /**
+         * AnalyticsCatalogOut
+         * @description Виды работ справочника сервисов аналитики — для поля «Вид работ по справочнику» в плане.
+         */
+        AnalyticsCatalogOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Version */
+            version: string | null;
+            /** Objecttype */
+            objectType: string | null;
+            /** Works */
+            works: components["schemas"]["CatalogWorkOut"][];
+            /** Error */
+            error: string | null;
+        };
+        /**
          * AnalyzeOut
          * @description Результат разбора одного снимка: техника + сверка с правилом этапа.
          */
@@ -995,6 +1028,32 @@ export interface components {
             /** Zoneid */
             zoneId?: string | null;
             connection?: components["schemas"]["ConnectionIn"] | null;
+        };
+        /** CameraWorkOut */
+        CameraWorkOut: {
+            /** Cameraid */
+            cameraId: string;
+            /** Cameraname */
+            cameraName: string;
+            /** Zonename */
+            zoneName: string;
+            /** Sentat */
+            sentAt: string | null;
+            /** Imageurl */
+            imageUrl: string | null;
+            /** Answers */
+            answers: components["schemas"]["ServiceAnswerOut"][];
+            /** Matchesplan */
+            matchesPlan: boolean | null;
+        };
+        /** CatalogWorkOut */
+        CatalogWorkOut: {
+            /** Stageid */
+            stageId: number;
+            /** Name */
+            name: string;
+            /** Path */
+            path: string[];
         };
         /** CheckRow */
         CheckRow: {
@@ -1388,6 +1447,61 @@ export interface components {
             /** Imageurl */
             imageUrl: string;
         };
+        /** ScheduleItemOut */
+        ScheduleItemOut: {
+            work: components["schemas"]["WorkRefOut"];
+            /** Status */
+            status: string;
+            /** Reason */
+            reason: string;
+            /** Overdues */
+            overdueS: number | null;
+            /** Evidenceat */
+            evidenceAt: string | null;
+        };
+        /** ScheduleOut */
+        ScheduleOut: {
+            /** Status */
+            status: string;
+            /** Items */
+            items: components["schemas"]["ScheduleItemOut"][];
+        };
+        /**
+         * ServiceAnswerOut
+         * @description Последний ответ одного сервиса по кадру камеры (или почему его нет).
+         */
+        ServiceAnswerOut: {
+            /**
+             * Service
+             * @enum {string}
+             */
+            service: "deterministic" | "vlm_llm";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "done" | "error" | "unknown";
+            /** At */
+            at: string | null;
+            /** Observedat */
+            observedAt: string | null;
+            /** Outcome */
+            outcome: string | null;
+            /** Groups */
+            groups: components["schemas"]["WorkGroupOut"][];
+            transition: components["schemas"]["TransitionOut"] | null;
+            schedule: components["schemas"]["ScheduleOut"] | null;
+            /** Limitations */
+            limitations: string[];
+            /** Model */
+            model: string | null;
+            /** Errorcode */
+            errorCode: string | null;
+            /** Error */
+            error: string | null;
+            /** Newerpending */
+            newerPending: boolean;
+        };
         /** SiteCount */
         SiteCount: {
             /** Siteid */
@@ -1418,7 +1532,7 @@ export interface components {
              * @default other
              * @enum {string}
              */
-            kind: "residential" | "public" | "road" | "industrial" | "other";
+            kind: "housing" | "education" | "preschool" | "healthcare" | "sports" | "culture" | "administrative" | "office" | "roads" | "public" | "industrial" | "other";
             /** Foremanid */
             foremanId?: string | null;
         };
@@ -1438,7 +1552,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "residential" | "public" | "road" | "industrial" | "other";
+            kind: "housing" | "education" | "preschool" | "healthcare" | "sports" | "culture" | "administrative" | "office" | "roads" | "public" | "industrial" | "other";
             /** Currentstageid */
             currentStageId: string | null;
             /** Planprogress */
@@ -1447,25 +1561,28 @@ export interface components {
             factProgress: number | null;
         };
         /**
-         * SiteStageOut
-         * @description Этап по камерам рядом с этапом по графику.
+         * SiteWorkOut
+         * @description Какая работа идёт на кадрах камер — по ответам двух сервисов аналитики, рядом с графиком.
          */
-        SiteStageOut: {
+        SiteWorkOut: {
             /** Enabled */
             enabled: boolean;
+            /** Services */
+            services: ("deterministic" | "vlm_llm")[];
             /** Canrun */
             canRun: boolean;
-            /** Plannedstageid */
-            plannedStageId: string | null;
-            /** Plannedstagename */
-            plannedStageName: string | null;
-            latest: components["schemas"]["StageEstimateOut"] | null;
-            /** Matchesplan */
-            matchesPlan: boolean | null;
-            /** Error */
-            error: string | null;
-            /** Errorat */
-            errorAt: string | null;
+            /** Running */
+            running: boolean;
+            /** Planned */
+            planned: string[];
+            /** Planissue */
+            planIssue: string | null;
+            /** Problem */
+            problem: string | null;
+            /** Cameras */
+            cameras: components["schemas"]["CameraWorkOut"][];
+            /** Catalogversion */
+            catalogVersion: string | null;
             /** Nextat */
             nextAt: string | null;
         };
@@ -1490,27 +1607,6 @@ export interface components {
             provider: string | null;
             /** Note */
             note: string | null;
-        };
-        /**
-         * StageEstimateOut
-         * @description Ответ сервиса этапов: какой этап идёт по кадрам.
-         */
-        StageEstimateOut: {
-            /**
-             * At
-             * Format: date-time
-             */
-            at: string;
-            /** Stageid */
-            stageId: string | null;
-            /** Stagename */
-            stageName: string | null;
-            /** Confidence */
-            confidence: number | null;
-            /** Reason */
-            reason: string | null;
-            /** Model */
-            model: string | null;
         };
         /** StageIn */
         StageIn: {
@@ -1538,6 +1634,8 @@ export interface components {
             ruleKey?: string | null;
             /** Factprogress */
             factProgress?: number | null;
+            /** Catalogstageid */
+            catalogStageId?: number | null;
         };
         /** StageOut */
         StageOut: {
@@ -1574,6 +1672,10 @@ export interface components {
             factProgress: number;
             /** Factupdatedat */
             factUpdatedAt: string | null;
+            /** Catalogstageid */
+            catalogStageId: number | null;
+            /** Catalogversion */
+            catalogVersion: string | null;
         };
         /** StageProgressIn */
         StageProgressIn: {
@@ -1647,6 +1749,22 @@ export interface components {
             modelDevice: string | null;
             /** Modelms */
             modelMs: number | null;
+        };
+        /**
+         * TransitionOut
+         * @description Следующая работа по технике (сервис «по технике»): possible_start — похоже, она началась.
+         */
+        TransitionOut: {
+            /** Status */
+            status: string;
+            current: components["schemas"]["WorkRefOut"] | null;
+            next: components["schemas"]["WorkRefOut"] | null;
+            /** Firstat */
+            firstAt: string | null;
+            /** Lastat */
+            lastAt: string | null;
+            /** Points */
+            points: number;
         };
         /** UserIn */
         UserIn: {
@@ -1760,6 +1878,47 @@ export interface components {
             byKind: components["schemas"]["NamedCount"][];
             /** Byequipment */
             byEquipment: components["schemas"]["NamedCount"][];
+        };
+        /** WorkEvidenceOut */
+        WorkEvidenceOut: {
+            /** Source */
+            source: string;
+            /** Role */
+            role: string;
+            /** Explanation */
+            explanation: string;
+        };
+        /**
+         * WorkGroupOut
+         * @description Одна операция на кадре: specific — один кандидат, ambiguous — альтернативы (одна из них).
+         */
+        WorkGroupOut: {
+            /** Match */
+            match: string;
+            /** Works */
+            works: components["schemas"]["WorkRefOut"][];
+            /** Visualstate */
+            visualState: string;
+            /** Explanation */
+            explanation: string;
+            /** Evidence */
+            evidence: components["schemas"]["WorkEvidenceOut"][];
+            /** Area */
+            area: number[] | null;
+        };
+        /**
+         * WorkRefOut
+         * @description Пункт плана в ответе сервиса: наша работа (step_key) и вид работ по справочнику (stage_id).
+         */
+        WorkRefOut: {
+            /** Stepkey */
+            stepKey: string;
+            /** Stageid */
+            stageId: number | null;
+            /** Name */
+            name: string;
+            /** Inplan */
+            inPlan: boolean;
         };
         /** ZoneIn */
         ZoneIn: {
@@ -2770,7 +2929,7 @@ export interface operations {
             };
         };
     };
-    get_site_stage_api_sites__site_id__stage_estimate_get: {
+    get_site_work_api_sites__site_id__work_analysis_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -2787,7 +2946,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SiteStageOut"];
+                    "application/json": components["schemas"]["SiteWorkOut"];
                 };
             };
             /** @description Validation Error */
@@ -2801,7 +2960,7 @@ export interface operations {
             };
         };
     };
-    run_site_stage_api_sites__site_id__stage_estimate_post: {
+    run_site_work_api_sites__site_id__work_analysis_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -2813,12 +2972,44 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteWorkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analytics_catalog_api_analytics_catalog_get: {
+        parameters: {
+            query?: {
+                /** @description Ограничить одним объектом */
+                siteId?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SiteStageOut"];
+                    "application/json": components["schemas"]["AnalyticsCatalogOut"];
                 };
             };
             /** @description Validation Error */

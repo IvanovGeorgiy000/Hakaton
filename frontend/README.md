@@ -12,7 +12,7 @@ npm install
 npm run dev        # http://localhost:5180 — запросы /api и /media проксируются на http://localhost:8100
 npm run build      # сборка в dist/
 npm test           # тесты (Vitest): отставание в днях, разбор адреса камеры, советы по ролям, статус плитки видео
-npm run test:e2e   # смоук по ролям (Playwright): сам поднимает бэкенд (:8102, временная база) и интерфейс (:5191)
+npm run test:e2e   # смоук по ролям (Playwright): сам поднимает бэкенд (:8102, временная база), имитацию сервисов аналитики (:8302) и интерфейс (:5191)
 npm run gen:api    # типы из схемы API бэкенда → src/api/openapi.d.ts; src/api/contract.ts сверяет с ними data/types.ts при сборке
 ```
 
@@ -84,7 +84,7 @@ src/
   data/         типы (совпадают с JSON бэкенда), подписи ролей, названия и цвета техники
   components/   video/ (VideoWall, VideoTile, CameraViewer, TrackBoxes/LiveBoxes, DetectionBoxes),
                 camera/ (добавить, изменить камеру, адрес потока, проверка связи), site/ (объект, план, зоны, удаление),
-                AlertCard, AlertDetail, PrescribeDialog, CameraFrame, EquipmentCheck, StageByCameras, StageTimeline, AnalyzeView,
+                AlertCard, AlertDetail, PrescribeDialog, CameraFrame, EquipmentCheck, WorkByCameras, StageTimeline, AnalyzeView,
                 ErrorBoundary, ui/* (в том числе ActionMenu — меню «⋯»)
   pages/        экраны по ролям: foreman/, manager/, inspector/, admin/ (Manage — Сотрудники, Правила, Журнал),
                 shared/ + Login, MinimalDemo, Help

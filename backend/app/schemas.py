@@ -75,8 +75,22 @@ class PasswordIn(ApiModel):
 
 
 # ---------- объекты ----------
-# вид объекта: жилой дом, соцобъект (школа, детский сад), дорога, промышленный, другое — как models.SITE_KINDS
-SiteKind = Literal["residential", "public", "road", "industrial", "other"]
+# вид объекта — как models.SITE_KINDS: виды «Справочника видов работ» (жильё, школа, детский сад…, дороги) и ещё
+# соцобъект без уточнения, промышленный, другое
+SiteKind = Literal[
+    "housing",
+    "education",
+    "preschool",
+    "healthcare",
+    "sports",
+    "culture",
+    "administrative",
+    "office",
+    "roads",
+    "public",
+    "industrial",
+    "other",
+]
 
 
 class SiteOut(ApiModel):
@@ -126,6 +140,8 @@ class StageIn(ApiModel):
     end: date
     rule_key: str | None = None
     fact_progress: int | None = Field(default=None, ge=0, le=100)  # None — не менять
+    # вид работ по справочнику сервисов аналитики (только у работ); явный null — снять, поля нет — не трогать
+    catalog_stage_id: int | None = Field(default=None, ge=0)
 
 
 class StageProgressIn(ApiModel):
@@ -156,6 +172,8 @@ class StageOut(ApiModel):
     plan_progress: int  # сколько должно быть сделано к сегодняшнему дню по графику, %
     fact_progress: int  # сколько сделано по факту, %
     fact_updated_at: datetime | None
+    catalog_stage_id: int | None  # вид работ по справочнику сервисов аналитики
+    catalog_version: str | None  # по какой версии справочника он выбран
 
 
 def stage_out(s: Stage, today: date) -> StageOut:
@@ -172,6 +190,8 @@ def stage_out(s: Stage, today: date) -> StageOut:
         plan_progress=s.plan_progress_on(today),
         fact_progress=s.fact_progress,
         fact_updated_at=s.fact_updated_at,
+        catalog_stage_id=s.catalog_stage_id,
+        catalog_version=s.catalog_version,
     )
 
 
@@ -598,29 +618,117 @@ class EquipmentUsageOut(ApiModel):
     moving_min: float  # из них двигался
 
 
-class StageEstimateOut(ApiModel):
-    """Ответ сервиса этапов: какой этап идёт по кадрам."""
-
-    at: datetime
-    stage_id: str | None  # этап или работа из плана; None — «по кадрам не понять» (или этап удалили из плана)
-    stage_name: str | None
-    confidence: float | None  # 0–1
-    reason: str | None  # почему так решено — для людей
-    model: str | None
+# ---------- работы по камерам: ответы сервисов аналитики ----------
+AnalyticsService = Literal["deterministic", "vlm_llm"]
 
 
-class SiteStageOut(ApiModel):
-    """Этап по камерам рядом с этапом по графику."""
+class WorkRefOut(ApiModel):
+    """Пункт плана в ответе сервиса: наша работа (step_key) и вид работ по справочнику (stage_id)."""
 
-    enabled: bool  # подключён ли сервис этапов (SK_STAGE_URL)
-    can_run: bool  # может ли этот пользователь спросить сервис сейчас (руководитель, администратор)
-    planned_stage_id: str | None  # работа, которая идёт сегодня по графику
-    planned_stage_name: str | None
-    latest: StageEstimateOut | None  # последний ответ сервиса
-    matches_plan: bool | None  # ответ совпал с графиком; None — не с чем сравнить («не понять» или на сегодня работ нет)
-    error: str | None  # последний запрос не удался (после последнего ответа): сервис молчал или ответил не по формату
-    error_at: datetime | None
-    next_at: datetime | None  # когда следующий запрос по расписанию; None — ещё не было или ждёт свежих кадров
+    step_key: str
+    stage_id: int | None
+    name: str  # название работы в нашем плане; удалена — название вида работ из справочника
+    in_plan: bool  # работа всё ещё есть в плане
+
+
+class WorkEvidenceOut(ApiModel):
+    source: str  # cv_detection | visual_observation | visual_relation | progress_event
+    role: str  # supports | contradicts
+    explanation: str
+
+
+class WorkGroupOut(ApiModel):
+    """Одна операция на кадре: specific — один кандидат, ambiguous — альтернативы (одна из них)."""
+
+    match: str
+    works: list[WorkRefOut]
+    visual_state: str  # operation_indicated | presence_or_result_only | not_evaluated
+    explanation: str
+    evidence: list[WorkEvidenceOut]
+    area: list[float] | None  # [x_min, y_min, x_max, y_max] в долях кадра
+
+
+class TransitionOut(ApiModel):
+    """Следующая работа по технике (сервис «по технике»): possible_start — похоже, она началась."""
+
+    status: str
+    current: WorkRefOut | None
+    next: WorkRefOut | None
+    first_at: datetime | None
+    last_at: datetime | None
+    points: int  # сколько разных моментов (через 15+ минут) видна техника следующей работы
+
+
+class ScheduleItemOut(ApiModel):
+    work: WorkRefOut
+    status: str  # possible_delay | no_delay_indicated | insufficient_evidence
+    reason: str  # reason_code: open_state_after_deadline, deadline_not_reached…
+    overdue_s: int | None
+    evidence_at: datetime | None
+
+
+class ScheduleOut(ApiModel):
+    status: str  # possible_delay | no_delay_indicated | insufficient_evidence | not_evaluated
+    items: list[ScheduleItemOut]
+
+
+class ServiceAnswerOut(ApiModel):
+    """Последний ответ одного сервиса по кадру камеры (или почему его нет)."""
+
+    service: AnalyticsService
+    state: Literal["pending", "done", "error", "unknown"]
+    at: datetime | None  # когда пришёл ответ (или отказ)
+    observed_at: datetime | None  # когда снят кадр, о котором ответ
+    outcome: str | None  # assessed | insufficient_evidence | outside_plan | no_plan | scope_unknown
+    groups: list[WorkGroupOut]
+    transition: TransitionOut | None
+    schedule: ScheduleOut | None
+    limitations: list[str]
+    model: str | None  # версия сервиса и моделей — мелким шрифтом
+    error_code: str | None
+    error: str | None  # почему нет ответа — руководителю и администратору
+    newer_pending: bool  # по более свежему кадру уже спросили, ждём ответ
+
+
+class CameraWorkOut(ApiModel):
+    camera_id: str
+    camera_name: str
+    zone_name: str
+    sent_at: datetime | None  # когда последний раз отправляли кадр
+    image_url: str | None  # этот кадр, если он ещё хранится
+    answers: list[ServiceAnswerOut]
+    matches_plan: bool | None  # хоть один кандидат — работа, которая сегодня идёт по графику; None — не с чем сравнить
+
+
+class SiteWorkOut(ApiModel):
+    """Какая работа идёт на кадрах камер — по ответам двух сервисов аналитики, рядом с графиком."""
+
+    enabled: bool  # подключён хоть один сервис
+    services: list[AnalyticsService]
+    can_run: bool  # может ли пользователь отправить кадры сейчас (руководитель, администратор)
+    running: bool  # сейчас идёт отправка по этому объекту
+    planned: list[str]  # работы, которые сегодня идут по графику
+    plan_issue: str | None  # почему план не уходит сервисам (не у всех работ выбран вид по справочнику…)
+    problem: str | None  # почему последний кадр не ушёл (справочник недоступен, кадр повреждён…)
+    cameras: list[CameraWorkOut]
+    catalog_version: str | None
+    next_at: datetime | None  # следующая плановая отправка
+
+
+class CatalogWorkOut(ApiModel):
+    stage_id: int
+    name: str
+    path: list[str]  # разделы справочника над работой
+
+
+class AnalyticsCatalogOut(ApiModel):
+    """Виды работ справочника сервисов аналитики — для поля «Вид работ по справочнику» в плане."""
+
+    enabled: bool  # подключены ли сервисы
+    version: str | None
+    object_type: str | None  # вид объекта по справочнику; None — неизвестен, показаны все работы
+    works: list[CatalogWorkOut]
+    error: str | None  # справочник не получен (или показан сохранённый: сервисы не ответили)
 
 
 class TrackerStatusOut(ApiModel):

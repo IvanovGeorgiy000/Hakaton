@@ -8,7 +8,8 @@
  */
 import type {
   Alert, AlertEvent, AnalyzeResult, AuditEvent, Camera, CheckRow, Detection, Deviation, EquipmentCheckResult, ExtraRow,
-  LiveCamera, Meta, ProbeResult, Rule, Site, SiteStage, Snapshot, Stage, StageEstimate, User, WeeklyReport, Zone,
+  AnalyticsCatalog, CameraWork, CatalogWork, LiveCamera, Meta, ProbeResult, Rule, Schedule, ScheduleItem, ServiceAnswer, Site, SiteWork,
+  Snapshot, Stage, Transition, User, WeeklyReport, WorkEvidence, WorkGroup, WorkRef, Zone,
 } from '@/data'
 import type { components } from './openapi'
 
@@ -43,6 +44,15 @@ export type Contract = [
   Check<Same<Deviation, S['DeviationOut']>>,
   Check<Same<ProbeResult, S['ProbeOut']>>,
   Check<Same<AuditEvent, S['AuditOut']>>,
-  Check<Same<SiteStage, S['SiteStageOut']>>,
-  Check<Same<StageEstimate, S['StageEstimateOut']>>,
+  Check<Same<SiteWork, S['SiteWorkOut']>>,
+  Check<Same<CameraWork, S['CameraWorkOut']>>,
+  Check<Same<ServiceAnswer, S['ServiceAnswerOut']>>,
+  Check<Same<WorkGroup, S['WorkGroupOut']>>,
+  Check<Same<WorkRef, S['WorkRefOut']>>,
+  Check<Same<WorkEvidence, S['WorkEvidenceOut']>>,
+  Check<Same<Transition, S['TransitionOut']>>,
+  Check<Same<Schedule, S['ScheduleOut']>>,
+  Check<Same<ScheduleItem, S['ScheduleItemOut']>>,
+  Check<Same<AnalyticsCatalog, S['AnalyticsCatalogOut']>>,
+  Check<Same<CatalogWork, S['CatalogWorkOut']>>,
 ]

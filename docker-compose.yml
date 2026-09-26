@@ -12,8 +12,10 @@
 # и должен знать адрес этого компьютера:
 #   SK_TRACKER_URL=ws://<адрес сервиса>:8200/stream SK_TRACKER_API_KEY=<ключ> SK_TRACKER_RTSP_URL=rtsp://192.168.1.10:8554 \
 #   SK_ANALYSIS_PROVIDER=push docker compose up --build
-# Этап по камерам с имитацией сервиса этапов (пока настоящего нет; он определяет этап по кадрам раз в 20 минут):
-#   SK_STAGE_URL=http://stage:8300/stage docker compose --profile stage up --build
+# Работы по камерам — два сервиса аналитики коллеги (контракт frame-analysis-v1, backend/docs). Пока их образов нет —
+# имитация обоих (один контейнер, два адреса):
+#   DETERMINISTIC_SERVICE_URL=http://analytics:8300/deterministic VLM_LLM_SERVICE_URL=http://analytics:8300/vlm_llm \
+#   docker compose --profile analytics up --build
 
 services:
   db:
@@ -71,9 +73,12 @@ services:
       SK_TRACKER_API_KEY: ${SK_TRACKER_API_KEY:-}
       SK_TRACKER_RTSP_URL: ${SK_TRACKER_RTSP_URL:-}  # адрес видеошлюза для сервиса на другом компьютере
       SK_TRACKER_VIDEO_DELAY_MS: ${SK_TRACKER_VIDEO_DELAY_MS:-150}
-      SK_STAGE_URL: ${SK_STAGE_URL:-}  # сервис этапов (этап по кадрам); пусто — этап по камерам не определяется
-      SK_STAGE_API_KEY: ${SK_STAGE_API_KEY:-}
-      SK_STAGE_INTERVAL_MIN: ${SK_STAGE_INTERVAL_MIN:-20}
+      # сервисы аналитики коллеги — базовые адреса без пути метода; пусто — работы по камерам не определяются
+      DETERMINISTIC_SERVICE_URL: ${DETERMINISTIC_SERVICE_URL:-}
+      VLM_LLM_SERVICE_URL: ${VLM_LLM_SERVICE_URL:-}
+      ANALYTICS_SERVICE_TOKEN: ${ANALYTICS_SERVICE_TOKEN:-}
+      ANALYTICS_HTTP_TIMEOUT_SECONDS: ${ANALYTICS_HTTP_TIMEOUT_SECONDS:-1020}
+      SK_ANALYTICS_INTERVAL_MIN: ${SK_ANALYTICS_INTERVAL_MIN:-20}
     volumes:
       - media:/app/data
     depends_on:
@@ -96,16 +101,16 @@ services:
       MOCK_TRACKER_BACKEND_URL: http://backend:8100
       SK_TRACKER_API_KEY: ${SK_TRACKER_API_KEY:-}
 
-  # имитация сервиса этапов: этап по технике в рабочих зонах, тот же контракт, что у настоящего.
-  # Запускается только с профилем: docker compose --profile stage up
-  stage:
-    profiles: [stage]
+  # имитация двух сервисов аналитики коллеги по его контракту: /deterministic и /vlm_llm. Настоящие придут образами —
+  # тогда здесь будут они. Запускается только с профилем: docker compose --profile analytics up
+  analytics:
+    profiles: [analytics]
     build: ./backend
-    command: ["/app/.venv/bin/uvicorn", "app.mock_stage:app", "--host", "0.0.0.0", "--port", "8300"]
+    command: ["/app/.venv/bin/uvicorn", "app.mock_analytics:app", "--host", "0.0.0.0", "--port", "8300"]
     healthcheck:
       disable: true
     environment:
-      SK_STAGE_API_KEY: ${SK_STAGE_API_KEY:-}
+      ANALYTICS_SERVICE_TOKEN: ${ANALYTICS_SERVICE_TOKEN:-}
 
   frontend:
     build: ./frontend

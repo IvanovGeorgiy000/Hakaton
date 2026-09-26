@@ -80,12 +80,14 @@ async def test_usage_is_saved_and_shown_by_site(client):
 async def test_site_kind(client):
     manager = await login_as(client, "manager")
     sites = {s["id"]: s for s in (await client.get("/api/sites", headers=manager)).json()}
-    assert sites["s3"]["kind"] == "road" and sites["s1"]["kind"] == "residential"
+    assert sites["s3"]["kind"] == "roads" and sites["s1"]["kind"] == "housing" and sites["s4"]["kind"] == "preschool"
     created = (await client.post("/api/sites", headers=manager, json={"name": "Склад ГСМ", "kind": "industrial"})).json()
     assert created["kind"] == "industrial"
     renamed = await client.patch(f"/api/sites/{created['id']}", headers=manager, json={"name": "Склад ГСМ, корпус 2"})
     assert renamed.json()["kind"] == "industrial"  # форма без поля «вид» его не сбрасывает
     assert (await client.post("/api/sites", headers=manager, json={"name": "Объект", "kind": "castle"})).status_code == 422
+    # прежние виды переименованы в миграции 0008: residential → housing, road → roads
+    assert (await client.post("/api/sites", headers=manager, json={"name": "Объект", "kind": "residential"})).status_code == 422
 
 
 def test_fallback_track_ids_do_not_count_as_movement():

@@ -59,10 +59,22 @@ test('руководитель: объекты, страница объекта 
   await page.keyboard.press('Escape')
   await expect(tip).toHaveAttribute('aria-expanded', 'false')
   await expect(page.getByRole('status').filter({ hasText: 'Сколько техники нужно по правилу этапа' })).toHaveCount(0)
+  // работы по камерам: сервисы аналитики (имитация) подключены, свежих кадров без видео нет — отправлять нечего
+  await expect(page.getByRole('heading', { name: 'Работы по камерам' })).toBeVisible()
+  await expect(page.getByText('Кадр этой камеры ещё не отправлялся')).toBeVisible()
   await page.getByRole('tab', { name: 'План работ' }).click()
   await expect(page.getByRole('tab', { name: 'План работ' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByText('Разработка котлована').first()).toBeVisible()
   await expect(page.getByRole('button', { name: /Отметить выполнение/ }).first()).toBeVisible()  // руководитель отмечает
+  // у каждой работы плана — вид работ по справочнику сервисов, выбранный человеком
+  await page.getByRole('button', { name: 'Изменить план' }).click()
+  const plan = page.getByRole('dialog')
+  await expect(plan.getByText('По справочнику: «Выемка грунта котлована»').first()).toBeVisible()
+  await plan.getByRole('listitem').filter({ hasText: 'Разработка котлована' }).getByRole('button', { name: 'Изменить' }).click()
+  const kind = plan.getByRole('combobox', { name: 'Вид работ по справочнику' })
+  await expect(kind).toBeVisible()
+  await expect(kind.locator('option', { hasText: 'Обратная засыпка грунтом' })).toHaveCount(1)
+  await page.keyboard.press('Escape')
   await visit(page, '/manager/cameras', 'Камера 2 — въезд')
   await visit(page, '/manager/alerts', 'Нет самосвалов')
   await visit(page, '/manager/reports', 'Отчёт за неделю')

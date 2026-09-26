@@ -11,7 +11,7 @@ import asyncio
 import logging
 import shutil
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import dbschema
 from app.config import get_settings
 from app.db import Base, SessionLocal, engine, utcnow
+from app.mock_analytics import CATALOG_VERSION as MOCK_CATALOG_VERSION
 from app.models import (
     Alert,
     AlertEvent,
@@ -35,8 +36,9 @@ from app.models import (
 from app.security import hash_password
 from app.services import texts
 from app.services.analysis import get_mock
+from app.services.analytics.observations import record_observations
 from app.services.camera_client import mock_frame
-from app.services.engine import FIRST_ALERT_NUMBER, SYSTEM, current_stage, local_day, process_frame, run_check
+from app.services.engine import FIRST_ALERT_NUMBER, SYSTEM, TZ, current_stage, local_day, process_frame, run_check
 from app.services.video import demo_feed_address
 
 settings = get_settings()
@@ -294,8 +296,25 @@ STAGES = [
 
 # Выполнение текущих работ по факту: на сколько процентов оно расходится с графиком (минус — отставание).
 # ЖК заметно отстаёт — как и в его отклонениях; детский сад идёт чуть впереди графика.
-SITE_KIND = {"s1": "residential", "s2": "public", "s3": "road", "s4": "public"}  # дом, школа, дорога, детский сад
+SITE_KIND = {"s1": "housing", "s2": "education", "s3": "roads", "s4": "preschool"}  # как в «Справочнике видов работ»
 FACT_SHIFT = {"s1": -15, "s2": -6, "s3": -7, "s4": 4}
+# По графику работа должна была закончиться, а по вчерашней отметке руководителя ещё идёт: основание дороги доделывают.
+# Сервис аналитики «по технике» покажет это как возможное отставание
+LATE = {"s3-base": 95}
+
+# Вид работ по справочнику имитации сервисов аналитики (app/mock_analytics.py) для работ демо-плана — по их правилу.
+# У настоящего сервиса справочник свой, другой версии: работы придётся сопоставить заново в редакторе плана
+CATALOG_WORKS = {
+    "site_prep": 101,  # Обустройство строительной площадки
+    "excavation": 121,  # Выемка грунта котлована
+    "soil_removal": 121,  # отдельного вывоза грунта в справочнике нет — та же работа
+    "backfill": 123,  # Обратная засыпка грунтом
+    "foundation_concrete": 124,  # Устройство монолитной ж/б фундаментной плиты
+    "frame_assembly": 141,  # Каркас здания
+    "road_base": 125,  # Устройство нижнего слоя основания дорожной одежды
+    "asphalt": 143,  # Устройство нижнего слоя покрытия
+    "landscaping": 172,  # Озеленение
+}
 
 
 def _h(hours: float = 0, days: int = 0, minutes: int = 0) -> timedelta:
@@ -386,8 +405,12 @@ async def _catalog(session: AsyncSession, today: date) -> None:
             end_date=date.fromisoformat(end) + shift,
         )
         if level == 2:  # у укрупнённых этапов выполнение считается по их работам
-            if stage.end_date < today:
+            stage.catalog_stage_id, stage.catalog_version = CATALOG_WORKS[rule_key], MOCK_CATALOG_VERSION
+            if stage.end_date < today and sid in LATE:
+                stage.fact_progress, stage.fact_updated_at = LATE[sid], utcnow() - _h(20)
+            elif stage.end_date < today:
                 stage.fact_progress = 100
+                stage.fact_updated_at = datetime.combine(stage.end_date, time(18), TZ)  # закрыли в последний день
             elif stage.start_date <= today:
                 stage.fact_progress = max(0, min(100, stage.plan_progress_on(today) + FACT_SHIFT[site]))
                 stage.fact_updated_at = utcnow() - _h(18)  # руководитель отмечал вчера
@@ -707,6 +730,7 @@ async def _today(session: AsyncSession, t0: datetime) -> None:
                 camera = await session.get(Camera, "c3")
                 camera.status, camera.last_error = "offline", "Видео с камеры не приходит: нет сигнала"
             await session.flush()
+            await record_observations(session, [(await session.get(Camera, s.camera_id), s) for s in snapshots])
             check = await run_check(session, site_id, at=at, trigger="seed")
             for snapshot in snapshots:
                 snapshot.check_id = check.id

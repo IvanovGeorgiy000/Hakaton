@@ -42,6 +42,8 @@ from app.security import (
     require_roles,
 )
 from app.services import audit
+from app.services.analytics.catalog import CatalogError, object_type
+from app.services.analytics.runner import get_analytics
 from app.services.audit import ROLE_TITLES
 from app.services.engine import current_stage, local_day
 from app.services.pipeline import get_pipeline
@@ -275,7 +277,37 @@ def _stage_fields(stage: Stage) -> dict:
         "end": stage.end_date.isoformat(),
         "rule": stage.rule_key,
         "fact": stage.fact_progress,
+        "catalog": stage.catalog_stage_id,
     }
+
+
+async def _set_catalog(stage: Stage, body: StageIn, site: Site) -> None:
+    """Вид работ по справочнику сервисов аналитики. Новый — проверяется по справочнику и запоминается с его версией;
+    прежний при сохранении работы перепроверяется, если справочник доступен (так он «переезжает» на новую версию),
+    но недоступный справочник не мешает поменять даты."""
+    if "catalog_stage_id" not in body.model_fields_set:
+        return
+    value = body.catalog_stage_id
+    if value is None:
+        stage.catalog_stage_id = stage.catalog_version = None
+        return
+    if stage.level != 2:
+        raise _invalid("Вид работ по справочнику выбирают у работ, а не у укрупнённого этапа")
+    changed = value != stage.catalog_stage_id
+    try:
+        catalog = await get_analytics().catalog.get()
+    except CatalogError as exc:
+        if changed:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                f"Справочник сервисов аналитики недоступен — вид работ сейчас не выбрать: {exc}",
+            ) from None
+        return
+    if problem := catalog.step_problem(value, object_type(site.kind)):
+        if changed:
+            raise _invalid(f"Этот вид работ не подходит: {problem}")
+        return
+    stage.catalog_stage_id, stage.catalog_version = value, catalog.version
 
 
 def _set_fact(stage: Stage, fact: int | None) -> None:
@@ -308,6 +340,7 @@ async def create_stage(site_id: str, body: StageIn, user: CurrentUser, session: 
         fact_progress=0,
     )
     _set_fact(stage, body.fact_progress)
+    await _set_catalog(stage, body, site)
     session.add(stage)
     audit.record(
         session, request, user, "stage.create", f"Добавил в план объекта «{site.name}» этап «{stage.name}»",
@@ -333,6 +366,7 @@ async def update_stage(stage_id: str, body: StageIn, user: CurrentUser, session:
     if stage.level == 2:
         stage.parent_id, stage.rule_key = body.parent_id, body.rule_key
     _set_fact(stage, body.fact_progress)
+    await _set_catalog(stage, body, await session.get(Site, stage.site_id))
     if changed := audit.changes(before, _stage_fields(stage)):
         audit.record(
             session, request, user, "stage.update", f"Изменил этап «{stage.name}»",

@@ -5,7 +5,7 @@ import type { Alert, Camera, Snapshot, Stage } from '@/data'
 export function stage(p: Partial<Stage> & Pick<Stage, 'start' | 'end'>): Stage {
   return {
     id: 'st', siteId: 's1', parentId: null, level: 2, name: 'Работа', status: 'in_progress', ruleKey: null,
-    planProgress: 0, factProgress: 0, factUpdatedAt: null, ...p,
+    planProgress: 0, factProgress: 0, factUpdatedAt: null, catalogStageId: null, catalogVersion: null, ...p,
   }
 }
 

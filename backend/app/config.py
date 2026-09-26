@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # каталог backend/
@@ -74,14 +74,35 @@ class Settings(BaseSettings):
     allow_loopback_cameras: bool = True  # разрешить 127.0.0.1 (демо-ролики крутит шлюз на этом же компьютере)
     max_frame_bytes: int = 12 * 1024 * 1024
     keep_frames_per_camera: int = 200  # сколько сохранённых кадров держать на камеру (доказательства не удаляются)
-    keep_usage_days: int = Field(30, ge=1)  # сколько дней хранить учёт работы техники по часам и ответы сервиса этапов
+    keep_usage_days: int = Field(30, ge=1)  # сколько дней хранить учёт работы техники по часам и ответы аналитики
 
-    # --- этап по кадрам: внешний сервис этапов (например, языковая модель), см. app/services/stage.py ---
-    stage_url: str | None = None  # полный адрес метода, например http://127.0.0.1:8300/stage; не задан — этап не определяется
-    stage_api_key: str | None = None  # ключ сервиса этапов: уходит в заголовке Authorization: Bearer …
-    stage_interval_min: int = Field(20, ge=1, le=24 * 60)  # раз во сколько минут спрашивать про каждый объект
-    stage_timeout_s: float = Field(60.0, gt=0, le=600)  # сколько ждать ответ
-    stage_blind: bool = False  # проверка модели «вслепую»: план уходит без дат, остаются только кадры и техника
+    # --- какая работа идёт на кадре: два сервиса аналитики коллеги (контракт frame-analysis-v1, app/services/analytics) ---
+    # Имена переменных — из контракта; с приставкой SK_ тоже работают. Базовые адреса без пути метода,
+    # например http://analytics-deterministic:8000; не задан ни один — работы по камерам не определяются.
+    deterministic_service_url: str | None = Field(
+        None, validation_alias=AliasChoices("DETERMINISTIC_SERVICE_URL", "SK_DETERMINISTIC_SERVICE_URL")
+    )  # по технике на кадре, истории и правилам плана
+    vlm_llm_service_url: str | None = Field(
+        None, validation_alias=AliasChoices("VLM_LLM_SERVICE_URL", "SK_VLM_LLM_SERVICE_URL")
+    )  # по изображению: VLM → LLM
+    analytics_service_token: str | None = Field(
+        None, validation_alias=AliasChoices("ANALYTICS_SERVICE_TOKEN", "SK_ANALYTICS_SERVICE_TOKEN")
+    )  # уходит обоим в Authorization: Bearer …
+    # сколько ждать ответ: модельные попытки сервиса по изображению — до 4 × 240 с
+    analytics_http_timeout_seconds: float = Field(
+        1020.0,
+        gt=0,
+        le=3600,
+        validation_alias=AliasChoices("ANALYTICS_HTTP_TIMEOUT_SECONDS", "SK_ANALYTICS_HTTP_TIMEOUT_SECONDS"),
+    )
+    analytics_interval_min: int = Field(20, ge=1, le=24 * 60)  # раз во сколько минут отправлять свежий кадр каждой камеры
+    analytics_history_days: float = Field(7.0, gt=0, le=30)  # окно истории наблюдений в запросе (сервис смотрит неделю)
+    # история для сервисов: раз во сколько минут записывать кадр камеры в журнал наблюдений (без картинки). Сервису
+    # нужны точки не чаще 15 минут, а в запросе их не больше 500: неделя одной камеры — это шаг 20 минут
+    analytics_observation_min: int = Field(20, ge=1, le=24 * 60)
+    # тип техники → класс справочника сервиса, если его не нашлось среди кодов и синонимов справочника:
+    # {"manipulator": "crane_manipulator"}; "" — такую технику сервису не отправлять
+    analytics_classes: dict[str, str] = {}
 
     # --- рамки техники в реальном времени от внешнего сервиса разметки (детектор + трекер) ---
     # Не нужен, если кадры разбирает своя модель (local): она сама ведёт рамки по видео (realtime_fps).
@@ -103,6 +124,25 @@ class Settings(BaseSettings):
             raise ValueError(f"неизвестные типы техники {unknown}; можно: {', '.join(EQUIPMENT_TYPES)} или пусто")
         return value
 
+    @field_validator("analytics_classes")
+    @classmethod
+    def _known_types(cls, value: dict[str, str]) -> dict[str, str]:
+        from app.equipment import EQUIPMENT_TYPES
+
+        if unknown := set(value) - set(EQUIPMENT_TYPES):
+            raise ValueError(f"неизвестные типы техники {sorted(unknown)}; можно: {', '.join(EQUIPMENT_TYPES)}")
+        return value
+
+    @field_validator("deterministic_service_url", "vlm_llm_service_url")
+    @classmethod
+    def _base_url(cls, value: str | None) -> str | None:
+        value = (value or "").strip().rstrip("/")
+        if value and not value.startswith(("http://", "https://")):
+            raise ValueError(f"нужен адрес http(s)://…, а задан {value!r}")
+        if value.endswith("/v1/analyze/frame"):
+            raise ValueError("нужен базовый адрес сервиса без пути метода: без /v1/analyze/frame")
+        return value or None
+
     def insecure_defaults(self) -> list[str]:
         """Что нельзя оставлять по умолчанию в боевом запуске (демо-режим выключен)."""
         if self.demo_mode:
@@ -122,6 +162,12 @@ class Settings(BaseSettings):
                     f"SK_{name.upper()}: задайте свой случайный ключ не короче 16 символов (пример открыт в репозитории)"
                 )
         return problems
+
+    @property
+    def analytics_services(self) -> dict[str, str]:
+        """Подключённые сервисы аналитики: имя по контракту → базовый адрес."""
+        urls = {"deterministic": self.deterministic_service_url, "vlm_llm": self.vlm_llm_service_url}
+        return {name: url for name, url in urls.items() if url}
 
     @property
     def auth_mode(self) -> str:

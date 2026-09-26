@@ -11,7 +11,7 @@ import { EmptyState } from './ui/EmptyState'
 import { AlertCard } from './AlertCard'
 import { AlertDetail } from './AlertDetail'
 import { EquipmentCheck } from './EquipmentCheck'
-import { StageByCameras } from './StageByCameras'
+import { WorkByCameras } from './WorkByCameras'
 import { useOpenAlert } from '@/lib/useUrlState'
 
 /** Главный экран объекта: светофор, этап, что не так, техника по плану и по факту */
@@ -69,8 +69,8 @@ export function SiteToday({ siteId, camerasLink, onShowCameras, showName = true 
         />
       </div>
 
-      {/* рядом с этапом по графику — что видят камеры (если подключён сервис этапов) */}
-      <StageByCameras siteId={siteId} className="order-2 sm:order-none" />
+      {/* рядом с этапом по графику — какие работы видят на кадрах сервисы аналитики (если подключены) */}
+      <WorkByCameras siteId={siteId} className="order-2 sm:order-none" />
 
       <section className="order-1 sm:order-none">
         <div className="flex items-baseline justify-between gap-3 mb-3">

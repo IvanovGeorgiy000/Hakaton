@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { api } from '@/api'
-import type { Site, Stage, StageInput } from '@/data'
+import type { AnalyticsCatalog, CatalogWork, Site, Stage, StageInput } from '@/data'
 import { useApp } from '@/store/context'
 import { fmtDate } from '@/lib/utils'
 import { STAGE_STATUS } from '@/lib/labels'
@@ -10,7 +11,8 @@ import { Modal } from '../ui/Modal'
 import { Field, inputCls } from '../ui/Field'
 import { Badge } from '../ui/Badge'
 
-/** Календарный план объекта: этапы и работы в них, даты, правило «этап → техника», выполнение по факту */
+/** Календарный план объекта: этапы и работы в них, даты, правило «этап → техника», выполнение по факту и вид работ
+ *  по справочнику сервисов аналитики (если они подключены) */
 export function PlanDialog({ site, onClose }: { site: Site | null; onClose: () => void }) {
   return (
     <Modal open={!!site} onClose={onClose} title={site ? `План работ: ${site.name}` : ''} wide>
@@ -22,6 +24,10 @@ export function PlanDialog({ site, onClose }: { site: Site | null; onClose: () =
 function Plan({ site }: { site: Site }) {
   const { stagesOf, rules, run } = useApp()
   const stages = stagesOf(site.id)
+  // справочник сервисов аналитики: сервисы не подключены — поля «вид работ по справочнику» нет
+  const { data: catalog } = useQuery({
+    queryKey: ['analytics-catalog', site.id], queryFn: () => api.analyticsCatalog(site.id), staleTime: 5 * 60_000,
+  })
   const phases = stages.filter((s) => s.level === 1)
   const [editing, setEditing] = useState<string | null>(null) // id этапа или 'new-phase' / 'new-work:<id этапа>'
   const [removing, setRemoving] = useState<Stage | null>(null)
@@ -58,7 +64,7 @@ function Plan({ site }: { site: Site }) {
               {works.map((work) => (
                 <li key={work.id} className="px-4 py-3">
                   {editing === work.id ? (
-                    <StageForm stage={work} level={2} parentId={phase.id} onSave={(input) => save(work, input)} onCancel={() => setEditing(null)} />
+                    <StageForm stage={work} level={2} parentId={phase.id} catalog={catalog} onSave={(input) => save(work, input)} onCancel={() => setEditing(null)} />
                   ) : (
                     <div className="flex flex-wrap items-center gap-3">
                       <div className="flex-1 min-w-0">
@@ -66,6 +72,7 @@ function Plan({ site }: { site: Site }) {
                         <div className="text-[14px] text-muted-foreground">
                           {fmtDate(work.start)} — {fmtDate(work.end)} · сделано {work.factProgress}% · правило: {work.ruleKey ? rules[work.ruleKey]?.stageName ?? work.ruleKey : 'не задано'}
                         </div>
+                        {catalog?.enabled && <CatalogNote work={work} catalog={catalog} />}
                       </div>
                       <Badge tone={STAGE_STATUS[work.status].tone}>{STAGE_STATUS[work.status].label}</Badge>
                       <Button variant="outline" size="sm" onClick={() => setEditing(work.id)}><Pencil className="w-4 h-4" /> Изменить</Button>
@@ -76,7 +83,7 @@ function Plan({ site }: { site: Site }) {
               ))}
               <li className="px-4 py-3">
                 {editing === `new-work:${phase.id}` ? (
-                  <StageForm level={2} parentId={phase.id} defaults={{ start: phase.start, end: phase.end }} onSave={(input) => save(null, input)} onCancel={() => setEditing(null)} />
+                  <StageForm level={2} parentId={phase.id} catalog={catalog} defaults={{ start: phase.start, end: phase.end }} onSave={(input) => save(null, input)} onCancel={() => setEditing(null)} />
                 ) : (
                   <Button variant="ghost" size="sm" onClick={() => setEditing(`new-work:${phase.id}`)}><Plus className="w-4 h-4" /> Добавить работы в этот этап</Button>
                 )}
@@ -123,8 +130,30 @@ function Plan({ site }: { site: Site }) {
   )
 }
 
-function StageForm({ stage, level, parentId, defaults, onSave, onCancel }: {
-  stage?: Stage; level: 1 | 2; parentId?: string; defaults?: { start: string; end: string }
+/** Какой вид работ по справочнику выбран у работы — строкой под её датами */
+function CatalogNote({ work, catalog }: { work: Stage; catalog: AnalyticsCatalog }) {
+  if (work.catalogStageId === null) {
+    return <div className="text-[14px] text-warn">Вид работ по справочнику не выбран — план не уходит сервисам аналитики</div>
+  }
+  const name = catalog.works.find((w) => w.stageId === work.catalogStageId)?.name
+  if (catalog.version && work.catalogVersion !== catalog.version) {
+    return <div className="text-[14px] text-warn">Вид работ выбран по прежней версии справочника — проверьте и сохраните работу</div>
+  }
+  return <div className="text-[14px] text-muted-foreground">По справочнику: {name ? `«${name}»` : `вид работ ${work.catalogStageId} — не подходит этому объекту`}</div>
+}
+
+/** Виды работ по разделам справочника — для списка выбора */
+function bySection(works: CatalogWork[]): [string, CatalogWork[]][] {
+  const sections = new Map<string, CatalogWork[]>()
+  for (const work of works) {
+    const title = work.path.join(' › ') || 'Без раздела'
+    sections.set(title, [...(sections.get(title) ?? []), work])
+  }
+  return [...sections]
+}
+
+function StageForm({ stage, level, parentId, defaults, catalog, onSave, onCancel }: {
+  stage?: Stage; level: 1 | 2; parentId?: string; defaults?: { start: string; end: string }; catalog?: AnalyticsCatalog
   onSave: (input: StageInput) => Promise<boolean>; onCancel: () => void
 }) {
   const { rules } = useApp()
@@ -134,6 +163,8 @@ function StageForm({ stage, level, parentId, defaults, onSave, onCancel }: {
   const [ruleKey, setRuleKey] = useState(stage?.ruleKey ?? '')
   // процент — строкой, пока его набирают: иначе поле нельзя было очистить, чтобы ввести новое число
   const [fact, setFact] = useState(String(stage?.factProgress ?? 0))
+  const [catalogId, setCatalogId] = useState(stage?.catalogStageId != null ? String(stage.catalogStageId) : '')
+  const withCatalog = level === 2 && !!catalog?.enabled
   const [tried, setTried] = useState(false)
   const [busy, setBusy] = useState(false)
   const error = name.trim().length < 2 ? 'Введите название' : !start || !end ? 'Укажите даты' : end < start ? 'Окончание раньше начала' : undefined
@@ -143,7 +174,11 @@ function StageForm({ stage, level, parentId, defaults, onSave, onCancel }: {
     setTried(true)
     if (error || busy) return
     setBusy(true)
-    await onSave({ name: name.trim(), level, parentId: parentId ?? null, start, end, ruleKey: level === 2 ? ruleKey || null : null, factProgress: clampPercent(fact) })
+    await onSave({
+      name: name.trim(), level, parentId: parentId ?? null, start, end, ruleKey: level === 2 ? ruleKey || null : null, factProgress: clampPercent(fact),
+      // без подключённых сервисов поле не отправляем — выбранный раньше вид работ сохраняется
+      ...(withCatalog ? { catalogStageId: catalogId ? Number(catalogId) : null } : {}),
+    })
     setBusy(false)
   }
 
@@ -163,6 +198,26 @@ function StageForm({ stage, level, parentId, defaults, onSave, onCancel }: {
             <select id={id} value={ruleKey} onChange={(e) => setRuleKey(e.target.value)} aria-describedby={d} className={inputCls}>
               <option value="">— без сверки техники —</option>
               {Object.values(rules).map((r) => <option key={r.key} value={r.key}>{r.stageName}</option>)}
+            </select>
+          )}
+        </Field>
+      )}
+      {withCatalog && catalog && (
+        <Field
+          label="Вид работ по справочнику" className="sm:col-span-2"
+          hint={catalog.error ?? 'По нему сервисы аналитики сверяют кадры с планом. Выберите, что делается на самом деле: по похожему названию система сама не подставляет'}
+        >
+          {(id, d) => (
+            <select id={id} value={catalogId} onChange={(e) => setCatalogId(e.target.value)} aria-describedby={d} className={inputCls} disabled={!catalog.works.length}>
+              <option value="">— не выбран: план не уйдёт сервисам —</option>
+              {catalogId && !catalog.works.some((w) => String(w.stageId) === catalogId) && (
+                <option value={catalogId}>Вид работ {catalogId} — нет в справочнике для этого объекта</option>
+              )}
+              {bySection(catalog.works).map(([title, works]) => (
+                <optgroup key={title} label={title}>
+                  {works.map((w) => <option key={w.stageId} value={w.stageId}>{w.name}</option>)}
+                </optgroup>
+              ))}
             </select>
           )}
         </Field>
