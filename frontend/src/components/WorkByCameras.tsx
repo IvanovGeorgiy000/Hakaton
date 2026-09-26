@@ -189,7 +189,7 @@ function CameraBlock({ camera, canSeeErrors }: { camera: CameraWork; canSeeError
 function Answer({ answer, canSeeErrors }: { answer: ServiceAnswer; canSeeErrors: boolean }) {
   const [open, setOpen] = useState(false)
   const details = answer.groups.flatMap((g) => g.evidence.map((e) => e.explanation)).filter(Boolean)
-  const more = details.length > 0 || answer.limitations.length > 0 || !!answer.model
+  const more = details.length > 0 || answer.limitations.length > 0
   return (
     <div className="grid sm:grid-cols-[112px_1fr] gap-x-3">
       <dt className="text-[14px] text-muted-foreground pt-px">{SERVICE[answer.service]}</dt>
@@ -240,7 +240,6 @@ function Answer({ answer, canSeeErrors }: { answer: ServiceAnswer; canSeeErrors:
                     {details.map((text, n) => <li key={`e${n}`}>{text}</li>)}
                     {answer.limitations.map((text, n) => <li key={`l${n}`}>{text}</li>)}
                   </ul>
-                  {answer.model && <p className="mt-1 text-[13px] text-muted-foreground">Версия: {answer.model}</p>}
                 </m.div>
               )}
             </AnimatePresence>
