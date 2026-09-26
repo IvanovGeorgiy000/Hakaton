@@ -1,6 +1,7 @@
 """Работы по камерам: что ответили сервисы аналитики по кадрам — рядом с графиком; «Определить сейчас»; справочник
 видов работ для плана."""
 
+import re
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, status
@@ -52,6 +53,12 @@ class _Names:
 
     def __init__(self, works: list[Stage], catalog: Catalog | None) -> None:
         self.works, self.catalog = {w.id: w for w in works}, catalog
+        keys = sorted(map(re.escape, self.works), key=len, reverse=True)
+        self._keys = re.compile(rf"(?<![\w-])({'|'.join(keys)})(?![\w-])") if keys else None
+
+    def humanize(self, text: str) -> str:
+        """Модель называет работы нашими id («котлована (s1-excavation)») — людям нужны названия из плана."""
+        return self._keys.sub(lambda m: f"«{self.works[m.group(1)].name}»", text) if self._keys and text else text
 
     def ref(self, step_key: str, stage_id: int | None = None) -> WorkRefOut:
         work = self.works.get(step_key)
@@ -69,7 +76,7 @@ def _model(result: dict) -> str | None:
     versions = result.get("versions") or {}
     parts = [versions.get("service_version")]
     if versions.get("vision_model") or versions.get("llm_model"):
-        parts.append(" → ".join(v for v in (versions.get("vision_model"), versions.get("llm_model")) if v))
+        parts.append(" → ".join(dict.fromkeys(v for v in (versions.get("vision_model"), versions.get("llm_model")) if v)))
     if versions.get("matrix_version"):
         parts.append(f"матрица {versions['matrix_version']}")
     text = ", ".join(p for p in parts if p)
@@ -98,17 +105,19 @@ def _answer(
         return answer
     result = row.result
     answer.outcome, answer.model = row.outcome, _model(result)
-    answer.limitations = [str(item)[:1000] for item in result.get("limitations") or []][:20]
+    answer.limitations = [names.humanize(str(item))[:1000] for item in result.get("limitations") or []][:20]
     for group in result["current_work"]["work_groups"]:
         answer.groups.append(
             WorkGroupOut(
                 match=str(group.get("match_status") or ""),
                 works=[names.ref(c["step_key"], c["stage_id"]) for c in group["candidates"]],
                 visual_state=str(group.get("visual_state") or ""),
-                explanation=str(group.get("explanation") or ""),
+                explanation=names.humanize(str(group.get("explanation") or "")),
                 evidence=[
                     WorkEvidenceOut(
-                        source=str(e.get("source")), role=str(e.get("role")), explanation=str(e.get("explanation") or "")
+                        source=str(e.get("source")),
+                        role=str(e.get("role")),
+                        explanation=names.humanize(str(e.get("explanation") or "")),
                     )
                     for e in (group.get("evidence") or [])[:EVIDENCE]
                     if isinstance(e, dict)

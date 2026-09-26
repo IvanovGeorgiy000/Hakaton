@@ -533,6 +533,41 @@ async def test_real_service_answer_is_shown(client, services):
     assert shown["overdueS"] == round(late["overdue_seconds"]) and shown["overdueS"] > 0
 
 
+async def test_real_model_answer_names_works_by_plan(client, services):
+    """Настоящий ответ «по снимку» (qwen3.8-27b через gateway, 26.09, кадр котлована демо-плана): модель пишет наши id
+    работ — людям показываем названия из плана; версия модели — один раз."""
+    real = json.loads((BASE_DIR / "tests" / "fixtures" / "analytics" / "real-vlm-pit.json").read_text(encoding="utf-8"))
+    assert conforms("result", real) == [] and "s1-excavation" in real["current_work"]["work_groups"][0]["explanation"]
+    now = utcnow()
+    async with SessionLocal() as session:
+        session.add(
+            AnalyticsRequest(
+                id="fa_vlm",
+                site_id="s1",
+                camera_id="c1",
+                at=now,
+                trigger="manual",
+                observed_at=now,
+                image_sha256="0" * 64,
+                input_sha256=real["context"]["input_sha256"],
+                catalog_version=real["context"]["catalog_version"],
+                notes=[],
+                results=[AnalyticsResult(service="vlm_llm", state="done", finished_at=now, result=real, outcome="assessed")],
+            )  # fmt: skip
+        )
+        await session.commit()
+    manager = await login_as(client, "manager")
+    camera = (await client.get("/api/sites/s1/work-analysis", headers=manager)).json()["cameras"][0]
+    vision = next(a for a in camera["answers"] if a["service"] == "vlm_llm")
+    group = vision["groups"][0]
+    assert [w["name"] for w in group["works"]] == ["Разработка котлована", "Вывоз грунта"] and group[
+        "visualState"
+    ] == "operation_indicated"
+    shown = " ".join([group["explanation"], *(e["explanation"] for e in group["evidence"]), *vision["limitations"]])
+    assert "s1-excavation" not in shown and "s1-soil" not in shown and "«Разработка котлована»" in shown
+    assert vision["model"] == "0.2.0, qwen3.8-27b"
+
+
 def test_contract_environment_names(monkeypatch):
     from app.config import Settings
 
