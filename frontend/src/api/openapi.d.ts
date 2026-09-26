@@ -134,7 +134,8 @@ export interface paths {
         /** Методика «этап → техника» */
         get: operations["list_rules_api_rules_get"];
         put?: never;
-        post?: never;
+        /** Новое правило (администратор) */
+        post: operations["create_rule_api_rules_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -152,7 +153,8 @@ export interface paths {
         /** Изменить правило (администратор) */
         put: operations["update_rule_api_rules__key__put"];
         post?: never;
-        delete?: never;
+        /** Удалить правило (администратор) */
+        delete: operations["delete_rule_api_rules__key__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1377,8 +1379,45 @@ export interface components {
             /** Previewpath */
             previewPath?: string | null;
         };
+        /**
+         * RuleCreate
+         * @description Новое правило: достаточно названия этапа — технику добавляют потом в редакторе правила.
+         */
+        RuleCreate: {
+            /** Stagename */
+            stageName: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Required
+             * @default []
+             */
+            required: components["schemas"]["RuleRequirement"][];
+            /**
+             * Allowed
+             * @default []
+             */
+            allowed: ("excavator" | "dump_truck" | "roller" | "manipulator" | "mixer" | "bulldozer" | "truck" | "crane")[];
+            /**
+             * Unexpected
+             * @default []
+             */
+            unexpected: components["schemas"]["RuleUnexpected"][];
+            /**
+             * Confirmaftersnapshots
+             * @default 3
+             */
+            confirmAfterSnapshots: number;
+        };
         /** RuleIn */
         RuleIn: {
+            /** Stagename */
+            stageName?: string | null;
+            /** Description */
+            description?: string | null;
             /** Required */
             required: components["schemas"]["RuleRequirement"][];
             /**
@@ -2229,6 +2268,39 @@ export interface operations {
             };
         };
     };
+    create_rule_api_rules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_rule_api_rules__key__put: {
         parameters: {
             query?: never;
@@ -2252,6 +2324,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RuleOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_rule_api_rules__key__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -43,11 +43,11 @@ function DataFreshness({ at }: { at: string | null }) {
 export interface NavItem { to: string; label: string; Icon: LucideIcon; end?: boolean }
 
 /** Логотип: знак + название */
-export function Logo({ className }: { className?: string }) {
+export function Logo({ className, nameClassName }: { className?: string; nameClassName?: string }) {
   return (
     <span className={cn('inline-flex items-center gap-2.5 font-semibold tracking-tight', className)}>
       <img src="/favicon.svg" alt="" className="w-7 h-7" />
-      СтройКонтроль
+      <span className={nameClassName}>СтройКонтроль</span>
     </span>
   )
 }
@@ -107,7 +107,8 @@ export function AppShell({ nav, alertsPath }: { nav: NavItem[]; alertsPath: stri
 
       <header className="sticky top-0 z-30 bg-card/90 backdrop-blur-sm border-b border-border">
         <div className="h-16 px-4 lg:px-8 flex items-center gap-3">
-          <NavLink to="/" className="lg:hidden text-[17px] shrink-0"><Logo /></NavLink>
+          {/* на узком телефоне (375–390 px) название с четырьмя кнопками не помещается — остаётся знак, название читает диктор */}
+          <NavLink to="/" className="lg:hidden text-[17px] shrink-0"><Logo nameClassName="max-[409px]:sr-only" /></NavLink>
           <div className="hidden lg:block text-[15px]">
             <span className="font-semibold">{todayLabel()}</span>
           </div>

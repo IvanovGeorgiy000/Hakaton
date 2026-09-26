@@ -148,6 +148,38 @@ async def test_rule_validation(client):
     assert (await client.put("/api/rules/asphalt", headers=foreman, json=bad)).status_code == 403
 
 
+async def test_rule_create_rename_and_delete(client):
+    admin, manager = await login_as(client, "admin"), await login_as(client, "manager")
+    new = {"stageName": "  Монтаж   инженерных сетей ", "description": "Прокладка наружных сетей"}
+    assert (await client.post("/api/rules", headers=manager, json=new)).status_code == 403
+    created = await client.post("/api/rules", headers=admin, json=new)
+    assert created.status_code == 201, created.text
+    rule = created.json()
+    assert rule["stageName"] == "Монтаж инженерных сетей" and rule["required"] == [] and rule["confirmAfterSnapshots"] == 3
+    assert [r["key"] for r in (await client.get("/api/rules", headers=admin)).json()][-1] == rule["key"]  # новое — в конце
+    # два правила с одним названием путали бы выбор правила у работы плана — регистр не важен
+    again = await client.post("/api/rules", headers=admin, json={"stageName": "монтаж инженерных сетей"})
+    assert again.status_code == 409
+
+    rule |= {"stageName": "Наружные сети", "required": [{"type": "excavator", "min": 1, "why": "Траншеи"}]}
+    saved = await client.put(f"/api/rules/{rule['key']}", headers=admin, json=rule)
+    assert saved.status_code == 200 and saved.json()["stageName"] == "Наружные сети"
+    taken = await client.put(f"/api/rules/{rule['key']}", headers=admin, json=rule | {"stageName": "Укладка асфальта"})
+    assert taken.status_code == 409
+    # без названия в запросе (как раньше присылал интерфейс) название остаётся прежним
+    kept = await client.put("/api/rules/asphalt", headers=admin, json={"required": [], "confirmAfterSnapshots": 2})
+    assert kept.status_code == 200 and kept.json()["stageName"] == "Укладка асфальта"
+
+    # правило, которым пользуются работы плана, не удалить: работа перестала бы сверяться с техникой
+    used = await client.delete("/api/rules/excavation", headers=admin)
+    assert used.status_code == 409 and "«Разработка котлована»" in used.json()["detail"]
+    assert (await client.delete(f"/api/rules/{rule['key']}", headers=manager)).status_code == 403
+    assert (await client.delete(f"/api/rules/{rule['key']}", headers=admin)).status_code == 204
+    assert rule["key"] not in {r["key"] for r in (await client.get("/api/rules", headers=admin)).json()}
+    actions = [e["action"] for e in (await client.get("/api/audit?entityType=rule", headers=admin)).json()]
+    assert {"rule.create", "rule.update", "rule.delete"} <= set(actions)
+
+
 async def test_cleanup_keeps_evidence_and_bounds_growth(client, monkeypatch):
     from sqlalchemy import func, select
 

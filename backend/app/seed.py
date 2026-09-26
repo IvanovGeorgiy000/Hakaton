@@ -25,7 +25,6 @@ from app.models import (
     AlertEvent,
     Camera,
     Rule,
-    RuleItem,
     Site,
     Snapshot,
     Stage,
@@ -34,7 +33,7 @@ from app.models import (
     new_id,
 )
 from app.security import hash_password
-from app.services import texts
+from app.services import methodology, texts
 from app.services.analysis import get_mock
 from app.services.analytics.observations import record_observations
 from app.services.camera_client import mock_frame
@@ -89,164 +88,6 @@ CAMERAS = [  # id, объект, зона, название, сцена, дем�
     ("c6", "s3", "z3-road", "Камера 1 — ПК 12", "road", "road-roller"),
     ("c7", "s3", "z3-road2", "Камера 2 — ПК 13", "road", "road-dumptruck"),
     ("c8", "s4", "z4-yard", "Камера 1 — общий вид", "yard", "yard-bulldozer"),
-]
-
-# Методика «этап → техника». required: (тип, минимум, зачем нужна, чем грозит нехватка[, важность])
-RULES = [
-    (
-        "site_prep",
-        "Подготовка площадки",
-        "Расчистка, планировка, ограждение, временные дороги.",
-        3,
-        [
-            (
-                "bulldozer",
-                1,
-                "Планировка и расчистка территории",
-                "Площадка не готовится к земляным работам — следующий этап начнётся позже.",
-            )
-        ],
-        ["truck", "excavator", "dump_truck", "manipulator"],
-        [
-            ("mixer", "Бетонные работы на этом этапе не запланированы", ""),
-            ("roller", "Уплотнение покрытия выполняется позже", ""),
-        ],
-    ),
-    (
-        "excavation",
-        "Разработка котлована",
-        "Выемка грунта экскаватором и вывоз самосвалами.",
-        3,
-        [
-            (
-                "excavator",
-                1,
-                "Без экскаватора выемка грунта не ведётся",
-                "Выемка грунта стоит. Котлован лежит на критическом пути: каждый день простоя сдвигает срок всего объекта.",
-            ),
-            (
-                "dump_truck",
-                2,
-                "Иначе экскаватор простаивает в ожидании вывоза",
-                "Экскаватору некуда грузить грунт — выемка останавливается. За день такого простоя теряется около одной смены.",
-            ),
-        ],
-        ["bulldozer", "truck"],
-        [
-            (
-                "crane",
-                "Монтаж на этапе котлована не предусмотрен графиком",
-                "Возможно, начаты работы не по графику или техника заехала по ошибке. Автокран занимает место на площадке.",
-            ),
-            ("mixer", "Бетонирование начинается после устройства основания", ""),
-            ("roller", "Уплотнение не входит в этап", ""),
-        ],
-    ),
-    (
-        "soil_removal",
-        "Вывоз грунта",
-        "Транспортировка грунта за пределы площадки.",
-        3,
-        [
-            (
-                "dump_truck",
-                2,
-                "Основная работа этапа — вывоз",
-                "Грунт не вывозится — площадка не освобождается под следующий этап.",
-            ),
-            ("excavator", 1, "Погрузка грунта", "Самосвалы простаивают без погрузки."),
-        ],
-        ["bulldozer"],
-        [("mixer", "Бетонные работы не запланированы", "")],
-    ),
-    (
-        "backfill",
-        "Обратная засыпка",
-        "Засыпка пазух котлована с уплотнением.",
-        3,
-        [
-            ("bulldozer", 1, "Разравнивание грунта", "Грунт не разравнивается — засыпка стоит."),
-            ("roller", 1, "Послойное уплотнение", "Без уплотнения грунт даст осадку — отмостка и покрытия потрескаются."),
-        ],
-        ["dump_truck", "excavator"],
-        [("mixer", "Бетонирование на этапе не предусмотрено", "")],
-    ),
-    (
-        "foundation_concrete",
-        "Бетонирование фундаментной плиты",
-        "Подача и укладка бетона, армирование.",
-        2,
-        [
-            (
-                "mixer",
-                2,
-                "Непрерывная подача бетона без «холодных швов»",
-                "Перерыв в подаче бетона может привести к «холодному шву» в плите — это брак.",
-            )
-        ],
-        ["crane", "manipulator", "truck"],
-        [
-            ("excavator", "Земляные работы должны быть завершены", "Возможен возврат к земляным работам вне графика.", "low"),
-            ("roller", "Не применяется при бетонировании", ""),
-        ],
-    ),
-    (
-        "frame_assembly",
-        "Монтаж каркаса",
-        "Монтаж конструкций надземной части.",
-        3,
-        [
-            ("crane", 1, "Подъём и монтаж конструкций", "Без крана монтаж каркаса невозможен — этап стоит."),
-            ("truck", 1, "Поставка конструкций", "Конструкции не подвозятся — монтажникам нечего ставить."),
-        ],
-        ["manipulator", "mixer"],
-        [("excavator", "Земляные работы завершены", ""), ("bulldozer", "Не применяется на этапе", "")],
-    ),
-    (
-        "road_base",
-        "Устройство основания дороги",
-        "Отсыпка и уплотнение щебёночного основания.",
-        3,
-        [
-            ("dump_truck", 2, "Подвоз щебня", "Щебень не подвозится — отсыпка основания стоит."),
-            ("bulldozer", 1, "Разравнивание", "Щебень не разравнивается — основание не готово к уплотнению."),
-            ("roller", 1, "Уплотнение основания", "Неуплотнённое основание просядет под асфальтом."),
-        ],
-        ["excavator", "truck"],
-        [("mixer", "Бетон на этапе не применяется", "")],
-    ),
-    (
-        "asphalt",
-        "Укладка асфальта",
-        "Укладка и уплотнение асфальтобетонной смеси.",
-        2,
-        [
-            (
-                "roller",
-                2,
-                "Без укатки асфальт теряет качество за считанные минуты",
-                "Смесь остывает раньше, чем её успевают укатать. Покрытие получится бракованным, участок придётся переделывать.",
-                "high",
-            ),
-            (
-                "dump_truck",
-                1,
-                "Подвоз горячей смеси",
-                "Смесь не подвозится — укладка останавливается, в покрытии появляются стыки.",
-            ),
-        ],
-        ["truck"],
-        [("excavator", "Земляные работы должны быть завершены", ""), ("crane", "Не применяется при укладке", "")],
-    ),
-    (
-        "landscaping",
-        "Благоустройство",
-        "Озеленение, малые формы, тротуары.",
-        3,
-        [("manipulator", 1, "Разгрузка плитки и малых форм", "Материалы не разгружаются — благоустройство стоит.")],
-        ["truck", "excavator", "roller", "dump_truck"],
-        [("crane", "Тяжёлый монтаж завершён", "")],
-    ),
 ]
 
 # Календарный план: (id, объект, родитель, уровень, название, начало, конец, правило) — даты относительно _PLAN_ANCHOR
@@ -361,36 +202,7 @@ async def _catalog(session: AsyncSession, today: date) -> None:
                 path=feed.path,
             )  # fmt: skip
         )
-    for pos, (key, stage_name, description, confirm, required, allowed, unexpected) in enumerate(RULES):
-        rule = Rule(key=key, stage_name=stage_name, description=description, confirm_after=confirm, position=pos)
-        n = 0
-        for kind, min_count, why, risk, *severity in required:
-            rule.items.append(
-                RuleItem(
-                    kind="required",
-                    equipment_type=kind,
-                    min_count=min_count,
-                    why=why,
-                    risk=risk,
-                    severity=severity[0] if severity else None,
-                    position=(n := n + 1),
-                )
-            )
-        for kind in allowed:
-            rule.items.append(RuleItem(kind="allowed", equipment_type=kind, position=(n := n + 1)))
-        for kind, why, risk, *severity in unexpected:
-            rule.items.append(
-                RuleItem(
-                    kind="unexpected",
-                    equipment_type=kind,
-                    why=why,
-                    risk=risk,
-                    severity=severity[0] if severity else None,
-                    position=(n := n + 1),
-                )
-            )
-        session.add(rule)
-    await session.flush()
+    await methodology.install(session)  # та же базовая методика, что ставится в любую новую базу
     shift = today - _PLAN_ANCHOR  # сдвигаем план так, чтобы «сегодня» попадало на те же этапы
     for pos, (sid, site, parent, level, name, start, end, rule_key) in enumerate(STAGES):
         stage = Stage(
@@ -797,8 +609,9 @@ async def reset() -> None:
     await seed_if_empty()
 
 
-async def prepare_database() -> None:
-    """Довести базу до последней миграции, пустую — наполнить демо-данными.
+async def prepare_database(*, demo_data: bool | None = None) -> None:
+    """Довести базу до последней миграции, пустую — наполнить демо-данными (demo_data, по умолчанию SK_SEED_ON_START)
+    или, без демо-данных, поставить в неё базовую методику «этап → техника».
 
     База, созданная версией без миграций: демо-базу пересоздаём, боевую не трогаем и объясняем, что сделать.
     """
@@ -816,8 +629,13 @@ async def prepare_database() -> None:
         settings.frames_dir.mkdir(parents=True, exist_ok=True)
         await _drop_everything()
     await _migrate()
-    if settings.seed_on_start and await seed_if_empty():
+    if (settings.seed_on_start if demo_data is None else demo_data) and await seed_if_empty():
         log.info("Пустая база наполнена демонстрационными данными")
+        return
+    async with SessionLocal() as session:
+        if added := await methodology.install_if_unused(session):
+            await session.commit()
+            log.info("Новая база: поставлена базовая методика «этап → техника» (%d правил)", added)
 
 
 if __name__ == "__main__":

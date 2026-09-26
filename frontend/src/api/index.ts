@@ -1,7 +1,7 @@
 import { request } from './client'
 import type {
   Alert, AlertStatus, AnalyticsCatalog, AnalyzeResult, AuditEvent, Camera, CameraPatch, Connection, EquipmentCheckResult, LiveCamera, Meta, NewCamera,
-  ProbeResult, RoleId, Rule, Sample, Site, SiteInput, SiteWork, Snapshot, Stage, StageInput, User, UserInput, UserPatch, WeeklyReport, Zone,
+  ProbeResult, RoleId, Rule, RuleInput, Sample, Site, SiteInput, SiteWork, Snapshot, Stage, StageInput, User, UserInput, UserPatch, WeeklyReport, Zone,
   ZoneInput,
 } from '@/data'
 
@@ -35,6 +35,8 @@ export const api = {
   stages: () => request<Stage[]>('GET', '/stages'),
   rules: () => request<Rule[]>('GET', '/rules'),
   saveRule: (rule: Rule) => request<Rule>('PUT', `/rules/${rule.key}`, rule),
+  createRule: (rule: RuleInput) => request<Rule>('POST', '/rules', rule),
+  deleteRule: (key: string) => request<void>('DELETE', `/rules/${key}`),
 
   cameras: () => request<Camera[]>('GET', '/cameras'),
   probeCamera: (connection: Connection) => request<ProbeResult>('POST', '/cameras/probe', connection),

@@ -116,3 +116,21 @@ async def test_production_database_from_before_migrations_is_left_alone(monkeypa
         await seed.prepare_database()
     async with SessionLocal() as session:
         assert (await session.get(Site, "legacy")).name == "Старый объект"  # боевые данные не тронуты
+
+
+async def test_new_database_without_demo_data_gets_base_methodology():
+    from app.models import Rule
+    from app.services.methodology import RULES
+
+    await seed._drop_everything()
+    await seed.prepare_database(demo_data=False)  # боевой запуск: демо-данных нет, а правила «этап → техника» есть
+    async with SessionLocal() as session:
+        assert set(await session.scalars(select(Rule.key))) == {key for key, *_ in RULES}
+        assert not await session.scalar(select(func.count()).select_from(User))
+        # администратор начал работу и удалил базовое правило — при перезапуске оно само не возвращается
+        session.add(User(id="u-admin", login="admin", name="Администратор", role="admin", password_hash=""))
+        await session.delete(await session.get(Rule, "asphalt"))
+        await session.commit()
+    await seed.prepare_database(demo_data=False)
+    async with SessionLocal() as session:
+        assert await session.get(Rule, "asphalt") is None

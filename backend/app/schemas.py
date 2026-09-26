@@ -230,10 +230,21 @@ class RuleOut(ApiModel):
 
 
 class RuleIn(ApiModel):
+    stage_name: str | None = Field(default=None, min_length=2, max_length=200)  # поля нет — название прежнее
+    description: str | None = Field(default=None, max_length=1000)
     required: list[RuleRequirement]
     allowed: list[EquipmentType] = []
     unexpected: list[RuleUnexpected] = []
     confirm_after_snapshots: int = Field(ge=1, le=24)
+
+
+class RuleCreate(RuleIn):
+    """Новое правило: достаточно названия этапа — технику добавляют потом в редакторе правила."""
+
+    stage_name: str = Field(min_length=2, max_length=200)
+    description: str = Field(default="", max_length=1000)
+    required: list[RuleRequirement] = []
+    confirm_after_snapshots: int = Field(default=3, ge=1, le=24)
 
 
 def rule_out(r: Rule) -> RuleOut:

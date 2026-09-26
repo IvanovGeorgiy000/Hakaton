@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils'
  */
 export function MinimalDemo() {
   const demo = useQuery({ queryKey: ['public-demo'], queryFn: api.publicDemo, staleTime: Infinity, retry: 1 })
-  const [ruleKey, setRuleKey] = useState('excavation')
+  const [chosenKey, setRuleKey] = useState('excavation')
   const [source, setSource] = useState<{ file: File; preview: string } | { sample: string; preview: string } | null>(null)
   const [result, setResult] = useState<AnalyzeResult | null>(null)
   const [busy, setBusy] = useState(false)
@@ -26,7 +26,9 @@ export function MinimalDemo() {
   const request = useRef(0)  // номер запроса: ответ на прежний выбор не показываем под новым
 
   const samples = demo.data?.samples ?? []
-  const rule = demo.data?.rules.find((r) => r.key === ruleKey)
+  // «Разработки котлована» может не быть: администратор ведёт методику сам — тогда берём первое правило
+  const rule = demo.data?.rules.find((r) => r.key === chosenKey) ?? demo.data?.rules[0]
+  const ruleKey = rule?.key ?? chosenKey
   const current = source ?? (samples[0] ? { sample: samples[0].id, preview: samples[0].imageUrl } : null)
 
   // предпросмотр своего фото держит память, пока не освободим ссылку

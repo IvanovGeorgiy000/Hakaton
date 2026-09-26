@@ -1,21 +1,35 @@
-import { useId, useState } from 'react'
+import { useId, useRef, useState, type FormEvent } from 'react'
+import { useReducedMotion } from 'framer-motion'
 import { Plus, Minus, Trash2, ChevronDown, Save, Loader2 } from 'lucide-react'
+import { api } from '@/api'
 import { EQUIPMENT, EQUIPMENT_LIST, type EquipmentType, type Rule } from '@/data'
 import { useApp } from '@/store/context'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
+import { Field, inputCls } from '@/components/ui/Field'
 import { VehicleIcon } from '@/components/VehicleIcon'
-import { cn } from '@/lib/utils'
+import { cn, pluralWord } from '@/lib/utils'
 
 /**
- * Редактор методики «этап → техника».
- * Всё на кнопках «+ / −», без ввода кода и формул.
+ * Редактор методики «этап → техника»: правила добавляют, переименовывают и удаляют здесь же.
+ * Технику — на кнопках «+ / −», без ввода кода и формул.
  */
 export function AdminRules() {
   const { rules, saveRule } = useApp()
+  const list = Object.values(rules) as Rule[]
   const [openKey, setOpenKey] = useState<string | null>('excavation')
   const [saved, setSaved] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [removing, setRemoving] = useState<Rule | null>(null)
+  // новое правило появляется в конце списка — прокручиваем к нему, как только его карточка появится на странице
+  const scrollTo = useRef<string | null>(null)
+  const reduce = useReducedMotion()
+  const created = (key: string) => {
+    scrollTo.current = key
+    setOpenKey(key)
+  }
 
   // после сохранения сервер сразу пересверяет объекты, где идёт этап с этим правилом
   const save = async (key: string, rule: Rule) => {
@@ -27,10 +41,27 @@ export function AdminRules() {
 
   return (
     <div>
-      <PageHeader title="Правила: этап → техника" info="По этим правилам система решает, есть ли отклонение: какая техника нужна на этапе, сколько её и какая лишняя. Меняйте цифры кнопками и нажимайте «Сохранить»." />
+      <PageHeader
+        title="Правила: этап → техника"
+        info="По этим правилам система решает, есть ли отклонение: какая техника нужна на этапе, сколько её и какая лишняя. Правило выбирают у работы в плане объекта. Меняйте цифры кнопками и нажимайте «Сохранить»."
+        action={<Button size="lg" onClick={() => setCreating(true)}><Plus className="w-5 h-5" /> Добавить правило</Button>}
+      />
+      {list.length === 0 && (
+        <div className="bg-card rounded-xl border border-border p-5">
+          <p className="font-semibold text-[17px]">Правил пока нет</p>
+          <p className="text-muted-foreground">Без правил работы плана не с чем сверять: добавьте правило для каждого этапа, на котором важна техника.</p>
+        </div>
+      )}
       <div className="space-y-3">
-        {(Object.values(rules) as Rule[]).map((r) => (
-          <div key={r.key} className="bg-card rounded-xl border border-border overflow-hidden">
+        {list.map((r) => (
+          <div
+            key={r.key} className="bg-card rounded-xl border border-border overflow-hidden scroll-mt-4"
+            ref={(el) => {
+              if (!el || scrollTo.current !== r.key) return
+              scrollTo.current = null
+              el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+            }}
+          >
             <button
               type="button" onClick={() => setOpenKey(openKey === r.key ? null : r.key)}
               className="w-full text-left px-4 py-4 flex items-center gap-3 cursor-pointer hover:bg-muted/40 transition-colors"
@@ -38,30 +69,128 @@ export function AdminRules() {
             >
               <div className="flex-1 min-w-0">
                 <div className="font-semibold text-lg">{r.stageName}</div>
-                <div className="text-muted-foreground text-[14px]">{r.description}</div>
+                {r.description && <div className="text-muted-foreground text-[14px]">{r.description}</div>}
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {r.required.map((q) => (
                     <span key={q.type} className="inline-flex items-center gap-1 bg-muted rounded-sm pl-1 pr-2.5 py-0.5 text-[13px] font-semibold">
                       <VehicleIcon type={q.type} className="w-6 h-4" fill={EQUIPMENT[q.type].color} /> {EQUIPMENT[q.type].name} ≥{q.min}
                     </span>
                   ))}
+                  {r.required.length === 0 && <span className="text-muted-foreground text-[13px]">Нужная техника не указана</span>}
                 </div>
               </div>
               <ChevronDown className={cn('w-6 h-6 text-muted-foreground transition-transform', openKey === r.key && 'rotate-180')} />
             </button>
               {openKey === r.key && (
                 <div className="overflow-hidden">
-                  <RuleEditor rule={r} onSave={(nr) => save(r.key, nr)} saved={saved === r.key} />
+                  <RuleEditor rule={r} others={list.filter((o) => o.key !== r.key)} onSave={(nr) => save(r.key, nr)} onDelete={() => setRemoving(r)} saved={saved === r.key} />
                 </div>
               )}
           </div>
         ))}
       </div>
+      <Modal open={creating} onClose={() => setCreating(false)} title="Новое правило">
+        {creating && <NewRuleForm rules={list} onClose={() => setCreating(false)} onCreated={created} />}
+      </Modal>
+      <DeleteRuleDialog rule={removing} onClose={() => setRemoving(null)} />
     </div>
   )
 }
 
-function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => Promise<void>; saved: boolean }) {
+/** Название этапа так, как его сохранит сервер: без лишних пробелов. Совпадение с другим правилом — без учёта регистра */
+const cleanName = (name: string) => name.trim().replace(/\s+/g, ' ')
+function nameError(name: string, others: Rule[]): string | undefined {
+  const clean = cleanName(name)
+  if (clean.length < 2) return 'Введите название этапа'
+  const same = others.find((o) => o.stageName.toLocaleLowerCase('ru') === clean.toLocaleLowerCase('ru'))
+  return same ? `Правило «${same.stageName}» уже есть` : undefined
+}
+
+function NewRuleForm({ rules, onClose, onCreated }: { rules: Rule[]; onClose: () => void; onCreated: (key: string) => void }) {
+  const { run } = useApp()
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [touched, setTouched] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const error = touched ? nameError(name, rules) : undefined
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    setTouched(true)
+    if (nameError(name, rules)) return
+    setBusy(true)
+    let created: Rule | undefined
+    const ok = await run(
+      async () => { created = await api.createRule({ stageName: cleanName(name), description: description.trim() }) },
+      `Правило «${cleanName(name)}» добавлено — укажите, какая техника нужна`,
+    )
+    setBusy(false)
+    if (!ok || !created) return
+    onCreated(created.key)  // сразу открываем его редактор: технику задают там
+    onClose()
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="space-y-4">
+      <p className="text-muted-foreground">Технику — какая нужна на этапе и какая лишняя — укажете сразу после, в редакторе правила.</p>
+      <Field label="Название этапа" error={error}>
+        {(id, d) => <input id={id} value={name} maxLength={200} onChange={(e) => setName(e.target.value)} onBlur={() => name && setTouched(true)} aria-invalid={!!error} aria-describedby={d} className={inputCls} placeholder="Монтаж наружных сетей" />}
+      </Field>
+      <Field label="Что входит в этап" hint="Необязательно. Коротко — чтобы было понятно, для каких работ плана это правило">
+        {(id, d) => <textarea id={id} value={description} maxLength={1000} rows={3} onChange={(e) => setDescription(e.target.value)} aria-describedby={d} className={cn(inputCls, 'py-2.5')} placeholder="Траншеи, укладка труб, обратная засыпка" />}
+      </Field>
+      <div className="flex flex-wrap gap-3 pt-2">
+        <Button type="submit" size="lg" disabled={busy}>{busy && <Loader2 className="w-5 h-5 animate-spin" />} Добавить правило</Button>
+        <Button type="button" variant="outline" size="lg" onClick={onClose}>Отмена</Button>
+      </div>
+    </form>
+  )
+}
+
+/** Удалить правило можно, только если его не выбрали ни у одной работы плана: иначе работа перестала бы сверяться */
+function DeleteRuleDialog({ rule, onClose }: { rule: Rule | null; onClose: () => void }) {
+  const { stages, bySite, run } = useApp()
+  const [busy, setBusy] = useState(false)
+  const works = rule ? stages.filter((s) => s.ruleKey === rule.key) : []
+  return (
+    <Modal open={!!rule} onClose={onClose} title={works.length ? 'Правило используется' : 'Удалить правило?'}>
+      {rule && (works.length ? (
+        <div className="space-y-5">
+          <p>Правило «{rule.stageName}» выбрано у {works.length} {pluralWord(works.length, 'работы', 'работ', 'работ')} в планах объектов:</p>
+          <ul className="list-disc pl-6 space-y-1">
+            {works.slice(0, 6).map((w) => <li key={w.id}>{w.name} — {bySite(w.siteId)?.name}</li>)}
+            {works.length > 6 && <li>и ещё {works.length - 6}</li>}
+          </ul>
+          <p className="text-muted-foreground text-[15px]">Без правила работа перестанет сверяться с техникой. Сначала выберите у этих работ другое правило в плане объекта — потом это можно будет удалить.</p>
+          <Button variant="outline" size="lg" onClick={onClose}>Понятно</Button>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          <p>Правило «{rule.stageName}» удалится. Ни у одной работы в планах объектов оно не выбрано — на сверку это не повлияет.</p>
+          <p className="text-muted-foreground text-[15px]">Отклонения, найденные по нему раньше, останутся в истории.</p>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="danger" size="lg" disabled={busy}
+              onClick={async () => {
+                setBusy(true)
+                const ok = await run(() => api.deleteRule(rule.key), `Правило «${rule.stageName}» удалено`)
+                setBusy(false)
+                if (ok) onClose()
+              }}
+            >
+              {busy && <Loader2 className="w-5 h-5 animate-spin" />} Удалить правило
+            </Button>
+            <Button variant="outline" size="lg" onClick={onClose}>Отмена</Button>
+          </div>
+        </div>
+      ))}
+    </Modal>
+  )
+}
+
+function RuleEditor({ rule, others, onSave, onDelete, saved }: {
+  rule: Rule; others: Rule[]; onSave: (r: Rule) => Promise<void>; onDelete: () => void; saved: boolean
+}) {
   const { meta } = useApp()
   // техника, которую модель на сервере не распознаёт: её «отсутствие» не станет отклонением — проверяют на месте
   const unseen = (t: EquipmentType) => !!meta && !meta.detectableEquipment.includes(t)
@@ -77,8 +206,17 @@ function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => 
   const removeUnexp = (t: EquipmentType) => setDraft({ ...draft, unexpected: draft.unexpected.filter((u) => u.type !== t) })
   const addUnexp = (t: EquipmentType) => setDraft({ ...draft, unexpected: [...draft.unexpected, { type: t, why: 'Не предусмотрено этапом', risk: '' }] })
 
+  const nameProblem = nameError(draft.stageName, others)
+
   return (
-    <div className="border-t border-border p-4 sm:p-5 grid lg:grid-cols-2 gap-5">
+    <div className="border-t border-border p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <Field label="Название этапа" error={nameProblem}>
+        {(id, d) => <input id={id} value={draft.stageName} maxLength={200} onChange={(e) => setDraft({ ...draft, stageName: e.target.value })} aria-invalid={!!nameProblem} aria-describedby={d} className={inputCls} />}
+      </Field>
+      <Field label="Что входит в этап">
+        {(id) => <input id={id} value={draft.description} maxLength={1000} onChange={(e) => setDraft({ ...draft, description: e.target.value })} className={inputCls} />}
+      </Field>
+
       <section>
         <div className="flex items-center gap-2 mb-3">
           <h3 className="font-semibold">Нужная техника</h3>
@@ -132,9 +270,19 @@ function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => 
           <Btn onClick={() => setDraft({ ...draft, confirmAfterSnapshots: clamp(draft.confirmAfterSnapshots + 1, 1, MAX_CONFIRM) })} disabled={draft.confirmAfterSnapshots >= MAX_CONFIRM} label="Больше проверок"><Plus className="w-5 h-5" /></Btn>
           <span className="text-muted-foreground">проверок подряд</span>
         </div>
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex flex-wrap items-center gap-3">
           {saved && <span className="text-ok font-semibold">Сохранено</span>}
-          <Button size="lg" disabled={saving} onClick={async () => { setSaving(true); await onSave(draft); setSaving(false) }}>
+          <Button variant="ghost" size="lg" className="text-danger hover:text-danger hover:bg-danger-bg" onClick={onDelete}>
+            <Trash2 className="w-5 h-5" /> Удалить правило
+          </Button>
+          <Button
+            size="lg" disabled={saving || !!nameProblem}
+            onClick={async () => {
+              setSaving(true)
+              await onSave({ ...draft, stageName: cleanName(draft.stageName), description: draft.description.trim() })
+              setSaving(false)
+            }}
+          >
             {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />} Сохранить
           </Button>
         </div>

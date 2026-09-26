@@ -1,16 +1,18 @@
 """Объекты, зоны, календарный план, правила, сотрудники, сверка «план / факт»."""
 
 from fastapi import APIRouter, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import SiteIdQuery, get_site, scope
 from app.db import utcnow
-from app.models import CheckRun, Rule, RuleItem, Site, Stage, Zone
+from app.models import CheckRun, Rule, RuleItem, Site, Stage, Zone, new_id
 from app.schemas import (
     CheckRow,
     CheckRunOut,
     EquipmentCheckOut,
     ExtraRow,
+    RuleCreate,
     RuleIn,
     RuleOut,
     SiteOut,
@@ -63,25 +65,13 @@ async def list_rules(_: CurrentUser, session: Session) -> list[RuleOut]:
     return [rule_out(r) for r in await session.scalars(select(Rule).order_by(Rule.position))]
 
 
-@router.put(
-    "/rules/{key}",
-    response_model=RuleOut,
-    tags=["Правила"],
-    summary="Изменить правило (администратор)",
-    dependencies=[require_roles("admin")],
-)
-async def update_rule(key: str, body: RuleIn, user: CurrentUser, session: Session, request: Request) -> RuleOut:
-    rule = await session.get(Rule, key)
-    if rule is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Правило не найдено")
-    before = rule_out(rule).model_dump(by_alias=True)
+def _rule_items(body: RuleIn, old: dict[tuple[str, str], RuleItem]) -> list[RuleItem]:
+    """Строки правила из формы. У прежних строк сохраняем тексты риска и важность — в форме их нет."""
     required, unexpected = {r.type for r in body.required}, {u.type for u in body.unexpected}
     if len(required) != len(body.required) or len(unexpected) != len(body.unexpected):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Техника в списке повторяется")
     if required & unexpected:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Одна и та же техника не может быть и нужной, и лишней")
-
-    old = {(i.kind, i.equipment_type): i for i in rule.items}  # сохраняем тексты риска и важность прежних строк
     items, n = [], 0
     for r in body.required:
         prev = old.get(("required", r.type))
@@ -111,6 +101,68 @@ async def update_rule(key: str, body: RuleIn, user: CurrentUser, session: Sessio
                 position=(n := n + 1),
             )
         )
+    return items
+
+
+async def _rule_name(session: AsyncSession, name: str, key: str | None = None) -> str:
+    """Название этапа без пробелов по краям; два правила с одним названием путали бы выбор правила у работы плана."""
+    name = " ".join(name.split())
+    if len(name) < 2:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Название этапа — не короче 2 символов")
+    # сравниваем здесь, а не в запросе: lower() в SQLite не понимает кириллицу
+    for other_key, other in await session.execute(select(Rule.key, Rule.stage_name)):
+        if other_key != key and other.casefold() == name.casefold():
+            raise HTTPException(status.HTTP_409_CONFLICT, f"Правило «{other}» уже есть — выберите его или назовите новое иначе")
+    return name
+
+
+@router.post(
+    "/rules",
+    response_model=RuleOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Правила"],
+    summary="Новое правило (администратор)",
+    dependencies=[require_roles("admin")],
+)
+async def create_rule(body: RuleCreate, user: CurrentUser, session: Session, request: Request) -> RuleOut:
+    name = await _rule_name(session, body.stage_name)
+    position = (await session.scalar(select(func.max(Rule.position)))) or 0
+    rule = Rule(
+        key=new_id("rule"),
+        stage_name=name,
+        description=body.description.strip(),
+        confirm_after=body.confirm_after_snapshots,
+        position=position + 1,
+        items=_rule_items(body, {}),
+    )
+    session.add(rule)
+    await session.flush()
+    await session.refresh(rule)
+    audit.record(
+        session, request, user, "rule.create", f"Добавил правило «{name}»",
+        entity_type="rule", entity_id=rule.key, entity_name=name, details=rule_out(rule).model_dump(by_alias=True),
+    )  # fmt: skip
+    await session.commit()
+    return rule_out(rule)
+
+
+@router.put(
+    "/rules/{key}",
+    response_model=RuleOut,
+    tags=["Правила"],
+    summary="Изменить правило (администратор)",
+    dependencies=[require_roles("admin")],
+)
+async def update_rule(key: str, body: RuleIn, user: CurrentUser, session: Session, request: Request) -> RuleOut:
+    rule = await session.get(Rule, key)
+    if rule is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Правило не найдено")
+    before = rule_out(rule).model_dump(by_alias=True)
+    items = _rule_items(body, {(i.kind, i.equipment_type): i for i in rule.items})
+    if body.stage_name is not None:
+        rule.stage_name = await _rule_name(session, body.stage_name, key)
+    if body.description is not None:
+        rule.description = body.description.strip()
     rule.items, rule.confirm_after = items, body.confirm_after_snapshots
     await session.flush()
     await session.refresh(rule)
@@ -130,6 +182,40 @@ async def update_rule(key: str, body: RuleIn, user: CurrentUser, session: Sessio
             affected.add(site_id)
     get_pipeline().request_check(affected)
     return rule_out(rule)
+
+
+@router.delete(
+    "/rules/{key}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["Правила"],
+    summary="Удалить правило (администратор)",
+    dependencies=[require_roles("admin")],
+)
+async def delete_rule(key: str, user: CurrentUser, session: Session, request: Request) -> None:
+    rule = await session.get(Rule, key)
+    if rule is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Правило не найдено")
+    # правило работы плана не отвязываем молча: без него работа перестала бы сверяться с техникой
+    used = (
+        await session.execute(
+            select(Stage.name, Site.name)
+            .join(Site, Site.id == Stage.site_id)
+            .where(Stage.rule_key == key)
+            .order_by(Site.position, Stage.position)
+        )
+    ).all()
+    if used:
+        more = f" и ещё {len(used) - 3}" if len(used) > 3 else ""
+        works = "; ".join(f"«{stage}» ({site})" for stage, site in used[:3]) + more
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"Правило используют работы плана: {works}. Сначала выберите для них другое правило"
+        )
+    audit.record(
+        session, request, user, "rule.delete", f"Удалил правило «{rule.stage_name}»",
+        entity_type="rule", entity_id=key, entity_name=rule.stage_name, details=rule_out(rule).model_dump(by_alias=True),
+    )  # fmt: skip
+    await session.delete(rule)
+    await session.commit()
 
 
 @router.get(

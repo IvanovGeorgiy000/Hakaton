@@ -98,7 +98,7 @@ test('инспектор: журнал нарушений, форма предп
   expect(errors).toEqual([])
 })
 
-test('администратор: сотрудники с меню действий, правила, журнал действий, объекты', async ({ page }) => {
+test('администратор: сотрудники с меню действий, правила (добавить и удалить), журнал действий, объекты', async ({ page }) => {
   const errors = watchErrors(page)
   await enterAs(page, 'Администратор')
   await visit(page, '/admin', 'ЖК «Северный парк», корпус 3')
@@ -115,6 +115,21 @@ test('администратор: сотрудники с меню действ�
   await expect(page.getByRole('button', { name: /Изменить/ }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: /^Выключить|^Включить/ })).toHaveCount(0)
   await visit(page, '/admin/manage/rules', 'Правила: этап → техника')
+  // новое правило: название → сразу открывается его редактор; удалить можно, пока его не выбрали у работ плана
+  await page.getByRole('button', { name: 'Добавить правило' }).click()
+  const form = page.getByRole('dialog', { name: 'Новое правило' })
+  await form.getByLabel('Название этапа').fill('Разработка котлована')
+  await form.getByRole('button', { name: 'Добавить правило' }).click()
+  await expect(form.getByText('Правило «Разработка котлована» уже есть')).toBeVisible()
+  await form.getByLabel('Название этапа').fill('Монтаж наружных сетей')
+  await form.getByRole('button', { name: 'Добавить правило' }).click()
+  await expect(form).toHaveCount(0)
+  await expect(page.getByRole('textbox', { name: 'Название этапа' })).toHaveValue('Монтаж наружных сетей')
+  await page.getByRole('button', { name: 'Удалить правило' }).click()
+  const confirm = page.getByRole('dialog', { name: 'Удалить правило?' })
+  await confirm.getByRole('button', { name: 'Удалить правило' }).click()
+  await expect(confirm).toHaveCount(0)
+  await expect(page.getByText('Монтаж наружных сетей', { exact: true })).toHaveCount(0)
   await visit(page, '/admin/manage/audit', 'Журнал действий')
   await visit(page, '/admin/site/s3', 'Этап сейчас')
   expect(errors).toEqual([])

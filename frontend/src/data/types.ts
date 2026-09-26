@@ -145,6 +145,9 @@ export interface Rule {
   confirmAfterSnapshots: number
 }
 
+/** Новое правило: название этапа и описание, технику добавляют потом в редакторе */
+export interface RuleInput { stageName: string; description: string }
+
 export interface Detection {
   id: string
   type: EquipmentType

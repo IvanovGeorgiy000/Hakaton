@@ -35,7 +35,9 @@ export function useDialog(open: boolean, panel: RefObject<HTMLElement | null>, o
       window.removeEventListener('keydown', handle)
       stack.splice(stack.indexOf(self), 1)
       if (!stack.length) document.body.style.overflow = ''
-      opener?.focus()
+      // без прокрутки: кнопка, открывшая окно, и так на виду, а если страница после действия прокрутилась к его
+      // результату (новое правило в конце списка) — пусть там и остаётся
+      opener?.focus({ preventScroll: true })
     }
   }, [open, panel])
 }
