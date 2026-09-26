@@ -44,6 +44,7 @@ export function AnalyzeSummary({ result }: { result: AnalyzeResult }) {
     ok: { label: 'Есть', cls: 'bg-ok-bg text-ok-fg' },
     low: { label: 'Мало', cls: 'bg-warn-bg text-warn-fg' },
     missing: { label: 'Нет', cls: 'bg-danger-bg text-danger-fg' },
+    not_detected: { label: 'Проверьте на месте', cls: 'bg-muted text-muted-foreground' },
   }
   return (
     <div className="space-y-4">
@@ -68,7 +69,9 @@ export function AnalyzeSummary({ result }: { result: AnalyzeResult }) {
               <VehicleIcon type={r.type} className="w-12 h-8 shrink-0" fill={EQUIPMENT[r.type].color} />
               <div className="flex-1 min-w-0">
                 <div className="font-medium">{EQUIPMENT[r.type].name}</div>
-                <div className="text-muted-foreground text-[14px]">нужно {r.need}, на снимке {r.have}</div>
+                <div className="text-muted-foreground text-[14px]">
+                  {r.state === 'not_detected' ? `нужно ${r.need} — модель такую технику пока не распознаёт` : `нужно ${r.need}, на снимке ${r.have}`}
+                </div>
               </div>
               <span className={cn('rounded-sm px-2.5 py-1 font-semibold text-[14px] shrink-0', state[r.state].cls)}>{state[r.state].label}</span>
             </li>

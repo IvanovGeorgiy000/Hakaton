@@ -100,6 +100,9 @@ class SiteOut(ApiModel):
     contractor: str
     foreman: str
     kind: SiteKind
+    work_from: int  # рабочее время: с этого часа (местного)
+    work_to: int  # до этого часа, не включая; 0–24 — круглосуточно
+    work_days: str  # пн…вс: «1111110» — с понедельника по субботу
     current_stage_id: str | None
     plan_progress: int | None  # сколько должно быть сделано по графику, % — по всему плану; None — плана нет
     fact_progress: int | None  # сколько сделано по факту, %
@@ -113,6 +116,9 @@ def site_out(s: Site, current_stage_id: str | None, progress: tuple[int, int] | 
         contractor=s.contractor,
         foreman=s.foreman_name,
         kind=s.kind,
+        work_from=s.work_from,
+        work_to=s.work_to,
+        work_days=s.work_days,
         current_stage_id=current_stage_id,
         plan_progress=progress[0] if progress else None,
         fact_progress=progress[1] if progress else None,
@@ -124,6 +130,10 @@ class SiteIn(ApiModel):
     address: str = Field(default="", max_length=200)
     contractor: str = Field(default="", max_length=200)
     kind: SiteKind = "other"
+    # рабочее время; поля нет — не менять (у нового объекта — круглосуточно)
+    work_from: int = Field(default=0, ge=0, le=23)
+    work_to: int = Field(default=24, ge=1, le=24)
+    work_days: str = Field(default="1111111", pattern=r"^[01]{7}$")
     foreman_id: str | None = None  # прораб объекта: получит к нему доступ; явный null — снять прораба, поля нет — не трогать
 
 
@@ -459,7 +469,7 @@ class CheckRow(ApiModel):
     type: EquipmentType
     need: int
     have: int
-    state: Literal["ok", "low", "missing"]
+    state: Literal["ok", "low", "missing", "not_detected"]  # not_detected — модель такую технику не распознаёт
     why: str
 
 
@@ -476,6 +486,8 @@ class EquipmentCheckOut(ApiModel):
     stage_id: str | None
     stage_name: str | None
     coverage: bool  # есть ли свежий кадр рабочей зоны
+    working: bool  # идёт ли рабочее время объекта: вне его технику не сверяем
+    work_hours: str  # рабочее время словами: «8:00–20:00, пн–сб»
     checked_at: datetime | None
     rows: list[CheckRow]
     extra: list[ExtraRow]  # техника не по этапу

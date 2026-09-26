@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { CheckCircle2, XCircle, AlertTriangle, Truck } from 'lucide-react'
+import { CheckCircle2, XCircle, AlertTriangle, Eye, Truck } from 'lucide-react'
 import { api } from '@/api'
 import { EQUIPMENT, type EquipmentType } from '@/data'
 import { fmtTime } from '@/lib/utils'
@@ -35,7 +35,11 @@ export function EquipmentCheck({ siteId }: { siteId: string }) {
         </div>
         {data.checkedAt && <div className="text-muted-foreground text-[14px]">данные на {fmtTime(data.checkedAt)}</div>}
       </div>
-      {!data.coverage && (
+      {!data.working ? (
+        <p className="px-4 sm:px-5 py-3 bg-muted text-foreground text-[15px]">
+          Сейчас нерабочее время ({data.workHours}) — технику не сверяем: ночью и в выходные её на площадке и не должно быть.
+        </p>
+      ) : !data.coverage && (
         <p className="px-4 sm:px-5 py-3 bg-warn-bg text-warn-fg text-[15px]">
           Нет свежих кадров с камер рабочей зоны — сверить технику сейчас нельзя. Проверьте камеры.
         </p>
@@ -46,9 +50,11 @@ export function EquipmentCheck({ siteId }: { siteId: string }) {
             <VehicleIcon type={r.type} className="w-14 h-9 shrink-0" fill={EQUIPMENT[r.type].color} />
             <div className="flex-1 min-w-0">
               <div className="font-semibold">{EQUIPMENT[r.type].name}</div>
-              <div className="text-muted-foreground text-[14px]">нужно {r.need}, видим {r.have}</div>
+              <div className="text-muted-foreground text-[14px]">
+                {r.state === 'not_detected' ? `нужно ${r.need} — модель такую технику пока не распознаёт, проверьте на месте` : `нужно ${r.need}, видим ${r.have}`}
+              </div>
             </div>
-            <StateChip state={data.coverage ? r.state : 'unknown'} />
+            <StateChip state={r.state === 'not_detected' ? 'not_detected' : data.coverage && data.working ? r.state : 'unknown'} />
           </li>
         ))}
         {data.extra.map((e) => (
@@ -75,13 +81,14 @@ export function EquipmentCheck({ siteId }: { siteId: string }) {
   )
 }
 
-function StateChip({ state }: { state: 'ok' | 'missing' | 'low' | 'extra' | 'unknown' }) {
+function StateChip({ state }: { state: 'ok' | 'missing' | 'low' | 'extra' | 'unknown' | 'not_detected' }) {
   const m = {
     ok: { label: 'Есть', cls: 'bg-ok-bg text-ok-fg', Icon: CheckCircle2 },
     missing: { label: 'Нет', cls: 'bg-danger-bg text-danger-fg', Icon: XCircle },
     low: { label: 'Мало', cls: 'bg-warn-bg text-warn-fg', Icon: AlertTriangle },
     extra: { label: 'Лишняя', cls: 'bg-warn-bg text-warn-fg', Icon: AlertTriangle },
     unknown: { label: 'Не видно', cls: 'bg-muted text-muted-foreground', Icon: AlertTriangle },
+    not_detected: { label: 'На месте', cls: 'bg-muted text-muted-foreground', Icon: Eye },
   }[state]
   return (
     <span className={cn('inline-flex items-center gap-1.5 rounded-sm px-3 py-1.5 font-semibold text-[15px] shrink-0', m.cls)}>

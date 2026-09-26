@@ -26,6 +26,7 @@ from app.services.analytics.images import ImageProblem
 from app.services.analytics.request import BuiltRequest, RequestProblem, build_request
 from app.services.analytics.result import check_result
 from app.services.engine import FRESHNESS
+from app.services.workhours import working_now
 
 log = logging.getLogger("stroykontrol.analytics")
 
@@ -91,30 +92,33 @@ class Analytics:
         raise CatalogError("; ".join(errors))
 
     # ---------- один кадр ----------
-    async def analyze_camera(self, camera_id: str, *, trigger: str, only_new: bool = True) -> AnalyticsRequest | None:
-        """Отправить свежий кадр камеры обоим сервисам и сохранить ответы. None — отправлять нечего или нельзя
-        (причина — в problems по объекту)."""
+    async def analyze_camera(
+        self, camera_id: str, *, trigger: str, only_new: bool = True, services: list[str] | None = None
+    ) -> AnalyticsRequest | None:
+        """Отправить свежий кадр камеры сервисам (всем подключённым или только services) и сохранить ответы.
+        None — отправлять нечего или нельзя (причина — в problems по объекту)."""
+        names = [name for name in self.clients if services is None or name in services]
         async with SessionLocal() as session:
             camera = await session.get(Camera, camera_id)
-        if camera is None or not self.clients:
+        if camera is None or not names:
             return None
         async with self._locks[camera.site_id]:  # по объекту — по очереди: кнопка во время планового подождёт его
-            built = await self._prepare(camera_id, trigger=trigger, only_new=only_new)
+            built = await self._prepare(camera_id, trigger=trigger, only_new=only_new, services=names)
             if built is None:
                 return None
-            replies = await asyncio.gather(*(self._ask(name, built) for name in self.clients))
+            replies = await asyncio.gather(*(self._ask(name, built) for name in names))
             async with SessionLocal() as session:
                 rows = {
                     r.service: r
                     for r in await session.scalars(select(AnalyticsResult).where(AnalyticsResult.request_id == built.request_id))
                 }
-                for name, (reply, elapsed_ms) in zip(self.clients, replies, strict=True):
+                for name, (reply, elapsed_ms) in zip(names, replies, strict=True):
                     if row := rows.get(name):
                         _apply(row, reply, elapsed_ms)
                 await session.commit()
                 return await session.get(AnalyticsRequest, built.request_id, populate_existing=True)
 
-    async def _prepare(self, camera_id: str, *, trigger: str, only_new: bool) -> BuiltRequest | None:
+    async def _prepare(self, camera_id: str, *, trigger: str, only_new: bool, services: list[str]) -> BuiltRequest | None:
         async with SessionLocal() as session:
             camera = await session.get(Camera, camera_id)
             site = await session.get(Site, camera.site_id) if camera else None
@@ -159,7 +163,7 @@ class Analytics:
                     plan_note=built.plan_note,
                     notes=built.notes,
                     metadata_json=built.body.decode("utf-8"),
-                    results=[AnalyticsResult(service=name, state="pending") for name in self.clients],
+                    results=[AnalyticsResult(service=name, state="pending") for name in services],
                 )
             )
             await session.commit()
@@ -233,20 +237,32 @@ class Analytics:
             await asyncio.sleep(ROUND_S)
 
     async def round(self) -> None:
-        """Отправить камеры, по которым последняя отправка старше интервала (или её не было)."""
+        """Отправить кадры камер, которым пора: у каждого сервиса свой интервал (по снимку — реже: он платный),
+        и только в рабочее время объекта — ночью техники нет, отправлять нечего."""
+        settings = get_settings()
         async with SessionLocal() as session:
             cameras = await work_cameras(session)
-            last = dict(
-                (
-                    await session.execute(
-                        select(AnalyticsRequest.camera_id, func.max(AnalyticsRequest.at)).group_by(AnalyticsRequest.camera_id)
-                    )
-                ).all()
-            )
-        due_before = utcnow() - timedelta(minutes=get_settings().analytics_interval_min)
+            sites = {site.id: site for site in await session.scalars(select(Site))}
+            last = {
+                (camera_id, service): at
+                for camera_id, service, at in await session.execute(
+                    select(AnalyticsRequest.camera_id, AnalyticsResult.service, func.max(AnalyticsRequest.at))
+                    .join(AnalyticsResult, AnalyticsResult.request_id == AnalyticsRequest.id)
+                    .group_by(AnalyticsRequest.camera_id, AnalyticsResult.service)
+                )
+            }
+        now = utcnow()
+        every = {"deterministic": settings.analytics_interval_min, "vlm_llm": settings.analytics_vlm_interval_min}
         for camera in cameras:
-            if last.get(camera.id) is None or last[camera.id] <= due_before:
-                await self.analyze_camera(camera.id, trigger="schedule")
+            if not working_now(sites[camera.site_id], now):
+                continue
+            due = [
+                name
+                for name in self.clients
+                if (camera.id, name) not in last or last[(camera.id, name)] <= now - timedelta(minutes=every[name])
+            ]
+            if due:
+                await self.analyze_camera(camera.id, trigger="schedule", services=due)
 
 
 def _apply(row: AnalyticsResult, reply: Reply, elapsed_ms: int) -> None:

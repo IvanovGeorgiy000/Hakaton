@@ -3,6 +3,7 @@
 from functools import lru_cache
 
 from app.config import get_settings
+from app.equipment import EQUIPMENT_TYPES
 from app.services.analysis.base import AnalysisError, AnalysisProvider, AnalysisResult, DetectedObject
 from app.services.analysis.http import HttpAnalyzer
 from app.services.analysis.local import LocalAnalyzer
@@ -14,6 +15,7 @@ __all__ = [
     "AnalysisResult",
     "DetectedObject",
     "LocalAnalyzer",
+    "detectable_types",
     "get_analyzer",
     "get_mock",
     "provider_name",
@@ -38,6 +40,16 @@ def get_analyzer() -> AnalysisProvider:
         if (detector := get_detector()) is not None:  # auto без файла модели — демо-анализатор
             return LocalAnalyzer(detector)
     return get_mock()
+
+
+def detectable_types() -> frozenset[str]:
+    """Какую технику анализ кадров вообще умеет находить. Своя модель — только свои классы (MOCS не знает
+    кран-манипулятор и грузовик): требовать от неё такую технику — значит получать ложное «нет техники».
+    Внешний сервис, push и демо-анализатор — любую."""
+    analyzer = get_analyzer()
+    if isinstance(analyzer, LocalAnalyzer):
+        return frozenset(kind for kind in analyzer.detector.classes.values() if kind)
+    return frozenset(EQUIPMENT_TYPES)
 
 
 def provider_name() -> str:

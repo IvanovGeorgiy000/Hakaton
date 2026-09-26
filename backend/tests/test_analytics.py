@@ -431,6 +431,32 @@ async def test_manual_run_and_schedule(client, services):
     assert sent == ["c1", "c8"]
 
 
+async def test_schedule_respects_working_hours_and_model_interval(client, services, monkeypatch):
+    """По расписанию: вне рабочего времени кадры не уходят; «по снимку» (платный) — реже, чем «по технике»."""
+    monkeypatch.setattr(settings, "analytics_interval_min", 20)
+    monkeypatch.setattr(settings, "analytics_vlm_interval_min", 60)
+    await _pit_frame()
+    monkeypatch.setattr(runner, "working_now", lambda site, at: site.id != "s1")  # на ЖК сейчас нерабочее время
+    await services.round()
+    async with SessionLocal() as session:
+        assert await session.scalar(select(func.count()).select_from(AnalyticsRequest)) == 0
+
+    monkeypatch.setattr(runner, "working_now", lambda site, at: True)
+    await services.round()  # первая отправка — обоим сервисам
+    async with SessionLocal() as session:
+        first = await session.scalar(select(AnalyticsRequest).where(AnalyticsRequest.camera_id == "c1"))
+        assert {r.service for r in first.results} == {"deterministic", "vlm_llm"}
+        first.at -= timedelta(minutes=30)  # прошло полчаса: «по технике» пора, «по снимку» — ещё нет
+        await session.commit()
+    await _pit_frame()  # свежий кадр
+    await services.round()
+    async with SessionLocal() as session:
+        latest = await session.scalar(
+            select(AnalyticsRequest).where(AnalyticsRequest.camera_id == "c1").order_by(AnalyticsRequest.at.desc()).limit(1)
+        )
+    assert latest.id != first.id and [r.service for r in latest.results] == ["deterministic"]
+
+
 async def test_observations_are_logged_every_20_minutes(client):
     async def logged() -> list[Observation]:
         async with SessionLocal() as session:

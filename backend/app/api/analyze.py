@@ -13,7 +13,7 @@ from app.equipment import EQUIPMENT, at_least
 from app.models import Rule
 from app.schemas import AnalyzeOut, ApiModel, BoxOut, CheckRow, DetectionOut, DeviationOut, RuleOut, rule_out
 from app.security import CurrentUser, Session
-from app.services.analysis import AnalysisError, get_analyzer, get_mock
+from app.services.analysis import AnalysisError, detectable_types, get_analyzer, get_mock
 from app.services.camera_client import CameraError, mock_frame, normalize_frame_async
 from app.services.engine import current_stage, local_day
 
@@ -73,12 +73,16 @@ async def _analyze(session: AsyncSession, *, image: UploadFile | None, sample: s
 
     observed = Counter(d.type for d in result.detections)
     rows, deviations = [], []
+    detectable = detectable_types()
     if result.supported:
         for item in rule.of_kind("required"):
             have, eq = observed[item.equipment_type], EQUIPMENT[item.equipment_type]
-            state = "ok" if have >= item.min_count else "missing" if have == 0 else "low"
+            if item.equipment_type not in detectable:  # модель такую технику не распознаёт — не отклонение
+                state = "not_detected"
+            else:
+                state = "ok" if have >= item.min_count else "missing" if have == 0 else "low"
             rows.append(CheckRow(type=item.equipment_type, need=item.min_count, have=have, state=state, why=item.why))
-            if state != "ok":
+            if state in ("missing", "low"):
                 title = (
                     f"Нет {eq.gen_pl} — возможное снижение темпа работ"
                     if have == 0

@@ -1,10 +1,13 @@
 """Движок сверки: что он находит в кадрах из видео и как ведёт предупреждения дальше."""
 
 from datetime import timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
+from app.config import get_settings
 from app.db import utcnow
+from app.equipment import EQUIPMENT_TYPES
 from tests.conftest import check, feed, login_as
 
 pytestmark = pytest.mark.anyio
@@ -167,3 +170,54 @@ async def test_cleanup_keeps_evidence_and_bounds_growth(client, monkeypatch):
         assert await session.scalar(select(func.count()).select_from(CheckRun).where(CheckRun.site_id == "s1")) == 3
     foreman = await login_as(client, "foreman")
     assert (await client.get("/api/alerts", headers=foreman)).status_code == 200  # интерфейс после чистки работает
+
+
+async def _set_hours(client, auth: dict, site_id: str, **hours) -> dict:  # noqa: ANN001, ANN003
+    site = next(s for s in (await client.get("/api/sites", headers=auth)).json() if s["id"] == site_id)
+    body = {"name": site["name"], "address": site["address"], "contractor": site["contractor"], **hours}
+    response = await client.patch(f"/api/sites/{site_id}", headers=auth, json=body)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+async def test_no_equipment_checks_outside_working_hours(client):
+    """Ночью и в выходные техники нет — это не отклонение: сверка техники молчит, открытые отклонения не снимаются,
+    а камера без видео остаётся отклонением. Рабочее время вернулось — сверка идёт как обычно."""
+    auth = await login_as(client, "manager")
+    today = utcnow().astimezone(ZoneInfo(get_settings().timezone)).weekday()
+    off = "".join("0" if day == today else "1" for day in range(7))  # сегодня — выходной
+    site = await _set_hours(client, auth, "s1", work_from=8, work_to=20, work_days=off)
+    assert (site["workFrom"], site["workTo"], site["workDays"]) == (8, 20, off)
+    before = _open((await client.get("/api/alerts", headers=auth)).json())
+
+    # самосвал на кадре есть, но сегодня выходной — «нет самосвалов» не снимается и не меняется
+    await _minutes("s1", {"c1": "pit-loading"}, 4)
+    after = _open((await client.get("/api/alerts", headers=auth)).json())
+    assert set(after) == set(before)
+    assert after[("s1", "missing", "dump_truck")]["updatedAt"] == before[("s1", "missing", "dump_truck")]["updatedAt"]
+    assert ("s1", "camera_offline", None) in after  # камера склада молчит — это видно и ночью
+    result = (await client.get("/api/sites/s1/equipment-check", headers=auth)).json()
+    assert result["working"] is False and result["workHours"].startswith("8:00–20:00")
+
+    await _set_hours(client, auth, "s1", work_from=0, work_to=24, work_days="1111111")  # круглосуточно
+    await _minutes("s1", {"c1": "pit-loading"}, 3, start=utcnow() + 5 * MINUTE)
+    again = _open((await client.get("/api/alerts", headers=auth)).json())
+    assert ("s1", "missing", "dump_truck") not in again  # самосвал снова видно в рабочее время — нехватки «нет совсем» нет
+
+
+async def test_equipment_the_model_cannot_see_is_not_a_violation(client, monkeypatch):
+    """Своя модель не знает, например, кран-манипулятор: его «отсутствие» — не отклонение, а «проверьте на месте»."""
+    from app.api import catalog as catalog_api
+    from app.services import engine
+
+    visible = frozenset(EQUIPMENT_TYPES) - {"dump_truck"}
+    monkeypatch.setattr(engine, "detectable_types", lambda: visible)
+    monkeypatch.setattr(catalog_api, "detectable_types", lambda: visible)
+    auth = await login_as(client, "manager")
+    before = _open((await client.get("/api/alerts", headers=auth)).json())
+    await _minutes("s1", {"c1": "pit-excavator"}, 4)
+    after = _open((await client.get("/api/alerts", headers=auth)).json())
+    # прежнее «нет самосвалов» не снимается как «устранено» (не видим — не значит «есть») и новых нет
+    assert after[("s1", "missing", "dump_truck")]["updatedAt"] == before[("s1", "missing", "dump_truck")]["updatedAt"]
+    rows = {r["type"]: r for r in (await client.get("/api/sites/s1/equipment-check", headers=auth)).json()["rows"]}
+    assert rows["dump_truck"]["state"] == "not_detected" and rows["excavator"]["state"] == "ok"

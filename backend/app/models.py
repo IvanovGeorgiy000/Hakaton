@@ -73,6 +73,11 @@ class Site(Base):
     # вид объекта: у дороги и у дома разные этапы и техника — это подсказка сервису, определяющему этап по кадрам
     kind: Mapped[str] = mapped_column(String(16), default="other", server_default="other")  # см. SITE_KINDS
     position: Mapped[int] = mapped_column(default=0)
+    # Рабочее время: вне его технику не сверяем (ночью её нет — это не отклонение) и кадры сервисам аналитики не шлём.
+    # Часы местные, work_to не входит: 8–20 — до 20:00; 0–24 — круглосуточно. work_days — пн…вс, «1» — рабочий день
+    work_from: Mapped[int] = mapped_column(default=0, server_default="0")
+    work_to: Mapped[int] = mapped_column(default=24, server_default="24")
+    work_days: Mapped[str] = mapped_column(String(7), default="1111111", server_default="1111111")
     # выполнение объекта не хранится: его считают по календарному плану (services/plan.py)
 
 

@@ -24,9 +24,11 @@ from app.schemas import (
 )
 from app.security import CurrentUser, Session, require_roles
 from app.services import audit
+from app.services.analysis import detectable_types
 from app.services.engine import current_stage, local_day, site_state
 from app.services.pipeline import get_pipeline
 from app.services.plan import site_progress, stages_by_site
+from app.services.workhours import describe as describe_hours
 
 router = APIRouter()
 
@@ -137,21 +139,18 @@ async def update_rule(key: str, body: RuleIn, user: CurrentUser, session: Sessio
     summary="План и факт по технике для текущего этапа",
 )
 async def equipment_check(site_id: str, user: CurrentUser, session: Session) -> EquipmentCheckOut:
-    await get_site(session, user, site_id)
+    site = await get_site(session, user, site_id)
     state = await site_state(session, site_id, utcnow())
     rows, extra = [], []
+    detectable = detectable_types()
     if state.rule:
         for item in state.rule.of_kind("required"):
             have = state.observed[item.equipment_type]
-            rows.append(
-                CheckRow(
-                    type=item.equipment_type,
-                    need=item.min_count,
-                    have=have,
-                    why=item.why,
-                    state="ok" if have >= item.min_count else "missing" if have == 0 else "low",
-                )
-            )
+            if item.equipment_type not in detectable:
+                verdict = "not_detected"  # модель такую технику не распознаёт — проверяют на месте
+            else:
+                verdict = "ok" if have >= item.min_count else "missing" if have == 0 else "low"
+            rows.append(CheckRow(type=item.equipment_type, need=item.min_count, have=have, why=item.why, state=verdict))
         seen = state.observed + state.arriving
         extra = [
             ExtraRow(type=i.equipment_type, have=seen[i.equipment_type], why=i.why)
@@ -164,6 +163,8 @@ async def equipment_check(site_id: str, user: CurrentUser, session: Session) -> 
         stage_id=state.stage.id if state.stage else None,
         stage_name=state.stage.name if state.stage else None,
         coverage=state.coverage,
+        working=state.working,
+        work_hours=describe_hours(site),
         checked_at=checked_at,
         rows=rows,
         extra=extra,

@@ -43,11 +43,12 @@ from app.models import (
 )
 from app.security import decrypt_secret
 from app.services import texts
-from app.services.analysis import AnalysisError, AnalysisResult, get_analyzer
+from app.services.analysis import AnalysisError, AnalysisResult, detectable_types, get_analyzer
 from app.services.analytics.observations import cleanup_observations, record_observations
 from app.services.camera_client import CameraAddress
 from app.services.texts import plural
 from app.services.usage import cleanup_usage
+from app.services.workhours import working_now
 
 log = logging.getLogger("stroykontrol.engine")
 settings = get_settings()
@@ -233,6 +234,7 @@ class SiteState:
     arriving: Counter
     latest: dict[str, Snapshot]
     cameras: list[Camera]
+    working: bool = True  # рабочее время объекта: вне его технику не сверяем
 
 
 async def site_state(session: AsyncSession, site_id: str, at: datetime) -> SiteState:
@@ -247,7 +249,8 @@ async def site_state(session: AsyncSession, site_id: str, at: datetime) -> SiteS
             target = observed if camera.zone.kind == "work" else arriving
             target.update(d.equipment_type for d in snapshot.detections)
     coverage = any(c.zone.kind == "work" and c.id in latest for c in cameras)
-    return SiteState(stage, rule, coverage, observed, arriving, latest, cameras)
+    site = await session.get(Site, site_id)
+    return SiteState(stage, rule, coverage, observed, arriving, latest, cameras, working_now(site, at) if site else True)
 
 
 async def _idle_chain(session: AsyncSession, camera_id: str, newest: Snapshot, kind: str) -> list[Snapshot]:
@@ -281,13 +284,17 @@ async def _idle_chain(session: AsyncSession, camera_id: str, newest: Snapshot, k
 async def run_check(session: AsyncSession, site_id: str, *, at: datetime, trigger: str) -> CheckRun:
     """Сверить состояние объекта с правилом этапа, записать проверку и обновить предупреждения."""
     state = await site_state(session, site_id, at)
-    rule, violations = state.rule, []
+    # вне рабочего времени техника не сверяется: ночью её нет, и это не отклонение
+    rule, violations = (state.rule if state.working else None), []
     work = [c for c in state.cameras if c.zone.kind == "work"]
     idle_chains: dict[tuple[str, str], list[Snapshot]] = {}
+    detectable = detectable_types()
 
     if rule and state.coverage:
         zone_id = next(c.zone_id for c in work if c.id in state.latest)
         for item in rule.of_kind("required"):
+            if item.equipment_type not in detectable:
+                continue  # такую технику модель не распознаёт — «не видим» ничего не значит
             have = state.observed[item.equipment_type]
             if have < item.min_count:
                 violations.append(
@@ -460,6 +467,7 @@ async def _sync_alerts(
         )
     )
     suppressed = {_alert_key(a) for a in closed_by_people}
+    detectable = detectable_types()
     cameras = {c.id: c for c in state.cameras}
     items = {(i.kind, i.equipment_type): i for i in rule.items} if rule else {}
     work_ids = [c.id for c in state.cameras if c.zone.kind == "work"]
@@ -568,7 +576,11 @@ async def _sync_alerts(
 
     # ---- условие больше не наблюдается ----
     def judged(alert: Alert) -> bool:
-        """Можно ли по этой проверке сказать, что условия больше нет: зону видно, камера на связи."""
+        """Можно ли по этой проверке сказать, что условия больше нет: зону видно, камера на связи, рабочее время."""
+        if alert.kind != "camera_offline" and not state.working:
+            return False  # ночью техники нет — это не «нехватка устранена»
+        if alert.equipment_type and alert.equipment_type not in detectable:
+            return False  # модель такую технику не видит — «не видим» не значит «устранено»
         if alert.kind in ("missing", "count_below"):
             return bool(state.coverage and rule)
         if alert.kind in ("unexpected", "idle"):

@@ -48,6 +48,7 @@ from app.services.audit import ROLE_TITLES
 from app.services.engine import current_stage, local_day
 from app.services.pipeline import get_pipeline
 from app.services.plan import site_progress, stages_by_site
+from app.services.workhours import describe as describe_hours
 
 settings = get_settings()
 router = APIRouter()
@@ -105,6 +106,7 @@ def _site_fields(site: Site) -> dict:
         "address": site.address,
         "contractor": site.contractor,
         "kind": site.kind,
+        "work_hours": describe_hours(site),
         "foreman": site.foreman_name,
     }
 
@@ -125,6 +127,9 @@ async def create_site(body: SiteIn, user: CurrentUser, session: Session, request
         address=body.address.strip(),
         contractor=body.contractor.strip(),
         kind=body.kind,
+        work_from=body.work_from,
+        work_to=body.work_to,
+        work_days=body.work_days,
         position=position,
     )
     session.add(site)
@@ -145,6 +150,9 @@ async def update_site(site_id: str, body: SiteIn, user: CurrentUser, session: Se
     site.name, site.address, site.contractor = body.name.strip(), body.address.strip(), body.contractor.strip()
     if "kind" in body.model_fields_set:  # старая форма без поля «вид» не сбрасывает его в «другое»
         site.kind = body.kind
+    for name in ("work_from", "work_to", "work_days"):  # и рабочее время — только если его прислали
+        if name in body.model_fields_set:
+            setattr(site, name, getattr(body, name))
     await _set_foreman(session, site, body)
     if changed := audit.changes(before, _site_fields(site)):
         audit.record(

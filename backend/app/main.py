@@ -16,7 +16,7 @@ from app.db import SessionLocal, engine, utcnow
 from app.schemas import ApiModel
 from app.seed import prepare_database
 from app.services import video
-from app.services.analysis import LocalAnalyzer, get_analyzer, provider_name
+from app.services.analysis import LocalAnalyzer, detectable_types, get_analyzer, provider_name
 from app.services.analytics.runner import get_analytics
 from app.services.pipeline import get_pipeline
 from app.services.realtime import LiveTracking
@@ -100,6 +100,8 @@ class MetaOut(ApiModel):
     version: str
     demo_mode: bool
     analysis_provider: str
+    # какую технику анализ кадров умеет находить (своя модель — не всю): остальную в правилах проверяют на месте
+    detectable_equipment: list[str]
     timezone: str
     server_time: str
     database: str
@@ -132,6 +134,7 @@ async def meta() -> MetaOut:
         version=VERSION,
         demo_mode=settings.demo_mode,
         analysis_provider=provider_name(),
+        detectable_equipment=sorted(detectable_types()),
         timezone=settings.timezone,
         server_time=utcnow().isoformat(),
         database="sqlite" if settings.is_sqlite else "postgresql",

@@ -62,6 +62,9 @@ export function AdminRules() {
 }
 
 function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => Promise<void>; saved: boolean }) {
+  const { meta } = useApp()
+  // техника, которую модель на сервере не распознаёт: её «отсутствие» не станет отклонением — проверяют на месте
+  const unseen = (t: EquipmentType) => !!meta && !meta.detectableEquipment.includes(t)
   const [draft, setDraft] = useState<Rule>(rule)
   const [saving, setSaving] = useState(false)  // двойное нажатие не шлёт правило дважды
   const used = new Set<EquipmentType>([...draft.required.map((r) => r.type), ...draft.unexpected.map((u) => u.type)])
@@ -85,7 +88,12 @@ function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => 
           {draft.required.map((r) => (
             <li key={r.type} className="flex items-center gap-3 bg-muted/50 rounded-lg p-2 pr-3">
               <VehicleIcon type={r.type} className="w-12 h-8 shrink-0" fill={EQUIPMENT[r.type].color} />
-              <div className="flex-1 min-w-0"><div className="font-semibold">{EQUIPMENT[r.type].name}</div><div className="text-muted-foreground text-[13px] truncate">{r.why}</div></div>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold">{EQUIPMENT[r.type].name}</div>
+                {unseen(r.type)
+                  ? <div className="text-warn text-[13px]">Модель пока не распознаёт — отклонений по ней не будет, проверяют на месте</div>
+                  : <div className="text-muted-foreground text-[13px] truncate">{r.why}</div>}
+              </div>
               <div className="flex items-center gap-1">
                 <Btn onClick={() => setMin(r.type, -1)} disabled={r.min <= 1} label={`Уменьшить ${EQUIPMENT[r.type].name}`}><Minus className="w-5 h-5" /></Btn>
                 <span className="w-10 text-center text-[18px] font-semibold">{r.min}</span>
@@ -95,7 +103,7 @@ function RuleEditor({ rule, onSave, saved }: { rule: Rule; onSave: (r: Rule) => 
             </li>
           ))}
         </ul>
-        <AddPicker free={free} onPick={addReq} label="Добавить нужную технику" />
+        <AddPicker free={free.map((e) => (unseen(e.type) ? { ...e, name: `${e.name} — модель не распознаёт` } : e))} onPick={addReq} label="Добавить нужную технику" />
       </section>
 
       <section>

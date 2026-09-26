@@ -54,6 +54,11 @@ export interface Site {
   contractor: string
   foreman: string
   kind: SiteKind
+  /** Рабочее время (часы местные, workTo не входит; 0–24 — круглосуточно) и рабочие дни пн…вс: «1111110».
+   *  Вне его технику не сверяем и кадры сервисам аналитики не отправляем */
+  workFrom: number
+  workTo: number
+  workDays: string
   currentStageId: string | null
   /** По всему плану объекта: сколько должно быть сделано по графику и сколько по факту, %. null — плана нет */
   planProgress: number | null
@@ -196,7 +201,8 @@ export interface Alert {
 }
 
 // ---------- ответы отдельных методов ----------
-export interface CheckRow { type: EquipmentType; need: number; have: number; state: 'ok' | 'low' | 'missing'; why: string }
+/** not_detected — модель такую технику не распознаёт: проверяют на месте */
+export interface CheckRow { type: EquipmentType; need: number; have: number; state: 'ok' | 'low' | 'missing' | 'not_detected'; why: string }
 export interface ExtraRow { type: EquipmentType; have: number; why: string }
 
 export interface EquipmentCheckResult {
@@ -204,6 +210,10 @@ export interface EquipmentCheckResult {
   stageId: string | null
   stageName: string | null
   coverage: boolean
+  /** Идёт ли рабочее время объекта: вне его технику не сверяем */
+  working: boolean
+  /** Рабочее время словами: «8:00–20:00, пн–сб» */
+  workHours: string
   checkedAt: string | null
   rows: CheckRow[]
   extra: ExtraRow[]
@@ -347,6 +357,8 @@ export interface Meta {
   version: string
   demoMode: boolean
   analysisProvider: string
+  /** Какую технику анализ кадров умеет находить (своя модель — не всю) */
+  detectableEquipment: EquipmentType[]
   timezone: string
   /** Время сервера в ISO — по нему видно, не разошлись ли часы устройства и сервера */
   serverTime: string
@@ -371,6 +383,9 @@ export interface SiteInput {
   address: string
   contractor: string
   kind?: SiteKind
+  workFrom?: number
+  workTo?: number
+  workDays?: string
   /** id прораба; null — снять прораба с объекта; поля нет — прораба не менять */
   foremanId?: string | null
 }

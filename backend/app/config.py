@@ -96,6 +96,8 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("ANALYTICS_HTTP_TIMEOUT_SECONDS", "SK_ANALYTICS_HTTP_TIMEOUT_SECONDS"),
     )
     analytics_interval_min: int = Field(20, ge=1, le=24 * 60)  # раз во сколько минут отправлять свежий кадр каждой камеры
+    # «по снимку» — реже: каждый вызов платный (модель через gateway коллеги) и думает около минуты
+    analytics_vlm_interval_min: int = Field(60, ge=1, le=24 * 60)
     analytics_history_days: float = Field(7.0, gt=0, le=30)  # окно истории наблюдений в запросе (сервис смотрит неделю)
     # история для сервисов: раз во сколько минут записывать кадр камеры в журнал наблюдений (без картинки). Сервису
     # нужны точки не чаще 15 минут, а в запросе их не больше 500: неделя одной камеры — это шаг 20 минут

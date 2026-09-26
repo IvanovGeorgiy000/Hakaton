@@ -1075,7 +1075,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "ok" | "low" | "missing";
+            state: "ok" | "low" | "missing" | "not_detected";
             /** Why */
             why: string;
         };
@@ -1225,6 +1225,10 @@ export interface components {
             stageName: string | null;
             /** Coverage */
             coverage: boolean;
+            /** Working */
+            working: boolean;
+            /** Workhours */
+            workHours: string;
             /** Checkedat */
             checkedAt: string | null;
             /** Rows */
@@ -1329,6 +1333,8 @@ export interface components {
             demoMode: boolean;
             /** Analysisprovider */
             analysisProvider: string;
+            /** Detectableequipment */
+            detectableEquipment: string[];
             /** Timezone */
             timezone: string;
             /** Servertime */
@@ -1538,6 +1544,21 @@ export interface components {
              * @enum {string}
              */
             kind: "housing" | "education" | "preschool" | "healthcare" | "sports" | "culture" | "administrative" | "office" | "roads" | "public" | "industrial" | "other";
+            /**
+             * Workfrom
+             * @default 0
+             */
+            workFrom: number;
+            /**
+             * Workto
+             * @default 24
+             */
+            workTo: number;
+            /**
+             * Workdays
+             * @default 1111111
+             */
+            workDays: string;
             /** Foremanid */
             foremanId?: string | null;
         };
@@ -1558,6 +1579,12 @@ export interface components {
              * @enum {string}
              */
             kind: "housing" | "education" | "preschool" | "healthcare" | "sports" | "culture" | "administrative" | "office" | "roads" | "public" | "industrial" | "other";
+            /** Workfrom */
+            workFrom: number;
+            /** Workto */
+            workTo: number;
+            /** Workdays */
+            workDays: string;
             /** Currentstageid */
             currentStageId: string | null;
             /** Planprogress */
