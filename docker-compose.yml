@@ -58,6 +58,7 @@ services:
       SK_SECRET_KEY: ${SK_SECRET_KEY:-change-me-before-real-use}
       SK_DEMO_MODE: ${SK_DEMO_MODE:-true}
       SK_DEMO_PASSWORD: ${SK_DEMO_PASSWORD:-demo}
+      SK_SEED_ON_START: ${SK_SEED_ON_START:-true}  # false — без демо-данных; администратор: python -m app.manage create-admin
       SK_CORS_ORIGINS: http://localhost:${WEB_PORT:-8080}
       SK_VIDEO_API_URL: http://video:9997
       SK_VIDEO_RTSP_URL: rtsp://video:8554
@@ -82,6 +83,7 @@ services:
       ANALYTICS_SERVICE_TOKEN: ${ANALYTICS_SERVICE_TOKEN:-}
       ANALYTICS_HTTP_TIMEOUT_SECONDS: ${ANALYTICS_HTTP_TIMEOUT_SECONDS:-1020}
       SK_ANALYTICS_INTERVAL_MIN: ${SK_ANALYTICS_INTERVAL_MIN:-20}
+      SK_ANALYTICS_VLM_INTERVAL_MIN: ${SK_ANALYTICS_VLM_INTERVAL_MIN:-60}  # «по снимку» — платные вызовы модели
     volumes:
       - media:/app/data
     extra_hosts:

@@ -22,7 +22,7 @@ bash ../tools/video-gateway.sh                      # в соседнем тер
 Весь стенд в Docker (PostgreSQL + шлюз видео + API + интерфейс): из корня репозитория `docker compose up --build`,
 интерфейс — http://localhost:8080.
 
-Проверки: `uv run pytest` (123 теста, сеть и шлюз не нужны; те же тесты на PostgreSQL — с переменной `SK_TEST_DATABASE_URL`
+Проверки: `uv run pytest` (126 тестов, сеть и шлюз не нужны; те же тесты на PostgreSQL — с переменной `SK_TEST_DATABASE_URL`
 и `uv run --extra postgres pytest`),
 `uv run ruff check . && uv run ruff format --check .`.
 
@@ -39,6 +39,22 @@ bash ../tools/video-gateway.sh                      # в соседнем тер
 (с планом и зонами) заводят и настраивают руководитель проекта и администратор, они же отмечают выполнение работ
 и подключают камеры; администратор
 может всё, что остальные роли, плюс удалять объекты и камеры, управлять сотрудниками и правилами.
+
+### Боевой запуск: без демо-данных
+
+`SK_DEMO_MODE=false` (нет входа по роли и страницы `/demo`), `SK_SEED_ON_START=false`, свой `SK_SECRET_KEY`. В новую базу
+сервер ставит только базовую методику «этап → техника» — 9 правил, их можно менять в интерфейсе. Первого администратора
+заводят командой на сервере; пароль спрашивается дважды и не виден при вводе (в скрипте — строкой на вход, `--password-stdin`):
+
+```bash
+uv run python -m app.manage create-admin --login admin --name "Фамилия Имя"
+uv run python -m app.manage set-password --login admin     # забытый пароль любого сотрудника
+uv run python -m app.manage methodology                    # вернуть удалённые базовые правила (изменённые не трогает)
+```
+
+В Docker — `docker compose exec backend /app/.venv/bin/python -m app.manage create-admin --login admin --name "…"`.
+Остальных сотрудников администратор заводит в интерфейсе («Управление → Сотрудники»). Если вход через Keycloak,
+администратор — пользователь Keycloak с ролью `admin`, а команды входа отказываются работать.
 
 ## Настройки
 

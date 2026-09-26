@@ -36,12 +36,13 @@ export function ManagerOverview() {
         title={isAdmin ? 'Все объекты' : 'Мои объекты'} subtitle={`${todayLabel()}${lastDataAt ? ` · данные на ${fmtWhen(lastDataAt)}` : ''}`}
         action={canAddSite && <Button size="lg" onClick={() => setCreating(true)}><Plus className="w-5 h-5" /> Добавить объект</Button>}
       />
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      {visibleSites.length === 0 && <FirstSite canAdd={canAddSite} />}
+      {visibleSites.length > 0 && <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <StatTile label="Нужно вмешаться" value={counts.critical} hint={pluralWord(counts.critical, 'объект', 'объекта', 'объектов')} tone="danger" onClick={() => toggle('critical')} active={show === 'critical'} />
         <StatTile label="Есть замечания" value={counts.warning} hint={pluralWord(counts.warning, 'объект', 'объекта', 'объектов')} tone="warn" onClick={() => toggle('warning')} active={show === 'warning'} />
         <StatTile label="Всё по плану" value={counts.ok} hint={pluralWord(counts.ok, 'объект', 'объекта', 'объектов')} tone="ok" onClick={() => toggle('ok')} active={show === 'ok'} />
         <StatTile label="Открытых замечаний" value={totalOpen} hint="по всем объектам →" onClick={() => navigate(`${base}/alerts`)} />
-      </div>
+      </div>}
       {show !== 'all' && (
         <p className="-mt-3 mb-4 text-[15px] text-muted-foreground">
           Показаны только объекты «{{ critical: 'Нужно вмешаться', warning: 'Есть замечания', ok: 'Всё по плану' }[show]}».{' '}
@@ -95,6 +96,27 @@ export function ManagerOverview() {
       </div>
       {canAddSite && <SiteDialog site={creating ? 'new' : null} onClose={() => setCreating(false)} onCreated={(site) => navigate(`${base}/site/${site.id}`)} />}
     </div>
+  )
+}
+
+/** Новая установка, объектов ещё нет: что сделать, чтобы сверка заработала */
+function FirstSite({ canAdd }: { canAdd: boolean }) {
+  return (
+    <section className="bg-card rounded-xl border border-border shadow-[var(--shadow-card)] p-5 sm:p-6 max-w-2xl">
+      <h2 className="text-[18px] font-semibold">Объектов пока нет</h2>
+      {canAdd ? (
+        <>
+          <p className="text-muted-foreground mt-1">Система сверяет технику на площадке с календарным планом объекта. Чтобы начать:</p>
+          <ul className="mt-3 space-y-2 list-disc pl-5">
+            <li><b>Добавьте объект</b> кнопкой выше — название, адрес, подрядчик и рабочее время.</li>
+            <li><b>Заведите план и зоны</b> в карточке объекта. У каждой работы плана — правило «этап → техника».</li>
+            <li><b>Подключите камеры</b> к зонам объекта — дальше сверка идёт сама, раз в минуту.</li>
+          </ul>
+        </>
+      ) : (
+        <p className="text-muted-foreground mt-1">Объекты заводят руководитель проекта и администратор. Когда вас добавят к объекту, он появится здесь.</p>
+      )}
+    </section>
   )
 }
 
