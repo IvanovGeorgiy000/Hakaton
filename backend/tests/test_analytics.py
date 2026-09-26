@@ -132,6 +132,23 @@ async def test_plan_is_not_sent_without_catalog_work(client):
     assert built.metadata["plan"] is None and "обновился до версии" in built.plan_note
 
 
+async def test_work_without_equipment_is_planned_for_deadlines_only(client, services):
+    """no_class (без техники: геодезия, отселение) — пункт плана для сроков и отметок; по кадру его не называют."""
+    async with SessionLocal() as session:
+        work = await session.get(Stage, "s1-soil")
+        work.catalog_stage_id = 104  # «Устройство геодезических знаков»
+        await session.commit()
+    built = await _build()
+    steps = {s["step_key"]: s["stage_id"] for s in built.metadata["plan"]["steps"]}
+    assert built.plan_note is None and steps["s1-soil"] == 104
+    mock_analytics.validate(built.metadata, built.image.data, "image/jpeg", {})  # сервис такой пункт принимает
+    answer = mock_analytics.answer("deterministic", built.metadata, built.input_sha256)
+    candidates = [c["step_key"] for g in answer["current_work"]["work_groups"] for c in g["candidates"]]
+    assert candidates == ["s1-excavation"]  # раньше тут была и «Вывоз грунта» — теперь это работа без техники
+    assert "s1-soil" in {i["step_key"] for i in answer["schedule"]["items"]}  # сроки по ней проверяются
+    assert answer["transition"]["status"] == "not_distinguishable_by_equipment"  # у следующей работы нет техники
+
+
 async def test_equipment_missing_in_catalog_is_left_out_with_note(client):
     payload = json.loads(json.dumps(mock_analytics.CATALOG))
     payload["equipment_classes"] = [c for c in payload["equipment_classes"] if c["code"] != "dump_truck"]
@@ -326,6 +343,8 @@ async def test_catalog_work_is_chosen_by_hand_and_checked(client, services):
     names = {w["name"] for w in catalog["works"]}
     assert "Устройство нижнего слоя покрытия" in names and "Каркас здания" not in names  # каркас — не для дорог
     assert all(w["stageId"] not in (100, 120, 140, 170) for w in catalog["works"])  # сводные этапы не выбираются
+    geodesy = next(w for w in catalog["works"] if w["stageId"] == 104)  # работа без техники — выбирается, с пометкой
+    assert geodesy["kind"] == "no_class" and geodesy["path"] == ["Подготовка территории"]
 
     def body(**extra) -> dict:  # noqa: ANN003
         return {
@@ -348,6 +367,8 @@ async def test_catalog_work_is_chosen_by_hand_and_checked(client, services):
     assert kept.json()["catalogStageId"] == 121
     cleared = await client.patch("/api/stages/s1-backfill", headers=manager, json=body(catalogStageId=None))
     assert cleared.json()["catalogStageId"] is None and cleared.json()["catalogVersion"] is None
+    no_class = await client.patch("/api/stages/s1-backfill", headers=manager, json=body(catalogStageId=104))
+    assert no_class.status_code == 200 and no_class.json()["catalogStageId"] == 104  # работа без техники — можно
 
     foreman = await login_as(client, "foreman")
     assert (await client.get("/api/analytics/catalog", headers=foreman)).status_code == 403

@@ -719,6 +719,7 @@ class CatalogWorkOut(ApiModel):
     stage_id: int
     name: str
     path: list[str]  # разделы справочника над работой
+    kind: Literal["concrete", "no_class"]  # no_class — работа без техники: по кадрам не видна, сервисы следят за сроками
 
 
 class AnalyticsCatalogOut(ApiModel):

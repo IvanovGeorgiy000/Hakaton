@@ -269,7 +269,12 @@ async def analytics_catalog(user: CurrentUser, session: Session, site_id: SiteId
     except CatalogError as exc:
         return empty.model_copy(update={"error": f"справочник не получен: {exc}"})
     works = [
-        CatalogWorkOut(stage_id=w.stage_id, name=w.name, path=list(w.path[:-1] if w.path and w.path[-1] == w.name else w.path))
+        CatalogWorkOut(
+            stage_id=w.stage_id,
+            name=w.name,
+            path=list(w.path[:-1] if w.path and w.path[-1] == w.name else w.path),
+            kind=w.kind,
+        )
         for w in catalog.works_for(kind)
     ]
     error = f"сервисы не ответили, показан сохранённый справочник: {analytics.catalog.error}" if analytics.catalog.error else None

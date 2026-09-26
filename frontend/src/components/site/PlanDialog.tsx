@@ -135,11 +135,16 @@ function CatalogNote({ work, catalog }: { work: Stage; catalog: AnalyticsCatalog
   if (work.catalogStageId === null) {
     return <div className="text-[14px] text-warn">Вид работ по справочнику не выбран — план не уходит сервисам аналитики</div>
   }
-  const name = catalog.works.find((w) => w.stageId === work.catalogStageId)?.name
+  const chosen = catalog.works.find((w) => w.stageId === work.catalogStageId)
   if (catalog.version && work.catalogVersion !== catalog.version) {
     return <div className="text-[14px] text-warn">Вид работ выбран по прежней версии справочника — проверьте и сохраните работу</div>
   }
-  return <div className="text-[14px] text-muted-foreground">По справочнику: {name ? `«${name}»` : `вид работ ${work.catalogStageId} — не подходит этому объекту`}</div>
+  if (!chosen) return <div className="text-[14px] text-warn">По справочнику: вид работ {work.catalogStageId} — не подходит этому объекту</div>
+  return (
+    <div className="text-[14px] text-muted-foreground">
+      По справочнику: «{chosen.name}»{chosen.kind === 'no_class' && ' — без техники: по кадрам не видна, следим только за сроками'}
+    </div>
+  )
 }
 
 /** Виды работ по разделам справочника — для списка выбора */
@@ -205,7 +210,7 @@ function StageForm({ stage, level, parentId, defaults, catalog, onSave, onCancel
       {withCatalog && catalog && (
         <Field
           label="Вид работ по справочнику" className="sm:col-span-2"
-          hint={catalog.error ?? 'По нему сервисы аналитики сверяют кадры с планом. Выберите, что делается на самом деле: по похожему названию система сама не подставляет'}
+          hint={catalog.error ?? 'По нему сервисы аналитики сверяют кадры с планом. Выберите, что делается на самом деле: по похожему названию система сама не подставляет. Работы без техники (геодезия, отселение) по кадрам не видны — по ним сервисы следят только за сроками'}
         >
           {(id, d) => (
             <select id={id} value={catalogId} onChange={(e) => setCatalogId(e.target.value)} aria-describedby={d} className={inputCls} disabled={!catalog.works.length}>
@@ -215,7 +220,7 @@ function StageForm({ stage, level, parentId, defaults, catalog, onSave, onCancel
               )}
               {bySection(catalog.works).map(([title, works]) => (
                 <optgroup key={title} label={title}>
-                  {works.map((w) => <option key={w.stageId} value={w.stageId}>{w.name}</option>)}
+                  {works.map((w) => <option key={w.stageId} value={w.stageId}>{w.name}{w.kind === 'no_class' && ' — без техники, только сроки'}</option>)}
                 </optgroup>
               ))}
             </select>

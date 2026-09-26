@@ -291,7 +291,9 @@ export interface SiteWork {
   nextAt: string | null
 }
 
-export interface CatalogWork { stageId: number; name: string; path: string[] }
+/** Вид работ справочника. no_class — работа без техники (геодезия, отселение): по кадрам её не видно, сервисы следят
+ *  только за сроками и отметками выполнения */
+export interface CatalogWork { stageId: number; name: string; path: string[]; kind: 'concrete' | 'no_class' }
 
 /** Виды работ справочника сервисов аналитики — для поля «Вид работ по справочнику» */
 export interface AnalyticsCatalog { enabled: boolean; version: string | null; objectType: string | null; works: CatalogWork[]; error: string | null }

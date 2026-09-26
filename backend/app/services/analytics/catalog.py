@@ -22,7 +22,11 @@ CATALOG_SCHEMA = "frame-analysis-catalog-v1"
 # вид объекта по справочнику; остальные наши виды (соцобъект без уточнения, промышленный, другое) — «неизвестен»
 OBJECT_TYPES = ("housing", "education", "healthcare", "sports", "culture", "administrative", "preschool", "office", "roads")
 FRESH_S = 600.0  # справочник версионирован и меняется редко — спрашиваем не чаще раза в 10 минут
-KIND_NAMES = {"summary": "сводный этап", "no_class": "работа, которую не видно по технике"}
+# Пункт плана — работа справочника: concrete (видна по технике) или no_class (без техники: геодезия, отселение — по ней
+# сервисы следят только за сроками и отметками, по кадрам не определяют; так договорились с коллегой 26.09).
+# Сводные этапы (summary) в план не идут — у нас это этапы плана уровня 1, группировки работ
+PLAN_KINDS = ("concrete", "no_class")
+KIND_NAMES = {"summary": "сводный этап справочника (у нас это этап плана, а не работа)"}
 
 
 class CatalogError(Exception):
@@ -58,18 +62,18 @@ class Catalog:
         work = self.works.get(stage_id)
         if work is None:
             return f"вида работ {stage_id} нет в справочнике версии {self.version}"
-        if work.kind != "concrete":
-            return f"«{work.name}» — {KIND_NAMES.get(work.kind, work.kind)}, а в плане нужны конкретные работы"
+        if work.kind not in PLAN_KINDS:
+            return f"«{work.name}» — {KIND_NAMES.get(work.kind, work.kind)}, а пунктом плана может быть только работа"
         if object_type and work.object_types and object_type not in work.object_types:
             return f"«{work.name}» по справочнику не относится к такому виду объекта"
         return None
 
     def works_for(self, object_type: str | None) -> list[CatalogWork]:
-        """Конкретные работы, которые можно выбрать для объекта этого вида — в порядке справочника."""
+        """Работы, которые можно выбрать для объекта этого вида (и без техники) — в порядке справочника."""
         return [
             w
             for w in self.works.values()
-            if w.kind == "concrete" and (not object_type or not w.object_types or object_type in w.object_types)
+            if w.kind in PLAN_KINDS and (not object_type or not w.object_types or object_type in w.object_types)
         ]
 
 

@@ -1054,6 +1054,11 @@ export interface components {
             name: string;
             /** Path */
             path: string[];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "concrete" | "no_class";
         };
         /** CheckRow */
         CheckRow: {

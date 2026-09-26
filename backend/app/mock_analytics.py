@@ -12,6 +12,8 @@
 (schedule-rules-v1); «по снимку» — те же группы от лица VLM: визуальные наблюдения строятся из рамок CV, картинку
 имитация не смотрит. Справочник — небольшой, с названиями из «Справочника видов работ» организаторов, а stage_id
 выдуманы: у настоящего сервиса они свои, и работы плана придётся сопоставить заново (версия справочника другая).
+Пункты плана — работы concrete и no_class (без техники: только сроки и отметки, в кандидаты по кадру не попадают —
+так договорились с коллегой 26.09); сводные этапы summary — отказ unknown_stage.
 
 MOCK_ANALYTICS_TOKEN — требовать этот Bearer (по умолчанию ANALYTICS_SERVICE_TOKEN, пусто — без проверки);
 MOCK_VLM_DELAY_S — сколько «думает» сервис по снимку (2 с); MOCK_ANALYTICS_FAULTS=vlm_llm=model_failure — отвечать
@@ -88,6 +90,7 @@ WORKS: list[tuple[int, str, tuple[str, ...], str, tuple[str, ...], dict[str, int
     (102, "Вырубка зеленых насаждений", (PREP,), "concrete", ALL, {"bulldozer": 2, "excavator": 1, "truck": 1}),
     (103, "Погрузка строительного мусора", (PREP,), "concrete", ALL, {"excavator": 2, "dump_truck": 3}),
     (104, "Устройство геодезических знаков", (PREP,), "no_class", ALL, {}),
+    (105, "Отселение домов в пятне застройки", (PREP,), "no_class", ALL, {}),
     (120, UNDER, (SMR,), "summary", ALL, {}),
     (121, "Выемка грунта котлована", (SMR, UNDER, EARTH), "concrete", ALL, {"excavator": 3, "dump_truck": 3, "bulldozer": 1}),
     (122, "Разработка грунта", (SMR, UNDER, EARTH), "concrete", (*BUILDINGS[1:], "roads"), {"excavator": 3, "dump_truck": 2}),
@@ -357,8 +360,10 @@ def validate(meta: Any, image: bytes, media_type: str, plans: dict) -> None:
                 raise _invalid(f"{where}/sequence_no", "sequence_no — положительное целое, без повторов")
             sid = step["stage_id"]
             work = WORK.get(sid) if isinstance(sid, int) and not isinstance(sid, bool) else None
-            if work is None or work[3] != "concrete":
-                raise _invalid(f"{where}/stage_id", f"{sid!r} — не конкретная работа справочника", "unknown_stage")
+            if work is None or work[3] not in ("concrete", "no_class"):
+                raise _invalid(
+                    f"{where}/stage_id", f"{sid!r} — не работа справочника (сводный этап или неизвестный)", "unknown_stage"
+                )
             if meta["object_type_code"] and meta["object_type_code"] not in work[4]:
                 raise _invalid(
                     f"{where}/stage_id", f"«{work[1]}» не относится к типу {meta['object_type_code']}", "unknown_stage"
